@@ -1,0 +1,5 @@
+# Subtype Overrides - Manually correct miscategorized dialogue
+# Format: key: subtype
+# Key can be FormKey or Editor ID. Editor IDs are recommended for ESPFE plugins.
+# For any ESP or Editor ID with special YAML characters like [, ], {, }, :, #, @, &, *, etc., use quotes
+overrides:

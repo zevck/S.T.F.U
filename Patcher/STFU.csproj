@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>true</ImplicitUsings>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Mutagen.Bethesda.Synthesis" Version="5.1.0" />
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
+  </ItemGroup>
+  <Target Name="CopyToModRoot" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+    <ItemGroup>
+      <FilesToCopy Include="$(OutputPath)STFU.exe" />
+      <FilesToCopy Include="$(OutputPath)STFU.dll" />
+      <FilesToCopy Include="$(OutputPath)STFU.runtimeconfig.json" />
+      <FilesToCopy Include="$(OutputPath)*.dll" Exclude="$(OutputPath)STFU.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(FilesToCopy)" DestinationFolder="..\STFU Patcher\\" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

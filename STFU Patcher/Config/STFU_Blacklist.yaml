@@ -1,0 +1,24 @@
+# Blacklist - Topics that will be blocked when MCM toggle is OFF
+# Supports both FormKeys (with :) and Editor IDs. Editor IDs are recommended for ESPFE plugins.
+# For any ESP or Editor ID with special YAML characters like [, ], {, }, :, #, @, &, *, etc., use quotes
+topics:
+ - 
+ 
+plugins: #Block every dialogue response in a plugin. Probably not a good idea.
+  -
+  
+#---------------------------
+#      Scene blocking
+#---------------------------
+#Use carefully, this blocks scenes from playing entirely and may break quests that rely on them.
+scenes:
+  - WhiterunMikaelSongScene
+  - WICraftItem01Scene
+  - WICraftItem02Scene
+  - WICraftItem03Scene
+  
+quests: #Block every scene referenced by a quest
+  - 
+
+quest_patterns: #EditorIDs only. Use * wildcard to catch multiple quests with similar naming schemes
+  - 

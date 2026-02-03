@@ -1,0 +1,25 @@
+# Whitelist - Topics that will NEVER be touched by the patcher
+# Use this to exclude specific dialogue you want to keep
+# Supports both FormKeys and Editor IDs. Editor IDs are recommended for ESPFE plugins
+# For any ESP or Editor ID with special YAML characters like [, ], {, }, :, #, @, &, *, etc., use quotes
+topics:
+  # Example: Editor ID
+  - WEJS27Hello #Taunting adventurer greeting
+  # Example FormKey
+  - 062103:Skyrim.esm #Scavenger encounter dialogue
+  - 04C592:Skyrim.esm #Draugr Attack dialogue
+  - 04C2D2:Skyrim.esm #Ayarg garag gar! (giants)
+
+plugins:
+  - 
+  
+scenes:
+  -
+
+quests: 
+  # Great Cities (houses won't be purchasable if Hello dialogue doesn't trigger quest)
+  - WinterholdBuyHomeTGCoWH
+  - DialogueKynesgroveBuyHomeTGCoKG
+  
+quest_patterns:
+  - 
