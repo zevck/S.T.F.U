@@ -2,7 +2,7 @@
 Skyrim Talk Filter Utility silences tedious frequent utterances
 
 ## What This Does
-Uses the power of Mutagen/Synthesis to scan your load order and patch dialogue responses with a condition that MUST be true in order to play. The condition can be toggled on or off via MCM to allow or block dialogue, broken down into 60+ categories. The patcher sorts responses based on their topic subtype. Highly customizable with whitelists, blacklists, subtype overrides, and safety mode settings. Only block what you want blocked.
+Uses the power of Mutagen/Synthesis to scan your load order and patch dialogue responses with a condition that MUST be true in order to play. The condition can be toggled on or off via MCM to allow or block dialogue, broken down into 60+ categories. The patcher sorts responses based on their topic subtype. Highly customizable with whitelists, blacklists, subtype overrides, and safe mode settings. Only block what you want blocked.
 
 ### Blocked Dialogue Types
 - **Combat Dialogue**: Taunt, CombatToNormal, Hit, AlertIdle, Yield, and many more
@@ -13,6 +13,8 @@ Uses the power of Mutagen/Synthesis to scan your load order and patch dialogue r
 
 This mod does **NOT** block dialogue with the Scene or Custom subtypes, as these are important for game functions and quests.
 
+S.T.F.U is lightweight, the only script is for the MCM toggles. Can safely be added or removed at any time.
+
 ## Requirements
 - **[SkyUI](https://www.nexusmods.com/skyrimspecialedition/mods/12604)** (for MCM)
 - **[Synthesis](https://github.com/Mutagen-Modding/Synthesis/releases)** (patcher framework)
@@ -22,15 +24,15 @@ This mod does **NOT** block dialogue with the Scene or Custom subtypes, as these
 
 ### Step 1: Install the Mod
 1. Install **STFU** via your mod manager (MO2, Vortex, etc.)
-2. **Important**: Place `STFU.esp` and any mods with dialogue **BEFORE** `Synthesis.esp` in your load order
-   - If `STFU.esp` is after Synthesis.esp, the patcher won't detect it
-3. Enable the mod
+2. Enable the mod
+3. **Important**: Place `STFU.esp` and any mods with dialogue **ABOVE** any other Synthesis patches in your load order (`Synthesis.esp` for example)
+   - If `STFU.esp` is after another patch, the patcher won't detect it
 
 ### Step 2: Add Patcher to Synthesis
 1. Launch Synthesis through your mod manager
 2. (Optional)*: Create a new group for the patcher called "STFU_Patch" or similar
 3. Click **"External Program"** in the top left corner
-4. Browse to STFU.exe in the "STFU Patcher" in the mod directory folder
+4. Browse to STFU.exe in the "STFU Patcher" folder in the mod directory
 5. Click **"Confirm"**
 6. (Optional)*: Drag the patcher into your new group
 7. Run
@@ -39,7 +41,7 @@ This mod does **NOT** block dialogue with the Scene or Custom subtypes, as these
 
 ### Step 3: Enable the new ESP in your mod manager
 1. Find the new ESP and enable it (it will be named after the Synthesis group)
-2. Load it after STFU.esp (you need both)
+2. Load the new ESP after STFU.esp (you need both)
 
 **Done**
 
@@ -48,12 +50,15 @@ All config files are in `\STFU Patcher\Config\`:
 
 ### STFU_Config.json
 - **vanillaOnly**: if true, the patcher will skip any mods and only patch Skyrim.esm, Dawnguard.esm, Dragonborn.esm, Hearthfires.esm, and Update.esm
+
 - **safeMode**: if true, the patcher will skip any responses that have scripts attached
-  - The vast majority of scripts attached to these responses are harmless to block. The important dialogue belongs to the Custom and Scene subtypes which this mod doesn't touch. However, I can't guarantee a mod doesn't apply an important scripts to other subtypes or that Bethesda didn't do something weird. Enabling this will result in blocking ~40% less dialogue
+  - The vast majority of (if not all) scripts attached to these responses are harmless to block. The important dialogue belongs to the Custom and Scene subtypes which this mod doesn't touch. However, I can't guarantee a mod doesn't apply an important scripts to other subtypes or that Bethesda didn't do something weird. Enabling this will result in blocking ~40% less dialogue
   - In my testing so far I've only had a problem with The Great Cities mods Hello scripts for triggering the home buying quest (whitelisted)
   - I think this is overly cautious, but until more testing is done this mod will remain in alpha. I think a more balanced approach if you're concerned is just not blocking Hello or Idle, as those are the bulk of the topics containing scripts
+
 - **filterHello**: if false, that subtype won't be processed by STFU at all
-  - I haven't had any mechnical issues blocking Hello, but sometimes dialogue options don't make sense without the greeting
+  - I haven't had any mechanical issues blocking Hello, but sometimes dialogue options don't make sense without the greeting
+  
 - **filterX**: same as above for every subtype
 
 ### STFU_Blacklist.yaml
@@ -75,7 +80,7 @@ plugins: #Block every dialogue response in a plugin. Probably not a good idea.
 scenes:
   - WhiterunMikaelSongScene
   # nwsFollowerFramework.esp
-  - nwsFollowerLeveledScene
+  - nwsFollowerLeveledScene #Congratulating
   
 quests: #Block every scene referenced by a quest
   # FaceSculptorExpanded.esp scenes
@@ -137,14 +142,14 @@ quest_patterns:
 ```
 
 ### STFU_SubtypeOverrides.yaml
-Override subtype classification for specific topics. Originally to fix miscategorized dialogue, it can also be used to blacklist a topic by assigning it to a specific subtype instead of the `STFU_Blacklist` toggle:
+Override subtype classification for specific topics. Originally to fix miscategorized dialogue, it can also be used to blacklist a topic by assigning it to a specific subtype's toggle instead of the `STFU_Blacklist` toggle:
 ```yaml
 # Subtype Overrides - Manually correct miscategorized dialogue
 # Format: key: subtype
 # Key can be FormKey or Editor ID. Editor IDs are recommended for ESPFE plugins.
 # For any ESP or Editor ID with special YAML characters like [, ], {, }, :, #, @, &, *, etc., use quotes
 overrides:
-  021405:Skyrim.esm: Hit
+  021405:Skyrim.esm: Hit #Patches the coughing topic with the Hit condition
 ```
 
 After editing configs, re-run Synthesis to apply changes.
@@ -168,7 +173,7 @@ No patcher re-run needed - changes apply immediately
 
 **Solution**: 
 1. Check that `STFU.esp` is enabled in your mod manager
-2. **Move STFU.esp BEFORE Synthesis.esp** in load order
+2. Move STFU.esp **ABOVE** any other Synthesis patches in load order
 3. Re-run Synthesis
 
 ### Config changes not working
@@ -178,27 +183,10 @@ After editing YAML/JSON files, you must **re-run Synthesis** to regenerate the p
 Add it to `STFU_Whitelist.yaml` by FormID or EditorID, then re-run Synthesis.
 
 ### Dialogue I don't want is NOT blocked
-Add it to `STFU_Blacklist.yaml` for permanent blocking (bypasses MCM).
+Add it to `STFU_Blacklist.yaml` to be filtered.
 
-## Technical Details
-
-### How It Works
-1. Patcher scans all dialogue topics in your load order
-  - Patches the winning override, so if any dialogue is altered by another mod the altered version gets patched
-2. Adds conditional checks: "If STFU_Attack global == 1, block response"
-3. MCM script controls the global values (1 = blocked, 0 = allowed)
-4. Dialogue evaluates conditions at runtime
-
-### What Gets Patched
-- Thousands of topics and tens of thousands of responses
-- Any subtype or category enabled in STFU_Config.json
-- Anything in STFU_Blacklist.yaml
-
-### What Doesn't Get Patched
-- Whitelisted topics/quests/plugins
-- Subtypes disabled in STFU_Config.json
-- Custom subtype dialogue. This contains the bulk of the games dialogue used for player dialogue choices, quests, and mechanics.
-- Scenes (aside from a list of curated town scenes and whatever you blacklist).
+### Changes aren't being made when re-running the patcher
+Delete the old ESP and run it again.
 
 ## Useful Tools
 - [xTranslator](https://www.nexusmods.com/skyrimspecialedition/mods/134) Useful for quickly searching through dialogue to find what you want blacklisted or whitelisted
@@ -206,17 +194,20 @@ Add it to `STFU_Blacklist.yaml` for permanent blocking (bypasses MCM).
   - [Dialogue Search Scipt](https://gist.github.com/tasairis/51e530a1af9e8a4be089328376e41108)
 
 ## Reporting Issues
-- If you encounter any vanilla dialogue not being blocked when it should send me the quote and the context that it happened. I won't make patches for modded dialogue, that should be done with the yaml configs.
+- If you encounter any vanilla dialogue not being blocked when it should, send me the quote and the context that it happened. I won't make patches for modded dialogue, that should be done with the yaml configs.
+
 - If you suspect that blocked dialogue broke a quest, please try reloading a save and testing again before blaming me. It's possible a dialogue script somewhere is important, but Skyrim quests can break for any number of reasons.
   - Ideal test flow:
     1. Test quest with STFU enabled --> Quest doesn't work
     2. Reload and test quest AGAIN with STFU enabled --> Quest still doesn't work
     3. Reload and test quest AGAIN with STFU disabled --> Quest works now
     4. Let me know the quest name or editor ID (preferable) and I'll check what it's scripts are (if any)
+
 - If dialogue you want to hear is being blocked, whitelist it or disable that subtype, leave me alone. You know what you signed up for.
+
+- If the patcher gives an error when running close Synthesis and try again, then check the troubleshooting section, then if it's still not working send me the log in the Synthesis output window.
 
 Submit a [github issue](https://github.com/zevck/S.T.F.U/issues) if you think something is wrong
 
 ## Credits
 - **Mutagen/Synthesis Framework**: Noggog and contributors
-

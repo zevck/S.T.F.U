@@ -1,6 +1,6 @@
 {
   "vanillaOnly": false,
-  "safeMode": true,
+  "safeMode": false,
 
   "_comment_combat": "=== COMBAT DIALOGUE ===",
   "filterAcceptYield": true,

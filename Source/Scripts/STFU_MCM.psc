@@ -228,7 +228,7 @@ int oid_StandOnFurniture
 int oid_TrainingExit
 
 Event OnConfigInit()
-    ModName = "STFU"
+    ModName = "S.T.F.U"
     LoadConfig()
     BuildPageList()
 EndEvent
@@ -402,7 +402,7 @@ int Function GetVersion()
 EndFunction
 
 Event OnVersionUpdate(int aiNewVersion)
-    ModName = "STFU"
+    ModName = "S.T.F.U"
     Pages = new string[4]
     Pages[0] = "Combat Dialogue"
     Pages[1] = "Generic Dialogue"
