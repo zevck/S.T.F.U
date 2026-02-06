@@ -170,30 +170,30 @@ No patcher re-run needed - changes apply immediately
 ## Troubleshooting
 
 ### Missing globals, topics aren't patched
-**Problem**: STFU.esp not detected by Synthesis
+  **Problem**: STFU.esp not detected by Synthesis
 
-**Solution**: 
-1. Check that `STFU.esp` is enabled in your mod manager
-2. Move STFU.esp **ABOVE** any other Synthesis patches in load order
-3. Re-run Synthesis
+  **Solution**: 
+  1. Check that `STFU.esp` is enabled in your mod manager
+  2. Move STFU.esp **ABOVE** any other Synthesis patches in load order
+  3. Re-run Synthesis
 
 ### Config changes not working
-After editing YAML/JSON files, you must **re-run Synthesis** to regenerate the patch.
+  After editing YAML/JSON files, you must **re-run Synthesis** to regenerate the patch.
 
 ### Dialogue I want is blocked
-Add it to `STFU_Whitelist.yaml` by FormID or EditorID, then re-run Synthesis.
+  Add it to `STFU_Whitelist.yaml` by FormID or EditorID, then re-run Synthesis.
 
 ### Dialogue I don't want is NOT blocked
-Add it to `STFU_Blacklist.yaml` by FormID or EditorID, then re-run Synthesis. Look below for how to locate dialogue's FormID or EditorID.
+  Add it to `STFU_Blacklist.yaml` by FormID or EditorID, then re-run Synthesis. Look below for how to locate dialogue's FormID or EditorID.
 
 ### Patch isn't being updated when re-running Synthesis
-Delete the old patch's ESP and run it again.
+  Delete the old patch's ESP and run it again.
 
 ### S.T.F.U MCM is loading but nothing is being blocked
-Make sure the patch's ESP is enabled and below any mods with dialogue
+  Make sure the patch's ESP is enabled and below any mods with dialogue
 
 ### Can't find the patch ESP after running
-It should be named either `Synthesis.esp` by default or whatever you named the group (`STFU_Patch.esp` for example). Open Synthesis and check the group names on the left and find which one contains STFU. If you have multiple Synthesis patchers in the same group they will all be in the same ESP. Also confirm that the patcher completed successfully and didn't give an error in the output window.
+  It should be named either `Synthesis.esp` by default or whatever you named the group (`STFU_Patch.esp` for example). Open Synthesis and check the group names on the left and find which one contains STFU. If you have multiple Synthesis patchers in the same group they will all be in the same ESP. Also confirm that the patcher completed successfully and didn't give an error in the output window.
 
 ## Useful Tools
 You can use these to find the EditorID or FormID of dialogue topics so they can be added to configuration yamls. EditorIDs are better, but FormIDs will work fine for non-ESL flagged mods.
