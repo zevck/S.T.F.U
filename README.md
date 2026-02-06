@@ -202,23 +202,23 @@ You can use these to find the EditorID or FormID of dialogue topics so they can 
   - [Dialogue Search Scipt](https://gist.github.com/tasairis/51e530a1af9e8a4be089328376e41108)
 
 ## Reporting Issues
-- If you encounter any vanilla dialogue not being blocked when it should, send me the quote and the context that it happened. I won't make patches for modded dialogue, that should be done with the yaml configs.
+If you encounter any vanilla dialogue not being blocked when it should, send me the quote and the context that it happened. I won't make patches for modded dialogue, that should be done with the yaml configs.
 
-- If you suspect that blocked dialogue broke a quest, please try reloading a save and testing again before blaming me. It's possible a dialogue script somewhere is important, but Skyrim quests can break for any number of reasons.
-  - Ideal test flow:
-    1. Test quest with STFU enabled --> Quest doesn't work
-    2. Reload and test quest AGAIN with STFU enabled
-      a. Quest works, not my fault
-      b. Quest still doesn't work, continue
-    3. Reload and test quest AGAIN with STFU disabled
-      a. Quest still doesn't work, not my fault
-      b. Quest works, continue
-    4. Let me know the quest name or editor ID (preferable) and I'll check what it's scripts are (if any)
+If you suspect that blocked dialogue broke a quest, please try reloading a save and testing again before blaming me. It's possible a dialogue script somewhere is important, but Skyrim quests can break for any number of reasons.
+- Ideal test flow:
+  1. Test quest with STFU enabled --> Quest doesn't work
+  2. Reload and test quest AGAIN with STFU enabled
+    a. Quest works, not my fault
+    b. Quest still doesn't work, continue
+  3. Reload and test quest AGAIN with STFU disabled
+    a. Quest still doesn't work, not my fault
+    b. Quest works, continue
+  4. Let me know the quest name or editor ID (preferable) and I'll check what it's scripts are (if any)
 - Conversely, don't blame other mod authors if blocking dialogue breaks their quests, it might be my fault.
 
-- If dialogue you want to hear is being blocked, whitelist it or disable that subtype, leave me alone. You know what you signed up for.
+If dialogue you want to hear is being blocked, whitelist it or disable that subtype, leave me alone. You know what you signed up for.
 
-- If the patcher gives an error when running, close Synthesis and try again, then check the troubleshooting section. If it's still not working send me the log from the Synthesis output window.
+If the patcher gives an error when running, close Synthesis and try again, then check the troubleshooting section. If it's still not working send me the log from the Synthesis output window.
 
 Submit a [github issue](https://github.com/zevck/S.T.F.U/issues) if you think something is wrong
 
