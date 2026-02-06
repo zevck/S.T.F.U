@@ -204,15 +204,15 @@ You can use these to find the EditorID or FormID of dialogue topics so they can 
 ## Reporting Issues
 If you encounter any vanilla dialogue not being blocked when it should, send me the quote and the context that it happened. I won't make patches for modded dialogue, that should be done with the yaml configs.
 
-If you suspect that blocked dialogue broke a quest, please try reloading a save and testing again before blaming me. It's possible a dialogue script somewhere is important, but Skyrim quests can break for any number of reasons.
+If you suspect that blocked dialogue broke a quest, please try reloading a save and testing again before blaming me. It's possible a blocked dialogue script somewhere is important, but Skyrim quests can break for any number of reasons.
 - Ideal test flow:
   1. Test quest with STFU enabled --> Quest doesn't work
   2. Reload and test quest AGAIN with STFU enabled
-    a. Quest works, not my fault
-    b. Quest still doesn't work, continue
+    1. Quest works, not my fault
+    2. Quest still doesn't work, continue
   3. Reload and test quest AGAIN with STFU disabled
-    a. Quest still doesn't work, not my fault
-    b. Quest works, continue
+    1. Quest still doesn't work, not my fault
+    2. Quest works, continue
   4. Let me know the quest name or editor ID (preferable) and I'll check what it's scripts are (if any)
 - Conversely, don't blame other mod authors if blocking dialogue breaks their quests, it might be my fault.
 
