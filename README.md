@@ -50,17 +50,17 @@ This mod does **NOT** block dialogue with the Scene or Custom subtypes, as these
 All config files are in `\STFU Patcher\Config\`:
 
 ### STFU_Config.json
-- **vanillaOnly**: if true, the patcher will skip any modded topics and only patch Skyrim.esm, Dawnguard.esm, Dragonborn.esm, Hearthfires.esm, and Update.esm topics. Mods that alter and override vanilla topics will still have those responses patched.
+**vanillaOnly**: if true, the patcher will skip any modded topics and only patch Skyrim.esm, Dawnguard.esm, Dragonborn.esm, Hearthfires.esm, and Update.esm topics. Mods that alter and override vanilla topics will still have those responses patched.
 
-- **safeMode**: if true, the patcher will skip any responses that have scripts attached
+**safeMode**: if true, the patcher will skip any responses that have scripts attached
   - Enabling this will result in blocking ~40% less dialogue and might make whatever doesn't get patched more repetitive due to reduced variety. The vast majority if not all scripts attached to these subtypes are harmless
   - Important dialogue *should* use the Custom or Scene subtypes, which this mod doesn't touch
   - The only problem I've had is with The Great Cities mods Hello scripts for triggering the home buying quest (now whitelisted)
 
-- **filterHello**: if false, that subtype won't be processed by STFU at all
+**filterHello**: if false, that subtype won't be processed by STFU at all
   - I haven't had any mechanical issues blocking Hello, but sometimes dialogue tree options don't make sense without the initial greeting
   
-- **filterX**: same as above for every subtype
+**filterX**: same as above for every subtype
 
 ### STFU_Blacklist.yaml
 Blacklist specific dialogue topics or scenes:
