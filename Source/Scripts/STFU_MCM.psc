@@ -314,7 +314,7 @@ EndFunction
 
 Function LoadConfig()
     ; Load config from Data/SKSE/Plugins/STFU/STFU_Config.json
-    string configPath = "Data/SKSE/Plugins/STFU/STFU_Config.json"
+    string configPath = "Data/STFU Patcher/Config/STFU_Config.json"
     Debug.Trace("STFU MCM: Attempting to load config from: " + configPath)
     configHandle = JValue.readFromFile(configPath)
     Debug.Trace("STFU MCM: Config handle = " + configHandle)
