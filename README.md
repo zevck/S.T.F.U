@@ -207,12 +207,8 @@ If you encounter any vanilla dialogue not being blocked when it should, send me 
 If you suspect that blocked dialogue broke a quest, please try reloading a save and testing again before blaming me. It's possible a blocked dialogue script somewhere is important, but Skyrim quests can break for any number of reasons.
 - Ideal test flow:
   1. Test quest with STFU enabled --> Quest doesn't work
-  2. Reload and test quest AGAIN with STFU enabled
-    &emsp;- Quest works, not my fault
-    &emsp;- Quest still doesn't work, continue
-  3. Reload and test quest AGAIN with STFU disabled
-    &emsp;- Quest still doesn't work, not my fault
-    &emsp;- Quest works, continue
+  2. Reload and test quest AGAIN with STFU enabled --> Quest still doesn't work
+  3. Reload and test quest AGAIN with STFU disabled --> Quest still doesn't work
   4. Let me know the quest name or editor ID (preferable) and I'll check what it's scripts are (if any)
 - Conversely, don't blame other mod authors if blocking dialogue breaks their quests, it might be my fault.
 
@@ -223,4 +219,4 @@ If the patcher gives an error when running, close Synthesis and try again, then 
 Submit a [github issue](https://github.com/zevck/S.T.F.U/issues) if you think something is wrong
 
 ## Credits
-- **Mutagen/Synthesis Framework**: Noggog and contributors
+- Mutagen/Synthesis Framework
