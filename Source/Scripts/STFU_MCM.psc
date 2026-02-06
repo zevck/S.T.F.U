@@ -260,7 +260,7 @@ Function BuildPageList()
     EndIf
     
     ; Create properly sized array
-    Pages = new string[pageCount]
+    Pages = new string[4]
     int currentIndex = 0
     
     If HasCombatDialogue()
