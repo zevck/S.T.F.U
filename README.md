@@ -55,7 +55,7 @@ All config files are in `\STFU Patcher\Config\`:
 **safeMode**: if true, the patcher will skip any responses that have scripts attached
   - Enabling this will result in blocking ~40% less dialogue and might make whatever doesn't get patched more repetitive due to reduced variety. The vast majority if not all scripts attached to these subtypes are harmless
   - Important dialogue *should* use the Custom or Scene subtypes, which this mod doesn't touch
-  - The only problem I've had is with The Great Cities mods Hello scripts for triggering the home buying quest (now whitelisted)
+  - The only problem I've had is with The Great Cities mod's Hello scripts for triggering the home buying quest (now whitelisted)
 
 **filterHello**: if false, that subtype won't be processed by STFU at all
   - I haven't had any mechanical issues blocking Hello, but sometimes dialogue tree options don't make sense without the initial greeting
