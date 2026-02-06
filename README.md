@@ -208,11 +208,11 @@ If you suspect that blocked dialogue broke a quest, please try reloading a save 
 - Ideal test flow:
   1. Test quest with STFU enabled --> Quest doesn't work
   2. Reload and test quest AGAIN with STFU enabled
-    - Quest works, not my fault
-    - Quest still doesn't work, continue
+    &emsp;- Quest works, not my fault
+    &emsp;- Quest still doesn't work, continue
   3. Reload and test quest AGAIN with STFU disabled
-    - Quest still doesn't work, not my fault
-    - Quest works, continue
+    &emsp;- Quest still doesn't work, not my fault
+    &emsp;- Quest works, continue
   4. Let me know the quest name or editor ID (preferable) and I'll check what it's scripts are (if any)
 - Conversely, don't blame other mod authors if blocking dialogue breaks their quests, it might be my fault.
 
