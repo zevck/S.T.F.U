@@ -38,7 +38,7 @@
   "filterBarterExit": true,
   "filterDestroyObject": true,
   "filterGoodbye": true,
-  "filterHello": true,
+  "filterHello": false,
   "filterIdle": true,
   "filterKnockOverObject": true,
   "filterLockedObject": true,
