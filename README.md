@@ -1,5 +1,5 @@
 # S.T.F.U - Skyrim Talk Filter Utility
-Skyrim Talk Filter Utility silences tedious frequent utterances
+Skyrim Talk Filter Utility silences tedious frequent utterances. Block only what you want to block.
 
 ## What This Does
 &emsp;Skyrim separates dialogue into topics, which are categorized with subtypes like Hello, KnockOverObject, CombatToNormal, Taunts, etc. This mod uses the power of Mutagen/Synthesis to scan your load order and patch those dialogue responses with a condition that must be true in order to play. The patcher copies the responses into a new ESP that overrides the originals without tampering with them. The conditions can be toggled on or off via the MCM to allow or block dialogue, broken down into 60+ categories based on subtype.
@@ -48,7 +48,11 @@ This mod does **NOT** block dialogue with the Scene or Custom subtypes, as these
 1. Launch the game and open the S.T.F.U MCM
 2. Enable the categories you want to block
 
-**DONE**
+### Example load order
+- [All mods containing dialogue]
+- STFU.esp
+- STFU_Patch.esp (or whatever you named the group)
+- [Other Synthesis patches]
 
 ## Configuration
 All config files are in `\STFU Patcher\Config\`:
@@ -191,15 +195,15 @@ No patcher re-run needed - changes apply immediately
   Add it to `STFU_Blacklist.yaml` by FormID or EditorID, then re-run Synthesis. Look below for how to locate dialogue's FormID or EditorID.
 
 ### Patch isn't being updated when re-running Synthesis
-  Delete the old patch's ESP and run it again.
+  Delete the generated patch ESP and run it again.
 
 ### S.T.F.U MCM is loading but nothing is being blocked
-  Make sure the patch's ESP is enabled and below any mods with dialogue
+  Make sure the generated patch ESP is enabled and below any mods with dialogue
 
 ### Can't find the patch ESP after running
   It should be named either `Synthesis.esp` by default or whatever you named the group (`STFU_Patch.esp` for example). Open Synthesis and check the group names on the left and find which one contains STFU. If you have multiple Synthesis patchers in the same group they will all be in the same ESP. Also confirm that the patcher completed successfully and didn't give an error in the output window.
 
-### Writing with compression enabled is not currently supported.
+### Writing with compression enabled is not currently supported
   Move the STFU patch into it's own group that doesn't have compression enabled. STFU patches 10s of thousands of dialogue responses and cannot be made into an ESL.
 
 ## Useful Tools
