@@ -31,11 +31,11 @@ This mod does **NOT** block dialogue with the Scene or Custom subtypes, as these
 
 ### Step 2: Add Patcher to Synthesis
 1. Launch Synthesis through your mod manager
-2. (Optional)*: Create a new group for the patcher called "STFU_Patch" or similar
+2. Create a new group for the patcher called "STFU_Patch" or similar
 3. Click **"External Program"** in the top left corner
 4. Browse to STFU.exe in the "STFU Patcher" folder in the mod directory
 5. Click **"Confirm"**
-6. (Optional)*: Drag the patcher into your new group
+6. Drag the patcher into your new group
 7. Run (this will create a new ESP)
 
 *You will need to rerun the patcher whenever you add or remove mods containing dialogue. If you have multiple patchers all in one group, you will have to rerun all of them each time.
@@ -44,7 +44,11 @@ This mod does **NOT** block dialogue with the Scene or Custom subtypes, as these
 1. Find the new ESP and enable it (it will be named after the Synthesis group)
 2. Load the new ESP after STFU.esp and any mods containing dialogue
 
-**Done**
+### Step 4: Load the game and open the MCM
+1. Launch the game and open the S.T.F.U MCM
+2. Enable the categories you want to block
+
+**DONE**
 
 ## Configuration
 All config files are in `\STFU Patcher\Config\`:
@@ -194,6 +198,9 @@ No patcher re-run needed - changes apply immediately
 
 ### Can't find the patch ESP after running
   It should be named either `Synthesis.esp` by default or whatever you named the group (`STFU_Patch.esp` for example). Open Synthesis and check the group names on the left and find which one contains STFU. If you have multiple Synthesis patchers in the same group they will all be in the same ESP. Also confirm that the patcher completed successfully and didn't give an error in the output window.
+
+### Writing with compression enabled is not currently supported.
+  Move the STFU patch into it's own group that doesn't have compression enabled. STFU patches 10s of thousands of dialogue responses and cannot be made into an ESL.
 
 ## Useful Tools
 You can use these to find the EditorID or FormID of dialogue topics so they can be added to configuration yamls. EditorIDs are better, but FormIDs will work fine for non-ESL flagged mods.
