@@ -66,7 +66,7 @@ All config files are in `\STFU Patcher\Config\`:
   - The only problem I've had is with The Great Cities mod's Hello scripts for triggering the home buying quest (now whitelisted)
 
 **filterHello**: if false, that subtype won't be processed by STFU at all
-  - I haven't had any mechanical issues blocking Hello, but sometimes dialogue tree options don't make sense without the initial greeting
+  - I haven't had any mechanical issues blocking Hello, but sometimes dialogue tree options don't make sense without the initial greeting. I wouldn't recommend blocking it, but you can.
   
 **filterX**: same as above for every subtype
 

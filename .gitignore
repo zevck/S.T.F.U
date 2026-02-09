@@ -1,156 +1,22 @@
-STFU.code-workspace
-STFU.zip
-Patcher/bin/Release/net8.0/CommandLine.dll
-Patcher/bin/Release/net8.0/DotNetZip.dll
-Patcher/bin/Release/net8.0/DynamicData.dll
-Patcher/bin/Release/net8.0/GameFinder.dll
-Patcher/bin/Release/net8.0/GameFinder.RegistryUtils.dll
-Patcher/bin/Release/net8.0/GameFinder.StoreHandlers.GOG.dll
-Patcher/bin/Release/net8.0/GameFinder.StoreHandlers.Steam.dll
-Patcher/bin/Release/net8.0/ICSharpCode.SharpZipLib.dll
-Patcher/bin/Release/net8.0/INIFileParser.dll
-Patcher/bin/Release/net8.0/K4os.Compression.LZ4.dll
-Patcher/bin/Release/net8.0/K4os.Compression.LZ4.Streams.dll
-Patcher/bin/Release/net8.0/K4os.Hash.xxHash.dll
-Patcher/bin/Release/net8.0/Loqui.dll
-Patcher/bin/Release/net8.0/Microsoft.Data.Sqlite.dll
-Patcher/bin/Release/net8.0/Microsoft.DotNet.PlatformAbstractions.dll
-Patcher/bin/Release/net8.0/Microsoft.EntityFrameworkCore.Abstractions.dll
-Patcher/bin/Release/net8.0/Microsoft.EntityFrameworkCore.dll
-Patcher/bin/Release/net8.0/Microsoft.EntityFrameworkCore.Relational.dll
-Patcher/bin/Release/net8.0/Microsoft.EntityFrameworkCore.Sqlite.dll
-Patcher/bin/Release/net8.0/Microsoft.Extensions.Caching.Abstractions.dll
-Patcher/bin/Release/net8.0/Microsoft.Extensions.Caching.Memory.dll
-Patcher/bin/Release/net8.0/Microsoft.Extensions.Configuration.Abstractions.dll
-Patcher/bin/Release/net8.0/Microsoft.Extensions.DependencyInjection.Abstractions.dll
-Patcher/bin/Release/net8.0/Microsoft.Extensions.DependencyInjection.dll
-Patcher/bin/Release/net8.0/Microsoft.Extensions.DependencyModel.dll
-Patcher/bin/Release/net8.0/Microsoft.Extensions.Logging.Abstractions.dll
-Patcher/bin/Release/net8.0/Microsoft.Extensions.Logging.dll
-Patcher/bin/Release/net8.0/Microsoft.Extensions.Options.dll
-Patcher/bin/Release/net8.0/Microsoft.Extensions.Primitives.dll
-Patcher/bin/Release/net8.0/Microsoft.Win32.SystemEvents.dll
-Patcher/bin/Release/net8.0/Mutagen.Bethesda.Core.dll
-Patcher/bin/Release/net8.0/Mutagen.Bethesda.Core.Windows.dll
-Patcher/bin/Release/net8.0/Mutagen.Bethesda.dll
-Patcher/bin/Release/net8.0/Mutagen.Bethesda.Fallout4.dll
-Patcher/bin/Release/net8.0/Mutagen.Bethesda.Json.dll
-Patcher/bin/Release/net8.0/Mutagen.Bethesda.Kernel.dll
-Patcher/bin/Release/net8.0/Mutagen.Bethesda.Oblivion.dll
-Patcher/bin/Release/net8.0/Mutagen.Bethesda.Skyrim.dll
-Patcher/bin/Release/net8.0/Mutagen.Bethesda.Sqlite.dll
-Patcher/bin/Release/net8.0/Mutagen.Bethesda.Synthesis.dll
-Patcher/bin/Release/net8.0/Newtonsoft.Json.dll
-Patcher/bin/Release/net8.0/Noggog.CSharpExt.dll
-Patcher/bin/Release/net8.0/runtimes/alpine-x64/native/libe_sqlite3.so
-Patcher/bin/Release/net8.0/runtimes/linux-arm/native/libe_sqlite3.so
-Patcher/bin/Release/net8.0/runtimes/linux-arm64/native/libe_sqlite3.so
-Patcher/bin/Release/net8.0/runtimes/linux-armel/native/libe_sqlite3.so
-Patcher/bin/Release/net8.0/runtimes/linux-mips64/native/libe_sqlite3.so
-Patcher/bin/Release/net8.0/runtimes/linux-musl-x64/native/libe_sqlite3.so
-Patcher/bin/Release/net8.0/runtimes/linux-x64/native/libe_sqlite3.so
-Patcher/bin/Release/net8.0/runtimes/linux-x86/native/libe_sqlite3.so
-Patcher/bin/Release/net8.0/runtimes/osx-x64/native/libe_sqlite3.dylib
-Patcher/bin/Release/net8.0/runtimes/unix/lib/netcoreapp3.0/System.Drawing.Common.dll
-Patcher/bin/Release/net8.0/runtimes/win-arm/native/e_sqlite3.dll
-Patcher/bin/Release/net8.0/runtimes/win-arm64/native/e_sqlite3.dll
-Patcher/bin/Release/net8.0/runtimes/win-x64/native/e_sqlite3.dll
-Patcher/bin/Release/net8.0/runtimes/win-x86/native/e_sqlite3.dll
-Patcher/bin/Release/net8.0/runtimes/win/lib/netcoreapp3.0/Microsoft.Win32.SystemEvents.dll
-Patcher/bin/Release/net8.0/runtimes/win/lib/netcoreapp3.0/System.Drawing.Common.dll
-Patcher/bin/Release/net8.0/runtimes/win/lib/netcoreapp3.0/System.Windows.Extensions.dll
-Patcher/bin/Release/net8.0/SQLitePCLRaw.batteries_v2.dll
-Patcher/bin/Release/net8.0/SQLitePCLRaw.core.dll
-Patcher/bin/Release/net8.0/SQLitePCLRaw.nativelibrary.dll
-Patcher/bin/Release/net8.0/SQLitePCLRaw.provider.dynamic_cdecl.dll
-Patcher/bin/Release/net8.0/STFU.deps.json
-Patcher/bin/Release/net8.0/STFU.dll
-Patcher/bin/Release/net8.0/STFU.exe
-Patcher/bin/Release/net8.0/STFU.pdb
-Patcher/bin/Release/net8.0/STFU.runtimeconfig.json
-Patcher/bin/Release/net8.0/Synthesis.Bethesda.dll
-Patcher/bin/Release/net8.0/System.Drawing.Common.dll
-Patcher/bin/Release/net8.0/System.IO.Abstractions.dll
-Patcher/bin/Release/net8.0/System.Reactive.dll
-Patcher/bin/Release/net8.0/System.Security.Permissions.dll
-Patcher/bin/Release/net8.0/System.Windows.Extensions.dll
-Patcher/bin/Release/net8.0/YamlDotNet.dll
-Patcher/obj/project.assets.json
-Patcher/obj/project.nuget.cache
-Patcher/obj/Release/net8.0/.NETCoreApp,Version=v8.0.AssemblyAttributes.cs
-Patcher/obj/Release/net8.0/apphost.exe
-Patcher/obj/Release/net8.0/ref/STFU.dll
-Patcher/obj/Release/net8.0/refint/STFU.dll
-Patcher/obj/Release/net8.0/STFU.AssemblyInfo.cs
-Patcher/obj/Release/net8.0/STFU.AssemblyInfoInputs.cache
-Patcher/obj/Release/net8.0/STFU.assets.cache
-Patcher/obj/Release/net8.0/STFU.csproj.AssemblyReference.cache
-Patcher/obj/Release/net8.0/STFU.csproj.CoreCompileInputs.cache
-Patcher/obj/Release/net8.0/STFU.csproj.FileListAbsolute.txt
-Patcher/obj/Release/net8.0/STFU.csproj.Up2Date
-Patcher/obj/Release/net8.0/STFU.dll
-Patcher/obj/Release/net8.0/STFU.GeneratedMSBuildEditorConfig.editorconfig
-Patcher/obj/Release/net8.0/STFU.genruntimeconfig.cache
-Patcher/obj/Release/net8.0/STFU.GlobalUsings.g.cs
-Patcher/obj/Release/net8.0/STFU.pdb
-Patcher/obj/STFU.csproj.nuget.dgspec.json
-Patcher/obj/STFU.csproj.nuget.g.props
-Patcher/obj/STFU.csproj.nuget.g.targets
-Patcher/temp_patch.txt
-STFU Patcher/CommandLine.dll
-STFU Patcher/DotNetZip.dll
-STFU Patcher/DynamicData.dll
-STFU Patcher/GameFinder.dll
-STFU Patcher/GameFinder.RegistryUtils.dll
-STFU Patcher/GameFinder.StoreHandlers.GOG.dll
-STFU Patcher/GameFinder.StoreHandlers.Steam.dll
-STFU Patcher/ICSharpCode.SharpZipLib.dll
-STFU Patcher/INIFileParser.dll
-STFU Patcher/K4os.Compression.LZ4.dll
-STFU Patcher/K4os.Compression.LZ4.Streams.dll
-STFU Patcher/K4os.Hash.xxHash.dll
-STFU Patcher/Loqui.dll
-STFU Patcher/Microsoft.Data.Sqlite.dll
-STFU Patcher/Microsoft.DotNet.PlatformAbstractions.dll
-STFU Patcher/Microsoft.EntityFrameworkCore.Abstractions.dll
-STFU Patcher/Microsoft.EntityFrameworkCore.dll
-STFU Patcher/Microsoft.EntityFrameworkCore.Relational.dll
-STFU Patcher/Microsoft.EntityFrameworkCore.Sqlite.dll
-STFU Patcher/Microsoft.Extensions.Caching.Abstractions.dll
-STFU Patcher/Microsoft.Extensions.Caching.Memory.dll
-STFU Patcher/Microsoft.Extensions.Configuration.Abstractions.dll
-STFU Patcher/Microsoft.Extensions.DependencyInjection.Abstractions.dll
-STFU Patcher/Microsoft.Extensions.DependencyInjection.dll
-STFU Patcher/Microsoft.Extensions.DependencyModel.dll
-STFU Patcher/Microsoft.Extensions.Logging.Abstractions.dll
-STFU Patcher/Microsoft.Extensions.Logging.dll
-STFU Patcher/Microsoft.Extensions.Options.dll
-STFU Patcher/Microsoft.Extensions.Primitives.dll
-STFU Patcher/Microsoft.Win32.SystemEvents.dll
-STFU Patcher/Mutagen.Bethesda.Core.dll
-STFU Patcher/Mutagen.Bethesda.Core.Windows.dll
-STFU Patcher/Mutagen.Bethesda.dll
-STFU Patcher/Mutagen.Bethesda.Fallout4.dll
-STFU Patcher/Mutagen.Bethesda.Json.dll
-STFU Patcher/Mutagen.Bethesda.Kernel.dll
-STFU Patcher/Mutagen.Bethesda.Oblivion.dll
-STFU Patcher/Mutagen.Bethesda.Skyrim.dll
-STFU Patcher/Mutagen.Bethesda.Sqlite.dll
-STFU Patcher/Mutagen.Bethesda.Synthesis.dll
-STFU Patcher/Newtonsoft.Json.dll
-STFU Patcher/Noggog.CSharpExt.dll
-STFU Patcher/SQLitePCLRaw.batteries_v2.dll
-STFU Patcher/SQLitePCLRaw.core.dll
-STFU Patcher/SQLitePCLRaw.nativelibrary.dll
-STFU Patcher/SQLitePCLRaw.provider.dynamic_cdecl.dll
-STFU Patcher/STFU.dll
-STFU Patcher/STFU.exe
-STFU Patcher/STFU.runtimeconfig.json
-STFU Patcher/Synthesis.Bethesda.dll
-STFU Patcher/System.Drawing.Common.dll
-STFU Patcher/System.IO.Abstractions.dll
-STFU Patcher/System.Reactive.dll
-STFU Patcher/System.Security.Permissions.dll
-STFU Patcher/System.Windows.Extensions.dll
-STFU Patcher/YamlDotNet.dll
-STFU-v0.1.zip
+# Build outputs
+bin/
+obj/
+
+# VS Code workspace (local settings)
+*.code-workspace
+
+# Distribution archives
+*.zip
+
+# STFU Patcher compiled binaries (generated by post-build)
+STFU Patcher/*.dll
+STFU Patcher/*.exe
+STFU Patcher/*.runtimeconfig.json
+STFU Patcher/*.pdb
+
+# Keep Config folder in STFU Patcher
+!STFU Patcher/Config/
+
+# Temp files
+*.tmp
+temp_patch.txt

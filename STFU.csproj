@@ -17,6 +17,6 @@
       <FilesToCopy Include="$(OutputPath)STFU.runtimeconfig.json" />
       <FilesToCopy Include="$(OutputPath)*.dll" Exclude="$(OutputPath)STFU.dll" />
     </ItemGroup>
-    <Copy SourceFiles="@(FilesToCopy)" DestinationFolder="..\STFU Patcher\\" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(FilesToCopy)" DestinationFolder=".\STFU Patcher\\" SkipUnchangedFiles="true" />
   </Target>
 </Project>

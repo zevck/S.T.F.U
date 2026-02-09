@@ -1,0 +1,15 @@
+{
+  "Nickname": "S.T.F.U",
+  "Visibility": "Visible",
+  "OneLineDescription": "Blocks generic combat and non-combat dialogue with MCM runtime toggles",
+  "LongDescription": "Shut The F*** Up - Blocks repetitive generic dialogue like combat banter, greetings, idle chatter, etc. Includes MCM for runtime toggling of 64 dialogue subtypes. Supports whitelist/blacklist configuration via YAML. Safe for both SE and VR.",
+  "PreferredAutoVersioning": "Default",
+  "RequiredMods": [
+    "STFU.esp"
+  ],
+  "TargetedReleases": [
+    "SkyrimSE",
+    "SkyrimVR",
+    "SkyrimSEGog"
+  ]
+}
