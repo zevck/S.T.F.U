@@ -1,7 +1,0 @@
-<Project>
-    <PropertyGroup>
-        <!-- All analysis disabled for Synthesis compatibility -->
-        <Nullable>disable</Nullable>
-        <EnableNETAnalyzers>false</EnableNETAnalyzers>
-    </PropertyGroup>
-</Project>
