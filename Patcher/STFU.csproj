@@ -6,6 +6,9 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <UseSharedCompilation>false</UseSharedCompilation>
+    <Nullable>disable</Nullable>
+    <EnableNETAnalyzers>false</EnableNETAnalyzers>
+    <AnalysisLevel>none</AnalysisLevel>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Mutagen.Bethesda.Synthesis" Version="5.1.0" />

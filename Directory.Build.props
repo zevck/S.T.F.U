@@ -1,7 +1,7 @@
 <Project>
     <PropertyGroup>
-        <Nullable>enable</Nullable>
-        <!-- WarningsAsErrors disabled for Synthesis compatibility -->
-        <!-- <WarningsAsErrors>nullable</WarningsAsErrors> -->
+        <!-- All analysis disabled for Synthesis compatibility -->
+        <Nullable>disable</Nullable>
+        <EnableNETAnalyzers>false</EnableNETAnalyzers>
     </PropertyGroup>
 </Project>
