@@ -1,0 +1,24 @@
+# DialogueInterceptor - Blocked Topics Configuration
+# These topics will be blocked from SkyrimNet logging
+# Scripts still execute (follower commands still work)
+topics:
+  # Merchant/Service Topics
+  - 0x07F6BB  # OfferServiceTopic
+  - 0x09CC92  # RentRoomTopic
+  # Follower Favor States
+  - DialogueFollowerEndFavorState
+  - DialogueFollowerContinueFavorState
+  - DialogueFollowerDoingFavorBlockingTopic
+  - DialogueFollowerFavorStateTopic
+  # Follower Commands
+  - 0x05C80C  # DialogueFollowerDismissTopic
+  - 0x060020  # DialogueFollowerTradeTopic
+  - 0x075083  # DialogueFollowerFollowTopic
+  - 0x075084  # DialogueFollowerWaitTopic
+  - 0x0B0EE6  # Additional follow topic
+  # NFF
+  - nwsFollowerXStorageTopic
+
+quests: # Block all topics from these quests from being logged
+  - nwsFollowerController #NFF follower management dialogue
+  - sosQuest #Simple outfit system dialogue controls

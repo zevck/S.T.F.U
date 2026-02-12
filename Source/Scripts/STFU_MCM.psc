@@ -41,6 +41,7 @@ bool filterFollowerCommentary = true
 bool filterBardSongs = true
 bool filterScenes = true
 bool filterBlacklist = true
+bool filterSkyrimNetFilter = true
 bool filterMurder = true
 bool filterMurderNC = true
 bool filterAssault = true
@@ -67,9 +68,15 @@ bool filterPlayerCastSelfSpell = true
 bool filterSteal = true
 bool filterSwingMeleeWeapon = true
 bool filterShootBow = true
-bool filterZKeyObject = true
 bool filterStandOnFurniture = true
 bool filterTrainingExit = true
+bool filterZKeyObject = true
+bool filterVoicePowerEndLong = true
+bool filterVoicePowerEndShort = true
+bool filterVoicePowerStartLong = true
+bool filterVoicePowerStartShort = true
+bool filterWerewolfTransformCrime = true
+bool filterPursueIdleTopic = true
 
 ; Generic Combat Dialogue Globals
 GlobalVariable Property STFU_Attack Auto
@@ -113,6 +120,7 @@ GlobalVariable Property STFU_FollowerCommentary Auto
 GlobalVariable Property STFU_BardSongs Auto
 GlobalVariable Property STFU_Scenes Auto
 GlobalVariable Property STFU_Blacklist Auto
+GlobalVariable Property STFU_SkyrimNetFilter Auto
 
 ; Generic Dialogue Globals
 GlobalVariable Property STFU_Murder Auto
@@ -141,9 +149,15 @@ GlobalVariable Property STFU_PlayerCastSelfSpell Auto
 GlobalVariable Property STFU_Steal Auto
 GlobalVariable Property STFU_SwingMeleeWeapon Auto
 GlobalVariable Property STFU_ShootBow Auto
-GlobalVariable Property STFU_ZKeyObject Auto
 GlobalVariable Property STFU_StandOnFurniture Auto
 GlobalVariable Property STFU_TrainingExit Auto
+GlobalVariable Property STFU_ZKeyObject Auto
+GlobalVariable Property STFU_VoicePowerEndLong Auto
+GlobalVariable Property STFU_VoicePowerEndShort Auto
+GlobalVariable Property STFU_VoicePowerStartLong Auto
+GlobalVariable Property STFU_VoicePowerStartShort Auto
+GlobalVariable Property STFU_WerewolfTransformCrime Auto
+GlobalVariable Property STFU_PursueIdleTopic Auto
 
 ; Option IDs
 int oid_EnableAll
@@ -193,6 +207,7 @@ int oid_DisableAllOther
 int oid_BardSongs
 int oid_Scenes
 int oid_Blacklist
+int oid_SkyrimNetFilter
 
 ; Non-Combat Option IDs
 int oid_EnableAllNC
@@ -223,9 +238,15 @@ int oid_PlayerCastSelfSpell
 int oid_Steal
 int oid_SwingMeleeWeapon
 int oid_ShootBow
-int oid_ZKeyObject
 int oid_StandOnFurniture
 int oid_TrainingExit
+int oid_ZKeyObject
+int oid_VoicePowerEndLong
+int oid_VoicePowerEndShort
+int oid_VoicePowerStartLong
+int oid_VoicePowerStartShort
+int oid_WerewolfTransformCrime
+int oid_PursueIdleTopic
 
 Event OnConfigInit()
     ModName = "S.T.F.U"
@@ -297,7 +318,7 @@ bool Function HasGenericDialogue()
     Return filterHello || filterGoodbye || filterIdle || filterTrainingExit || filterMurder || \
            filterMurderNC || filterAssault || filterAssaultNC || filterSteal || filterStealFromNC || \
            filterPickpocketTopic || filterPickpocketNC || filterTrespass || filterTrespassAgainstNC || \
-           filterLockedObject || filterDestroyObject || filterKnockOverObject || filterZKeyObject || \
+           filterLockedObject || filterDestroyObject || filterKnockOverObject || \
            filterStandOnFurniture || filterActorCollideWithActor || filterNoticeCorpse || \
            filterTimeToGo || filterBarterExit || filterPlayerShout || filterPlayerInIronSights || \
            filterPlayerCastProjectileSpell || filterPlayerCastSelfSpell || filterSwingMeleeWeapon || filterShootBow
@@ -313,8 +334,8 @@ bool Function HasOtherDialogue()
 EndFunction
 
 Function LoadConfig()
-    ; Load config from Data/SKSE/Plugins/STFU/STFU_Config.json
-    string configPath = "Data/STFU Patcher/Config/STFU_Config.json"
+    ; Load config from Data/STFU Patcher/Config/STFU_Config.ini
+    string configPath = "Data/STFU Patcher/Config/STFU_Config.ini"
     Debug.Trace("STFU MCM: Attempting to load config from: " + configPath)
     configHandle = JValue.readFromFile(configPath)
     Debug.Trace("STFU MCM: Config handle = " + configHandle)
@@ -350,6 +371,12 @@ Function LoadConfig()
         filterPickpocketCombat = JValue.solveInt(configHandle, ".filterPickpocketCombat", 1) as bool
         filterDetectFriendDie = JValue.solveInt(configHandle, ".filterDetectFriendDie", 1) as bool
         filterPreserveGrunts = JValue.solveInt(configHandle, ".filterPreserveGrunts", 1) as bool
+        filterVoicePowerEndLong = JValue.solveInt(configHandle, ".filterVoicePowerEndLong", 1) as bool
+        filterVoicePowerEndShort = JValue.solveInt(configHandle, ".filterVoicePowerEndShort", 1) as bool
+        filterVoicePowerStartLong = JValue.solveInt(configHandle, ".filterVoicePowerStartLong", 1) as bool
+        filterVoicePowerStartShort = JValue.solveInt(configHandle, ".filterVoicePowerStartShort", 1) as bool
+        filterWerewolfTransformCrime = JValue.solveInt(configHandle, ".filterWerewolfTransformCrime", 1) as bool
+        filterPursueIdleTopic = JValue.solveInt(configHandle, ".filterPursueIdleTopic", 1) as bool
         filterMoralRefusal = JValue.solveInt(configHandle, ".filterMoralRefusal", 1) as bool
         filterExitFavorState = JValue.solveInt(configHandle, ".filterExitFavorState", 1) as bool
         filterAgree = JValue.solveInt(configHandle, ".filterAgree", 1) as bool
@@ -387,9 +414,9 @@ Function LoadConfig()
         filterSteal = JValue.solveInt(configHandle, ".filterSteal", 1) as bool
         filterSwingMeleeWeapon = JValue.solveInt(configHandle, ".filterSwingMeleeWeapon", 1) as bool
         filterShootBow = JValue.solveInt(configHandle, ".filterShootBow", 1) as bool
-        filterZKeyObject = JValue.solveInt(configHandle, ".filterZKeyObject", 1) as bool
         filterStandOnFurniture = JValue.solveInt(configHandle, ".filterStandOnFurniture", 1) as bool
         filterTrainingExit = JValue.solveInt(configHandle, ".filterTrainingExit", 1) as bool
+        filterZKeyObject = JValue.solveInt(configHandle, ".filterZKeyObject", 1) as bool
     Else
         configLoaded = false
         Debug.Trace("STFU MCM: Failed to load config, using defaults (all enabled)")
@@ -398,7 +425,7 @@ Function LoadConfig()
 EndFunction
 
 int Function GetVersion()
-    return 5
+    return 7
 EndFunction
 
 Event OnVersionUpdate(int aiNewVersion)
@@ -584,9 +611,19 @@ Event OnPageReset(string page)
         If filterTrespassAgainstNC
             oid_TrespassAgainstNC = AddToggleOption("Block Trespass Against NC", STFU_TrespassAgainstNC.GetValue() as bool)
         EndIf
+        If filterPursueIdleTopic
+            oid_PursueIdleTopic = AddToggleOption("Block Pursue Idle", STFU_PursueIdleTopic.GetValue() as bool)
+        EndIf
+        If filterWerewolfTransformCrime
+            oid_WerewolfTransformCrime = AddToggleOption("Block Werewolf Transform Crime", STFU_WerewolfTransformCrime.GetValue() as bool)
+        EndIf
+        
+        ; Right column - Disable All button
+        SetCursorPosition(1)
+        oid_DisableAllNC = AddTextOption("Disable All", "")
         AddEmptyOption()
         
-        ; Left column - Objects
+        ; Right column - Object Interactions
         AddHeaderOption("Object Interactions")
         If filterLockedObject
             oid_LockedObject = AddToggleOption("Block Locked Object", STFU_LockedObject.GetValue() as bool)
@@ -597,16 +634,12 @@ Event OnPageReset(string page)
         If filterKnockOverObject
             oid_KnockOverObject = AddToggleOption("Block Knock Over Object", STFU_KnockOverObject.GetValue() as bool)
         EndIf
-        If filterZKeyObject
-            oid_ZKeyObject = AddToggleOption("Block Z Key Object", STFU_ZKeyObject.GetValue() as bool)
-        EndIf
         If filterStandOnFurniture
             oid_StandOnFurniture = AddToggleOption("Block Stand On Furniture", STFU_StandOnFurniture.GetValue() as bool)
         EndIf
-        
-        ; Right column - Disable All button
-        SetCursorPosition(1)
-        oid_DisableAllNC = AddTextOption("Disable All", "")
+        If filterZKeyObject
+            oid_ZKeyObject = AddToggleOption("Block ZKeyObject", STFU_ZKeyObject.GetValue() as bool)
+        EndIf
         AddEmptyOption()
         
         ; Right column - Behaviors
@@ -669,18 +702,17 @@ Event OnPageReset(string page)
         If filterRefuse
             oid_RefuseFollower = AddToggleOption("Block Refuse", STFU_Refuse.GetValue() as bool)
         EndIf
-        AddEmptyOption()
-        
-        ; Left column - Commentary quests
-        AddHeaderOption("Follower Commentary")
-        If filterFollowerCommentary
-            oid_FollowerCommentary = AddToggleOption("Block Commentary Quests", STFU_FollowerCommentary.GetValue() as bool)
-        EndIf
-        AddEmptyOption()
         
         ; Right column - Disable All button
         SetCursorPosition(1)
         oid_DisableAllFollower = AddTextOption("Disable All", "")
+        AddEmptyOption()
+        
+        ; Right column - Follower Commentary
+        AddHeaderOption("Follower Commentary")
+        If filterFollowerCommentary
+            oid_FollowerCommentary = AddToggleOption("Block Commentary Quests", STFU_FollowerCommentary.GetValue() as bool)
+        EndIf
     ElseIf page == "Other Dialogue"
         SetCursorFillMode(TOP_TO_BOTTOM)
         
@@ -699,10 +731,29 @@ Event OnPageReset(string page)
         If filterBlacklist
             oid_Blacklist = AddToggleOption("Block Blacklisted Topics", STFU_Blacklist.GetValue() as bool)
         EndIf
+        If filterSkyrimNetFilter
+            oid_SkyrimNetFilter = AddToggleOption("Block SkyrimNet Filter Topics", STFU_SkyrimNetFilter.GetValue() as bool)
+        EndIf
         
         ; Right column - Disable All button
         SetCursorPosition(1)
         oid_DisableAllOther = AddTextOption("Disable All", "")
+        AddEmptyOption()
+        
+        ; Right column - Shouts
+        AddHeaderOption("Shout Dialogue")
+        If filterVoicePowerEndLong
+            oid_VoicePowerEndLong = AddToggleOption("Block Shout End Long", STFU_VoicePowerEndLong.GetValue() as bool)
+        EndIf
+        If filterVoicePowerEndShort
+            oid_VoicePowerEndShort = AddToggleOption("Block Shout End Short", STFU_VoicePowerEndShort.GetValue() as bool)
+        EndIf
+        If filterVoicePowerStartLong
+            oid_VoicePowerStartLong = AddToggleOption("Block Shout Start Long", STFU_VoicePowerStartLong.GetValue() as bool)
+        EndIf
+        If filterVoicePowerStartShort
+            oid_VoicePowerStartShort = AddToggleOption("Block Shout Start Short", STFU_VoicePowerStartShort.GetValue() as bool)
+        EndIf
     EndIf
 EndEvent
 
@@ -765,6 +816,18 @@ Event OnOptionSelect(int option)
         ToggleGlobal(STFU_DetectFriendDie, oid_DetectFriendDie)
     ElseIf option == oid_PreserveGrunts
         ToggleGlobal(STFU_PreserveGrunts, oid_PreserveGrunts)
+    ElseIf option == oid_VoicePowerEndLong
+        ToggleGlobal(STFU_VoicePowerEndLong, oid_VoicePowerEndLong)
+    ElseIf option == oid_VoicePowerEndShort
+        ToggleGlobal(STFU_VoicePowerEndShort, oid_VoicePowerEndShort)
+    ElseIf option == oid_VoicePowerStartLong
+        ToggleGlobal(STFU_VoicePowerStartLong, oid_VoicePowerStartLong)
+    ElseIf option == oid_VoicePowerStartShort
+        ToggleGlobal(STFU_VoicePowerStartShort, oid_VoicePowerStartShort)
+    ElseIf option == oid_WerewolfTransformCrime
+        ToggleGlobal(STFU_WerewolfTransformCrime, oid_WerewolfTransformCrime)
+    ElseIf option == oid_PursueIdleTopic
+        ToggleGlobal(STFU_PursueIdleTopic, oid_PursueIdleTopic)
     ; Follower handlers
     ElseIf option == oid_EnableAllFollower
         EnableAllFollowerOptions()
@@ -793,6 +856,8 @@ Event OnOptionSelect(int option)
         ToggleGlobal(STFU_Scenes, oid_Scenes)
     ElseIf option == oid_Blacklist
         ToggleGlobal(STFU_Blacklist, oid_Blacklist)
+    ElseIf option == oid_SkyrimNetFilter
+        ToggleGlobal(STFU_SkyrimNetFilter, oid_SkyrimNetFilter)
     ; Non-Combat handlers
     ElseIf option == oid_EnableAllNC
         EnableAllNonCombatOptions()
@@ -850,12 +915,12 @@ Event OnOptionSelect(int option)
         ToggleGlobal(STFU_SwingMeleeWeapon, oid_SwingMeleeWeapon)
     ElseIf option == oid_ShootBow
         ToggleGlobal(STFU_ShootBow, oid_ShootBow)
-    ElseIf option == oid_ZKeyObject
-        ToggleGlobal(STFU_ZKeyObject, oid_ZKeyObject)
     ElseIf option == oid_StandOnFurniture
         ToggleGlobal(STFU_StandOnFurniture, oid_StandOnFurniture)
     ElseIf option == oid_TrainingExit
         ToggleGlobal(STFU_TrainingExit, oid_TrainingExit)
+    ElseIf option == oid_ZKeyObject
+        ToggleGlobal(STFU_ZKeyObject, oid_ZKeyObject)
     EndIf
 EndEvent
 
@@ -955,6 +1020,11 @@ Function EnableAllOtherOptions()
     STFU_BardSongs.SetValue(1.0)
     STFU_Scenes.SetValue(1.0)
     STFU_Blacklist.SetValue(1.0)
+    STFU_SkyrimNetFilter.SetValue(1.0)
+    STFU_VoicePowerEndLong.SetValue(1.0)
+    STFU_VoicePowerEndShort.SetValue(1.0)
+    STFU_VoicePowerStartLong.SetValue(1.0)
+    STFU_VoicePowerStartShort.SetValue(1.0)
     ForcePageReset()
 EndFunction
 
@@ -962,6 +1032,11 @@ Function DisableAllOtherOptions()
     STFU_BardSongs.SetValue(0.0)
     STFU_Scenes.SetValue(0.0)
     STFU_Blacklist.SetValue(0.0)
+    STFU_SkyrimNetFilter.SetValue(0.0)
+    STFU_VoicePowerEndLong.SetValue(0.0)
+    STFU_VoicePowerEndShort.SetValue(0.0)
+    STFU_VoicePowerStartLong.SetValue(0.0)
+    STFU_VoicePowerStartShort.SetValue(0.0)
     ForcePageReset()
 EndFunction
 
@@ -992,9 +1067,11 @@ Function EnableAllNonCombatOptions()
     STFU_Steal.SetValue(1.0)
     STFU_SwingMeleeWeapon.SetValue(1.0)
     STFU_ShootBow.SetValue(1.0)
-    STFU_ZKeyObject.SetValue(1.0)
     STFU_StandOnFurniture.SetValue(1.0)
     STFU_TrainingExit.SetValue(1.0)
+    STFU_ZKeyObject.SetValue(1.0)
+    STFU_PursueIdleTopic.SetValue(1.0)
+    STFU_WerewolfTransformCrime.SetValue(1.0)
     ForcePageReset()
 EndFunction
 
@@ -1025,9 +1102,11 @@ Function DisableAllNonCombatOptions()
     STFU_Steal.SetValue(0.0)
     STFU_SwingMeleeWeapon.SetValue(0.0)
     STFU_ShootBow.SetValue(0.0)
-    STFU_ZKeyObject.SetValue(0.0)
     STFU_StandOnFurniture.SetValue(0.0)
     STFU_TrainingExit.SetValue(0.0)
+    STFU_ZKeyObject.SetValue(0.0)
+    STFU_PursueIdleTopic.SetValue(0.0)
+    STFU_WerewolfTransformCrime.SetValue(0.0)
     ForcePageReset()
 EndFunction
 
@@ -1096,6 +1175,18 @@ Event OnOptionHighlight(int option)
         SetInfoText("Detect friend die - NPCs reacting when they detect a friend has died")
     ElseIf option == oid_PreserveGrunts
         SetInfoText("Combat grunts - e.g. 'Agh!', 'Oof!', 'Nargh!', 'Argh!', 'Yeagh!'")
+    ElseIf option == oid_VoicePowerEndLong
+        SetInfoText("Voice power end long - Long shout ending dialogue")
+    ElseIf option == oid_VoicePowerEndShort
+        SetInfoText("Voice power end short - Short shout ending dialogue")
+    ElseIf option == oid_VoicePowerStartLong
+        SetInfoText("Voice power start long - Long shout starting dialogue")
+    ElseIf option == oid_VoicePowerStartShort
+        SetInfoText("Voice power start short - Short shout starting dialogue")
+    ElseIf option == oid_WerewolfTransformCrime
+        SetInfoText("Werewolf transform crime - NPCs reacting to werewolf transformations")
+    ElseIf option == oid_PursueIdleTopic
+        SetInfoText("Pursue idle topic - Guards pursuing criminals")
     ; Follower hover texts
     ElseIf option == oid_EnableAllFollower
         SetInfoText("Enable all follower dialogue blocking options at once")
@@ -1108,7 +1199,7 @@ Event OnOptionHighlight(int option)
     ElseIf option == oid_Agree
         SetInfoText("Agree - Follower agreeing to requests or commands")
     ElseIf option == oid_Show
-        SetInfoText("Show - Follower offering to show you something or lead you somewhere")
+        SetInfoText("Show - Follower ready for a command")
     ElseIf option == oid_RefuseFollower
         SetInfoText("Refuse - Follower refusing general requests")
     ElseIf option == oid_FollowerCommentary
@@ -1119,22 +1210,24 @@ Event OnOptionHighlight(int option)
     ElseIf option == oid_DisableAllOther
         SetInfoText("Disable all miscellaneous dialogue blocking options at once")
     ElseIf option == oid_BardSongs
-        SetInfoText("Bard songs - Blocks bard performances")
+        SetInfoText("Bard songs - Blocks bard performances and applause")
     ElseIf option == oid_Scenes
-        SetInfoText("Ambient scenes - Blocks city/town ambient dialogue scenes. WARNING: Toggle in an area without active scenes to avoid stuck scenes.")
+        SetInfoText("Ambient scenes - Blocks town ambient dialogue scenes. WARNING: Toggle in an area without active scenes to avoid stuck scenes.")
     ElseIf option == oid_Blacklist
-        SetInfoText("Block blacklisted topics and scenes - Blocks specific dialogue topics and scenes defined in STFU_Blacklist.yaml")
+        SetInfoText("Blacklist - Blocks specific dialogue topics and scenes defined in STFU_Blacklist.yaml")
+    ElseIf option == oid_SkyrimNetFilter
+        SetInfoText("SkyrimNet Filter - Blocks dialogue topics in STFU_SkyrimNetFilter.yaml from being logged in SkyrimNet")
     ; Non-Combat hover texts
     ElseIf option == oid_EnableAllNC
         SetInfoText("Enable all non-combat dialogue blocking options at once")
     ElseIf option == oid_DisableAllNC
         SetInfoText("Disable all non-combat dialogue blocking options at once")
     ElseIf option == oid_Hello
-        SetInfoText("Hello dialogue - Greetings from NPCs when you pass by")
+        SetInfoText("Hello dialogue - Greetings from NPCs")
     ElseIf option == oid_Goodbye
         SetInfoText("Goodbye dialogue - Farewells when ending conversations")
     ElseIf option == oid_Idle
-        SetInfoText("Idle chatter - Random comments NPCs make to themselves or others")
+        SetInfoText("Idle chatter - Random comments NPCs make to themselves")
     ElseIf option == oid_Murder
         SetInfoText("Murder dialogue - Civilian NPCs reacting to witnessing murder")
     ElseIf option == oid_MurderNC
@@ -1161,8 +1254,6 @@ Event OnOptionHighlight(int option)
         SetInfoText("Destroy object - NPCs reacting to you destroying objects")
     ElseIf option == oid_KnockOverObject
         SetInfoText("Knock over object - NPCs commenting when you knock things over")
-    ElseIf option == oid_ZKeyObject
-        SetInfoText("Z key object - NPCs reacting to you activating objects with Z key")
     ElseIf option == oid_StandOnFurniture
         SetInfoText("Stand on furniture - NPCs commenting when you stand on furniture")
     ElseIf option == oid_ActorCollideWithActor
@@ -1187,5 +1278,7 @@ Event OnOptionHighlight(int option)
         SetInfoText("Shoot bow - NPCs reacting to you shooting arrows near them")
     ElseIf option == oid_TrainingExit
         SetInfoText("Training exit - Trainer dialogue when exiting training menu")
+    ElseIf option == oid_ZKeyObject
+        SetInfoText("ZKeyObject - NPCs commenting when you pick up objects through the physics system")
     EndIf
 EndEvent

@@ -480,7 +480,7 @@ namespace STFU
             Console.WriteLine($"STFU: Loaded {hardcodedSceneEditorIds.Count} hardcoded ambient scene EditorIDs");
             
             // Look for configuration file in STFU Patcher/Config
-            var configPath = Path.Combine(executableDir, "Config", "STFU_Config.json");
+            var configPath = Path.Combine(executableDir, "Config", "STFU_Config.ini");
             var vanillaOnly = false;
             var safeMode = false; // If true, skip patching responses with scripts attached
             var disabledSubtypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -495,77 +495,63 @@ namespace STFU
                 Console.WriteLine($"STFU: Loading configuration from {configPath}");
                 try
                 {
-                    var jsonText = File.ReadAllText(configPath);
-                    var config = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(jsonText);
+                    var iniConfig = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    var lines = File.ReadAllLines(configPath);
                     
-                    if (config != null)
+                    // Simple INI parser
+                    foreach (var line in lines)
                     {
-                        // Load VanillaOnly setting
-                        if (config.TryGetValue("vanillaOnly", out var vanillaOnlyElem))
-                        {
-                            if (vanillaOnlyElem.ValueKind == System.Text.Json.JsonValueKind.True)
-                            {
-                                vanillaOnly = true;
-                            }
-                            else if (vanillaOnlyElem.ValueKind == System.Text.Json.JsonValueKind.False)
-                            {
-                                vanillaOnly = false;
-                            }
-                            Console.WriteLine($"STFU: VanillaOnly = {vanillaOnly}");
-                        }
+                        var trimmed = line.Trim();
                         
-                        // Load SafeMode setting
-                        if (config.TryGetValue("safeMode", out var safeModeElem))
-                        {
-                            if (safeModeElem.ValueKind == System.Text.Json.JsonValueKind.True)
-                            {
-                                safeMode = true;
-                            }
-                            else if (safeModeElem.ValueKind == System.Text.Json.JsonValueKind.False)
-                            {
-                                safeMode = false;
-                            }
-                            Console.WriteLine($"STFU: SafeMode = {safeMode}");
-                        }
+                        // Skip comments and empty lines
+                        if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith(";") || trimmed.StartsWith("#") || trimmed.StartsWith("["))
+                            continue;
                         
-                        // Load per-subtype enable/disable flags
-                        // If filter settings exist: only explicitly true subtypes are enabled
-                        // If no filter settings exist: all subtypes are enabled by default
-                        foreach (var kvp in config)
+                        var parts = trimmed.Split(new[] { '=' }, 2);
+                        if (parts.Length == 2)
                         {
-                            if (kvp.Key.StartsWith("filter", StringComparison.OrdinalIgnoreCase))
+                            var key = parts[0].Trim();
+                            var value = parts[1].Trim();
+                            iniConfig[key] = value;
+                        }
+                    }
+                    
+                    // Load VanillaOnly setting
+                    if (iniConfig.TryGetValue("vanillaOnly", out var vanillaOnlyStr))
+                    {
+                        vanillaOnly = vanillaOnlyStr.Equals("true", StringComparison.OrdinalIgnoreCase);
+                        Console.WriteLine($"STFU: VanillaOnly = {vanillaOnly}");
+                    }
+                    
+                    // Load SafeMode setting
+                    if (iniConfig.TryGetValue("safeMode", out var safeModeStr))
+                    {
+                        safeMode = safeModeStr.Equals("true", StringComparison.OrdinalIgnoreCase);
+                        Console.WriteLine($"STFU: SafeMode = {safeMode}");
+                    }
+                    
+                    // Load per-subtype enable/disable flags
+                    // If filter settings exist: only explicitly true subtypes are enabled
+                    // If no filter settings exist: all subtypes are enabled by default
+                    foreach (var kvp in iniConfig)
+                    {
+                        if (kvp.Key.StartsWith("filter", StringComparison.OrdinalIgnoreCase))
+                        {
+                            bool enabled = kvp.Value.Equals("true", StringComparison.OrdinalIgnoreCase);
+                            
+                            hasFilterConfig = true; // Found at least one filter setting
+                            
+                            // Extract subtype name from "filterHello" -> "Hello"
+                            var subtypeName = kvp.Key.Substring(6); // Remove "filter" prefix
+                            
+                            if (!enabled)
                             {
-                                bool enabled = false;
-                                
-                                // Parse JSON boolean value
-                                if (kvp.Value.ValueKind == System.Text.Json.JsonValueKind.True)
-                                {
-                                    enabled = true;
-                                }
-                                else if (kvp.Value.ValueKind == System.Text.Json.JsonValueKind.False)
-                                {
-                                    enabled = false;
-                                }
-                                else
-                                {
-                                    // Skip if not a boolean
-                                    continue;
-                                }
-                                
-                                hasFilterConfig = true; // Found at least one filter setting
-                                
-                                // Extract subtype name from "filterHello" -> "Hello"
-                                var subtypeName = kvp.Key.Substring(6); // Remove "filter" prefix
-                                
-                                if (!enabled)
-                                {
-                                    disabledSubtypes.Add(subtypeName);
-                                    Console.WriteLine($"STFU: Disabled filtering for {subtypeName}");
-                                }
-                                else
-                                {
-                                    Console.WriteLine($"STFU: Enabled filtering for {subtypeName}");
-                                }
+                                disabledSubtypes.Add(subtypeName);
+                                Console.WriteLine($"STFU: Disabled filtering for {subtypeName}");
+                            }
+                            else
+                            {
+                                Console.WriteLine($"STFU: Enabled filtering for {subtypeName}");
                             }
                         }
                     }
@@ -582,7 +568,7 @@ namespace STFU
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Warning: Error loading config YAML: {ex.Message}");
+                    Console.WriteLine($"Warning: Error loading config INI: {ex.Message}");
                     Console.WriteLine("STFU: Defaulting to all subtypes enabled");
                 }
             }
@@ -919,11 +905,7 @@ namespace STFU
             
             // Load the grunt preservation toggle
             var preserveGruntsGlobal = FindGlobalByEditorId(state, "STFU_PreserveGrunts");
-            if (preserveGruntsGlobal != null)
-            {
-                Console.WriteLine($"STFU: [OK] Found STFU_PreserveGrunts: {preserveGruntsGlobal.FormKey}");
-            }
-            else
+            if (preserveGruntsGlobal == null)
             {
                 Console.WriteLine("STFU: [X] Missing STFU_PreserveGrunts - grunt filtering will always be enabled");
             }
@@ -934,7 +916,6 @@ namespace STFU
             if (blacklistGlobal != null)
             {
                 blacklistGlobalKey = blacklistGlobal.FormKey;
-                Console.WriteLine($"STFU: [OK] Found STFU_Blacklist: {blacklistGlobal.FormKey}");
             }
             else
             {
@@ -1006,7 +987,13 @@ namespace STFU
                 { "ShootBow", "STFU_ShootBow" },
                 { "ZKeyObject", "STFU_ZKeyObject" },
                 { "StandOnFurniture", "STFU_StandOnFurniture" },
-                { "TrainingExit", "STFU_TrainingExit" }
+                { "TrainingExit", "STFU_TrainingExit" },
+                { "VoicePowerEndLong", "STFU_VoicePowerEndLong" },
+                { "VoicePowerEndShort", "STFU_VoicePowerEndShort" },
+                { "VoicePowerStartLong", "STFU_VoicePowerStartLong" },
+                { "VoicePowerStartShort", "STFU_VoicePowerStartShort" },
+                { "WerewolfTransformCrime", "STFU_WerewolfTransformCrime" },
+                { "PursueIdleTopic", "STFU_PursueIdleTopic" }
             };
             
             // Combat subtypes for categorization
@@ -1015,7 +1002,8 @@ namespace STFU
                 "Attack", "Hit", "PowerAttack", "Death", "Block", "Bleedout", "AllyKilled", "Taunt",
                 "NormalToCombat", "CombatToNormal", "CombatToLost", "NormalToAlert", "AlertToCombat",
                 "AlertToNormal", "AlertIdle", "LostIdle", "LostToCombat", "LostToNormal", "ObserveCombat",
-                "Flee", "AvoidThreat", "Yield", "AcceptYield", "Bash", "PickpocketCombat", "DetectFriendDie"
+                "Flee", "AvoidThreat", "Yield", "AcceptYield", "Bash", "PickpocketCombat", "DetectFriendDie",
+                "VoicePowerEndLong", "VoicePowerEndShort", "VoicePowerStartLong", "VoicePowerStartShort", "WerewolfTransformCrime"
             };
             
             // Follower dialogue subtypes for categorization
@@ -1047,18 +1035,27 @@ namespace STFU
             
             // Load all globals upfront
             var loadedGlobals = new Dictionary<string, FormKey>();
+            var missingGlobals = new List<string>();
             foreach (var globalName in combatSubtypeGlobals.Values.Distinct())
             {
                 var global = FindGlobalByEditorId(state, globalName);
                 if (global != null)
                 {
                     loadedGlobals[globalName] = global.FormKey;
-                    Console.WriteLine($"STFU: [OK] Found {globalName}: {global.FormKey}");
                 }
                 else
                 {
-                    Console.WriteLine($"STFU: [X] Missing {globalName} - this subtype won't be blockable");
+                    missingGlobals.Add(globalName);
                 }
+            }
+            
+            if (loadedGlobals.Count > 0)
+            {
+                Console.WriteLine($"STFU: [OK] Found {loadedGlobals.Count} subtype globals for MCM control");
+            }
+            if (missingGlobals.Count > 0)
+            {
+                Console.WriteLine($"STFU: [X] Missing {missingGlobals.Count} globals - those subtypes won't be blockable: {string.Join(", ", missingGlobals)}");
             }
             
             // Load follower commentary global
@@ -1067,7 +1064,6 @@ namespace STFU
             if (followerCommentaryGlobal != null)
             {
                 followerCommentaryGlobalKey = followerCommentaryGlobal.FormKey;
-                Console.WriteLine($"STFU: [OK] Found STFU_FollowerCommentary: {followerCommentaryGlobal.FormKey}");
             }
             else
             {
@@ -1080,7 +1076,6 @@ namespace STFU
             if (bardSongsGlobal != null)
             {
                 bardSongsGlobalKey = bardSongsGlobal.FormKey;
-                Console.WriteLine($"STFU: [OK] Found STFU_BardSongs: {bardSongsGlobal.FormKey}");
             }
             else
             {
@@ -1093,7 +1088,6 @@ namespace STFU
             if (scenesGlobal != null)
             {
                 scenesGlobalKey = scenesGlobal.FormKey;
-                Console.WriteLine($"STFU: [OK] Found STFU_Scenes: {scenesGlobal.FormKey}");
             }
             else
             {
@@ -1167,6 +1161,7 @@ namespace STFU
                 { "TITG", "TimeToGo" },
                 { "TRAN", "TrespassAgainstNC" },
                 { "TRES", "Trespass" },
+                { "PURS", "PursueIdleTopic" },
                 { "VPEL", "VoicePowerEndLong" },
                 { "VPES", "VoicePowerEndShort" },
                 { "VPSL", "VoicePowerStartLong" },
@@ -1555,16 +1550,6 @@ namespace STFU
             Console.WriteLine($"  - Non-combat dialogue: {nonCombatTopicCount} topics ({nonCombatResponseCount} responses)");
             Console.WriteLine($"  - Total blocked: {combatTopicCount + bardSongTopicCount + nonCombatTopicCount} topics ({combatResponseCount + bardSongResponseCount + nonCombatResponseCount} responses)");
             
-            // Output per-subtype breakdown for combat subtypes
-            if (subtypeTopicCounts.Any())
-            {
-                Console.WriteLine($"\nSTFU: Per-subtype breakdown:");
-                foreach (var kvp in subtypeTopicCounts.OrderByDescending(x => x.Value))
-                {
-                    Console.WriteLine($"  - {kvp.Key}: {kvp.Value} topics");
-                }
-            }
-            
             // Combine all scene patching into a single pass for performance
             Console.WriteLine();
             Console.WriteLine("STFU: Patching quest scenes...");
@@ -1862,6 +1847,8 @@ namespace STFU
                 return 0;
             }
         }
+
+
 
         private static bool IsGruntSound(string text)
         {

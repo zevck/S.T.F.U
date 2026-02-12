@@ -4,13 +4,13 @@
 topics:
  - 
  
-plugins: #Block every dialogue response in a plugin. Probably not a good idea.
+plugins: #Block every dialogue response in a plugin. Probably not a good idea
   -
   
 #---------------------------
 #      Scene blocking
 #---------------------------
-#Use carefully, this blocks scenes from playing entirely and may break quests that rely on them.
+#Use carefully, this blocks scenes from playing entirely and may break quests that rely on them
 scenes:
   - WhiterunMikaelSongScene
   - WICraftItem01Scene

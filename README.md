@@ -1,20 +1,27 @@
 # S.T.F.U - Skyrim Talk Filter Utility
-Skyrim Talk Filter Utility silences tedious frequent utterances. Block only what you want to block.
+Skyrim Talk Filter Utility allows you to block dialogue from playing at the source with filters for 60+ categories. Block only what you want blocked.
 
 ## What This Does
-&emsp;Skyrim separates dialogue into topics, which are categorized with subtypes like Hello, KnockOverObject, CombatToNormal, Taunts, etc. This mod uses the power of Mutagen/Synthesis to scan your load order and patch those dialogue responses with a condition that must be true in order to play. The patcher copies the responses into a new ESP that overrides the originals without tampering with them. The conditions can be toggled on or off via the MCM to allow or block dialogue, broken down into 60+ categories based on subtype.
+&emsp;S.T.F.U uses the power of Mutagen/Synthesis to patch dialogue responses with conditions that must be true in order for it to be used. Skyrim organizes responses into topics which are assigned into subtypes like Hello, CombatToNormal, KnockOverObject, Taunts, etc. S.T.F.U assigns each subtype with it's own condition variable which can be toggled on or off in the MCM.
 
-&emsp;Highly customizable with whitelists, blacklists, subtype overrides, and safe mode settings. Only block what you want blocked. This mod does not interfere with dialogue trees or quest dialogue (by default). The subtypes this mod blocks are ambient/generic dialogue that gets triggered automatically under normal conditions. S.T.F.U is lightweight, the only script is for the MCM toggles. Can safely be added or removed at any time.
+&emsp;The patcher scans your entire load order for mods and copies the dialogue into a new ESP with the conditions applied. The patcher doesn't touch any important dialogue like quests or dialogue trees. It is highly customizable with blacklists, whitelists, configs, and 60+ separate filters.
 
 
 ### Blocked Dialogue Types
-- **Combat Dialogue**: Taunt, CombatToNormal, Hit, AlertIdle, Yield, and many more
-  - There is a separate toggle for grunt sounds so combat isn't awkwardly silent
-- **Generic Dialogue**: Idle, KnockOverObject, ActorCollideWithActor, Hello, Goodbye, and many more
-- **Follower Dialogue**: Follower commentary and favor reactions (when you hold E to command)
-- **Other**: Curated list of safe to block repetitive scenes, bard songs, and a custom user blacklist
+**Combat Dialogue**: AcceptYield, AlertIdle, AlertToCombat, AlertToNormal, AllyKilled, Attack, AvoidThreat, Bash, Block, Bleedout, CombatToLost, CombatToNormal, Death, DetectFriendDie, Flee, Hit, LostIdle, LostToCombat, LostToNormal, NormalToAlert, NormalToCombat, ObserveCombat, PickpocketCombat, PowerAttack, Taunt, and Yield
+  - There is a separate toggle for combat grunt sounds so combat isn't awkwardly silent
 
-This mod does **NOT** block dialogue with the Scene or Custom subtypes, as these are important for game functions and quests.
+**Generic Dialogue**: ActorCollideWithActor, Assault, AssaultNC, BarterExit, DestroyObject, Goodbye, Hello, Idle, KnockOverObject, LockedObject, Murder, MurderNC, NoticeCorpse, PickpocketNC, PickpocketTopic, PlayerCastProjectileSpell, PlayerCastSelfSpell, PlayerInIronSights, PlayerShout, PursueIdleTopic, ShootBow, StandOnFurniture, Steal, StealFromNC, SwingMeleeWeapon, TimeToGo, TrainingExit, Trespass, TrespassAgainstNC, WerewolfTransformCrime, and ZKeyObject
+
+**Follower Dialogue**: Agree, ExitFavorState, Moral Refusal, Refuse, Show, and Follower Commentary
+
+**Other**: VoicePower, Bard songs, a curated list of safe to block scenes, and a custom user-defined blacklist
+
+***NEW***: Prevent certain topics from being included in SkyrimNet's event history. Topics are defined in STFU_SkyrimNetFilter.yaml
+
+This mod does **NOT** block dialogue with the Scene or Custom subtypes, as these are important for game functions and quests. Certain topics belonging to those subtypes can be added to the blacklist if safe.
+
+**DISCLAIMER**: It's possible that a dialogue response that gets blocked could have have an important script attached despite not belonging to the Custom or Scene subtypes. This is why the mod is in beta. So far in my 80+ hours of testing I've only had one minor script related issue which has been fixed. Hello is the most likely subtype to cause issues and is disabled by default.
 
 ## Requirements
 - **[SkyUI](https://www.nexusmods.com/skyrimspecialedition/mods/12604)** (for MCM)
@@ -24,19 +31,23 @@ This mod does **NOT** block dialogue with the Scene or Custom subtypes, as these
 ## Installation
 
 ### Step 1: Install the Mod
-1. Install **STFU** via your mod manager
+1. Install **S.T.F.U** via your mod manager
 2. Enable the mod
 3. **Important**: Place `STFU.esp` and any mods with dialogue **ABOVE** any other Synthesis patches in your load order (`Synthesis.esp` for example)
    - If `STFU.esp` is after another patch, the patcher won't detect it
 
 ### Step 2: Add Patcher to Synthesis
 1. Launch Synthesis through your mod manager
-2. Create a new group for the patcher called "STFU_Patch" or similar
+2. Create a new group in the top left corner named "STFU_Patch" or similar
 3. Click **"External Program"** in the top left corner
 4. Browse to STFU.exe in the "STFU Patcher" folder in the mod directory
 5. Click **"Confirm"**
-6. Drag the patcher into your new group
+6. Confirm "STFU" is in the new group
 7. Run (this will create a new ESP)
+
+<p align="center">
+  <img src="images/stfuSynthesis.png">
+</p>
 
 *You will need to rerun the patcher whenever you add or remove mods containing dialogue. If you have multiple patchers all in one group, you will have to rerun all of them each time.
 
@@ -48,6 +59,10 @@ This mod does **NOT** block dialogue with the Scene or Custom subtypes, as these
 1. Launch the game and open the S.T.F.U MCM
 2. Enable the categories you want to block
 
+<p align="center">
+  <img src="images/stfuMCM.png">
+</p>
+
 ### Example load order
 - [All mods containing dialogue]
 - STFU.esp
@@ -57,21 +72,100 @@ This mod does **NOT** block dialogue with the Scene or Custom subtypes, as these
 ## Configuration
 All config files are in `\STFU Patcher\Config\`:
 
-### STFU_Config.json
-**vanillaOnly**: if true, the patcher will skip any modded topics and only patch Skyrim.esm, Dawnguard.esm, Dragonborn.esm, Hearthfires.esm, and Update.esm topics. Mods that alter and override vanilla topics will still have those responses patched.
+### STFU_Config.ini
+```ini
+[General]
+; Only process dialogue topics from Skyrim.esm and official DLCs
+vanillaOnly = false
+; Don't patch any responses with scripts attached, overkill and not recommended
+safeMode = false
 
-**safeMode**: if true, the patcher will skip any responses that have scripts attached
-  - Enabling this will result in blocking ~40% less dialogue and might make whatever doesn't get patched more repetitive due to reduced variety. The vast majority if not all scripts attached to these subtypes are harmless
-  - Important dialogue *should* use the Custom or Scene subtypes, which this mod doesn't touch
-  - The only problem I've had is with The Great Cities mod's Hello scripts for triggering the home buying quest (now whitelisted)
+[Combat]
+; Combat-related dialogue subtypes
+filterAcceptYield = true
+filterAlertIdle = true
+filterAlertToCombat = true
+filterAlertToNormal = true
+filterAllyKilled = true
+filterAttack = true
+filterAvoidThreat = true
+filterBash = true
+filterBlock = true
+filterBleedout = true
+filterCombatToLost = true
+filterCombatToNormal = true
+filterDeath = true
+filterDetectFriendDie = true
+filterFlee = true
+filterHit = true
+filterLostIdle = true
+filterLostToCombat = true
+filterLostToNormal = true
+filterNormalToAlert = true
+filterNormalToCombat = true
+filterObserveCombat = true
+filterPickpocketCombat = true
+filterPowerAttack = true
+filterPreserveGrunts = true
+filterTaunt = true
+filterYield = true
 
-**filterHello**: if false, that subtype won't be processed by STFU at all
-  - I haven't had any mechanical issues blocking Hello, but sometimes dialogue tree options don't make sense without the initial greeting. I wouldn't recommend blocking it, but you can.
-  
-**filterX**: same as above for every subtype
+[Generic]
+; Generic dialogue (non-combat)
+filterActorCollideWithActor = true
+filterAssault = true
+filterAssaultNC = true
+filterBarterExit = true
+filterDestroyObject = true
+filterGoodbye = true
+filterHello = true
+filterIdle = true
+filterKnockOverObject = true
+filterLockedObject = true
+filterMurder = true
+filterMurderNC = true
+filterNoticeCorpse = true
+filterPickpocketNC = true
+filterPickpocketTopic = true
+filterPlayerCastProjectileSpell = true
+filterPlayerCastSelfSpell = true
+filterPlayerInIronSights = true
+filterPlayerShout = true
+filterPursueIdleTopic = true
+filterShootBow = true
+filterStandOnFurniture = true
+filterSteal = true
+filterStealFromNC = true
+filterSwingMeleeWeapon = true
+filterTimeToGo = true
+filterTrainingExit = true
+filterTrespass = true
+filterTrespassAgainstNC = true
+filterWerewolfTransformCrime = true
+filterZKeyObject = true
 
+[Follower]
+; Follower-specific dialogue
+filterAgree = true
+filterExitFavorState = true
+filterFollowerCommentary = true
+filterMoralRefusal = true
+filterRefuse = true
+filterShow = true
+
+[Other]
+; Miscellaneous dialogue filtering
+filterBardSongs = true
+filterBlacklist = true
+; Curated list of repeating town scenes
+filterScenes = true
+filterVoicePowerEndLong = true
+filterVoicePowerEndShort = true
+filterVoicePowerStartLong = true
+filterVoicePowerStartShort = true
+```
 ### STFU_Blacklist.yaml
-Blacklist specific dialogue topics or scenes:
+Blacklist specific dialogue topics or scenes. Becareful what you include in here, some topics and scenes are essential for the game to function.
 ```yaml
 # Blacklist - Topics that will be blocked when MCM toggle is OFF
 # Supports both FormKeys (with :) and Editor IDs. Editor IDs are recommended for ESPFE plugins.
@@ -79,13 +173,13 @@ Blacklist specific dialogue topics or scenes:
 topics:
  - 021405:Skyrim.esm #DialogueGenericPoisonCoughBranchTopic "Cough"
  
-plugins: #Block every dialogue response in a plugin. Probably not a good idea.
+plugins: #Block every dialogue response in a plugin. Probably not a good idea
   - "This is a bad idea.esp"
   
 #---------------------------
 #      Scene blocking
 #---------------------------
-#Use carefully, this blocks scenes from playing entirely and may break quests that rely on them.
+#Use carefully, this blocks scenes from playing entirely and may break quests that rely on them
 scenes:
   - WhiterunMikaelSongScene
   # nwsFollowerFramework.esp
@@ -163,48 +257,67 @@ overrides:
 
 After editing configs, re-run Synthesis to apply changes.
 
-## In-Game MCM
-Open the **S.T.F.U** MCM menu to toggle dialogue types on/off in real-time:
+### STFU_SkyrimNetFilter.yaml *NEW*
+Prevent certain topics from being logged in SkyrimNet's event history:
+```yaml
+# DialogueInterceptor - Blocked Topics Configuration
+# These topics will be blocked from SkyrimNet logging
+# Scripts still execute (follower commands still work)
+topics:
+  # Merchant/Service Topics
+  - 0x07F6BB  # OfferServiceTopic
+  - 0x09CC92  # RentRoomTopic
+  # Follower Favor States
+  - DialogueFollowerEndFavorState
+  - DialogueFollowerContinueFavorState
+  - DialogueFollowerDoingFavorBlockingTopic
+  - DialogueFollowerFavorStateTopic
+  # Follower Commands
+  - 0x05C80C  # DialogueFollowerDismissTopic
+  - 0x060020  # DialogueFollowerTradeTopic
+  - 0x075083  # DialogueFollowerFollowTopic
+  - 0x075084  # DialogueFollowerWaitTopic
+  - 0x0B0EE6  # Additional follow topic
+  # NFF
+  - nwsFollowerXStorageTopic
 
-- **Combat Dialogue**: Attack, Hit, Taunt, Death, Block, Grunts, etc
-- **Generic Dialogue**: Hello, Goodbye, Idle, KnockOverObject, etc
-- **Follower Dialogue**: Follower Commentary, Agree, Refuse, ExitFavorState, etc
-- **Other Dialogue**: Bard songs, scenes*, and blacklist
+quests: # Block all topics from these quests from being logged
+  - nwsFollowerController #NFF follower management dialogue
+  - sosQuest #Simple outfit system dialogue controls
+```
 
-*To be safe only toggle scenes when there aren't any scenes running to prevent them from potentially getting stuck (unsure if this is an issue, Skyrim has a built in timeout I think)
-
-No patcher re-run needed - changes apply immediately
+You don't need to need to re-run the patcher if editing STFU_SkyrimNetFilter.yaml
 
 ## Troubleshooting
 
-### Missing globals, topics aren't patched
-  **Problem**: STFU.esp not detected by Synthesis
+### // Missing globals, topics aren't patched
+    **Problem**: STFU.esp not detected by Synthesis
+  
+    **Solution**: 
+    1. Check that `STFU.esp` is enabled in your mod manager
+    2. Move STFU.esp **ABOVE** any other Synthesis patches in load order
+    3. Re-run Synthesis
 
-  **Solution**: 
-  1. Check that `STFU.esp` is enabled in your mod manager
-  2. Move STFU.esp **ABOVE** any other Synthesis patches in load order
-  3. Re-run Synthesis
+### // Config changes not taking effect
+    After editing YAML/INI files, you must re-run Synthesis to regenerate the patch.
 
-### Config changes not working
-  After editing YAML/JSON files, you must **re-run Synthesis** to regenerate the patch.
+### // Dialogue I want is blocked
+    Uncheck the subtype in the MCM or add it to `STFU_Whitelist.yaml`. Look below for how to locate dialogue's FormID or EditorID.
 
-### Dialogue I want is blocked
-  Add it to `STFU_Whitelist.yaml` by FormID or EditorID, then re-run Synthesis.
+### // Dialogue I don't want is NOT blocked
+   Check the subtype in the MCM or add it to `STFU_Blacklist.yaml`. Look below for how to locate dialogue's FormID or EditorID.
 
-### Dialogue I don't want is NOT blocked
-  Add it to `STFU_Blacklist.yaml` by FormID or EditorID, then re-run Synthesis. Look below for how to locate dialogue's FormID or EditorID.
+### // Patch isn't being updated when re-running Synthesis
+    Delete the generated patch ESP and run it again.
 
-### Patch isn't being updated when re-running Synthesis
-  Delete the generated patch ESP and run it again.
+### // S.T.F.U MCM is loading but nothing is being blocked
+    Make sure the generated patch ESP is enabled and below any mods with dialogue. Check the Synthesis output log to ensure it completed without any errors.
 
-### S.T.F.U MCM is loading but nothing is being blocked
-  Make sure the generated patch ESP is enabled and below any mods with dialogue
+### // Can't find the patch ESP after running
+    The ESP will be named after the group the patcher was in. Ensure that the patcher completed successfully without errors.
 
-### Can't find the patch ESP after running
-  It should be named either `Synthesis.esp` by default or whatever you named the group (`STFU_Patch.esp` for example). Open Synthesis and check the group names on the left and find which one contains STFU. If you have multiple Synthesis patchers in the same group they will all be in the same ESP. Also confirm that the patcher completed successfully and didn't give an error in the output window.
-
-### Writing with compression enabled is not currently supported
-  Move the STFU patch into it's own group that doesn't have compression enabled. STFU patches 10s of thousands of dialogue responses and cannot be made into an ESL.
+### // Writing with compression enabled is not currently supported
+    Move the STFU patch into it's own group that doesn't have compression enabled.
 
 ## Useful Tools
 You can use these to find the EditorID or FormID of dialogue topics so they can be added to configuration yamls. EditorIDs are better, but FormIDs will work fine for non-ESL flagged mods.
@@ -215,7 +328,7 @@ You can use these to find the EditorID or FormID of dialogue topics so they can 
 ## Reporting Issues
 If you encounter any vanilla dialogue not being blocked when it should, send me the quote and the context that it happened. I won't make patches for modded dialogue, that should be done with the yaml configs.
 
-If you suspect that blocked dialogue broke a quest, please try reloading a save and testing again before blaming me. It's possible a blocked dialogue script somewhere is important, but Skyrim quests can break for any number of reasons.
+If you suspect that blocked dialogue broke a quest, please try reloading a save and testing again before blaming me. It's possible a blocked dialogue script somewhere is important, but Skyrim quests can break for any number of reasons. As always, save often.
 
 Ideal test flow:
   - Test quest with STFU enabled --> Quest doesn't work
@@ -225,9 +338,9 @@ Ideal test flow:
   - Reload and test quest AGAIN with STFU disabled
     1. Quest still doesn't work, not my fault
     2. Quest works, continue
-  - Let me know the quest name or editor ID (preferable) and I'll check what it's scripts are (if any)
+  - Let me know the quest name or editor ID (preferable) and the mod it's from (or vanilla)
 
-Conversely, don't blame other mod authors if blocking dialogue breaks their quests, it might be my fault.
+Conversely, don't blame other mod authors if blocking dialogue breaks their quests.
 
 If dialogue you want to hear is being blocked, whitelist it or disable that subtype, leave me alone. You know what you signed up for.
 
