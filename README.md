@@ -21,7 +21,7 @@ Skyrim Talk Filter Utility allows you to block dialogue from playing at the sour
 
 This mod does **NOT** block dialogue with the Scene or Custom subtypes, as these are important for game functions and quests. Certain topics belonging to those subtypes can be added to the blacklist if safe.
 
-**DISCLAIMER**: It's possible that a dialogue response that gets blocked could have have an important script attached despite not belonging to the Custom or Scene subtypes. So far in my 80+ hours of testing I've only had one minor script related issue which has been fixed.
+**DISCLAIMER**: It's possible that a dialogue response that gets blocked could have have an important script attached despite not belonging to the Custom or Scene subtypes. So far in my 80+ hours of testing I've only had one minor script related issue which has since been fixed.
 
 ## Requirements
 - **[SkyUI](https://www.nexusmods.com/skyrimspecialedition/mods/12604)** (for MCM)
