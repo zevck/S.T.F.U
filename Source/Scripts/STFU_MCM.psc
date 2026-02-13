@@ -251,13 +251,24 @@ int oid_PursueIdleTopic
 Event OnConfigInit()
     ModName = "S.T.F.U"
     LoadConfig()
+    CheckSkyrimNetInstallation()
     BuildPageList()
 EndEvent
 
 Event OnConfigOpen()
     LoadConfig()
+    CheckSkyrimNetInstallation()
     BuildPageList()
 EndEvent
+
+Function CheckSkyrimNetInstallation()
+    ; Only show SkyrimNet filter option if SkyrimNet.esp is installed
+    If Game.GetModByName("SkyrimNet.esp") != 255
+        filterSkyrimNetFilter = true
+    Else
+        filterSkyrimNetFilter = false
+    EndIf
+EndFunction
 
 Function BuildPageList()
     ; Build page list dynamically based on which pages have enabled subtypes
@@ -732,7 +743,7 @@ Event OnPageReset(string page)
             oid_Blacklist = AddToggleOption("Block Blacklisted Topics", STFU_Blacklist.GetValue() as bool)
         EndIf
         If filterSkyrimNetFilter
-            oid_SkyrimNetFilter = AddToggleOption("Block SkyrimNet Filter Topics", STFU_SkyrimNetFilter.GetValue() as bool)
+            oid_SkyrimNetFilter = AddToggleOption("Block SkyrimNet Logging", STFU_SkyrimNetFilter.GetValue() as bool)
         EndIf
         
         ; Right column - Disable All button

@@ -16,6 +16,9 @@ namespace Config
         // Blacklisted quests (block all topics from these quests)
         std::unordered_set<uint32_t> blacklistedQuestFormIDs;
         std::unordered_set<std::string> blacklistedQuestEditorIDs;
+        
+        // Blacklisted subtypes (block all topics of these subtypes)
+        std::unordered_set<uint16_t> blacklistedSubtypes;
 
         // Whitelisted dialogue (never block)
         std::unordered_set<uint32_t> whitelistedFormIDs;
@@ -37,4 +40,7 @@ namespace Config
 
     // Get current settings
     const Settings& GetSettings();
+    
+    // Get accurate subtype for topic (uses SNAM-based corrections for vanilla topics)
+    uint16_t GetAccurateSubtype(RE::TESTopic* topic);
 }

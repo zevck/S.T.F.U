@@ -32,6 +32,6 @@ namespace Logger
         spdlog::set_default_logger(std::move(log));
         spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
 
-        spdlog::info("DialogueInterceptor v{} initialized", PLUGIN_VERSION);
+        spdlog::info("DialogueInterceptor v{} loaded", PLUGIN_VERSION);
     }
 }

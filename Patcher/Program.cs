@@ -846,7 +846,7 @@ namespace STFU
                         .Build();
                     var config = deserializer.Deserialize<Dictionary<string, Dictionary<string, string>>>(yamlText);
                     
-                    if (config != null && config.TryGetValue("overrides", out var overridesDict))
+                    if (config != null && config.TryGetValue("overrides", out var overridesDict) && overridesDict != null)
                     {
                         foreach (var kvp in overridesDict)
                         {
@@ -1441,8 +1441,10 @@ namespace STFU
                         if (matchedSubtype == "SharedInfo" || subtype == "SharedInfo")
                             continue;
                         
-                        // Skip Custom topics (follower commands)
-                        if (matchedSubtype == "Custom" || subtype == "Custom")
+                        // Skip Custom topics (follower commands) UNLESS explicitly blacklisted or overridden
+                        // This prevents accidental quest breakage while allowing user-defined filtering
+                        bool isCustom = matchedSubtype == "Custom" || subtype == "Custom";
+                        if (isCustom && !isBlacklisted && overrideSubtype == null)
                             continue;
                         
                         // Skip if not blacklisted AND no global configured for this subtype

@@ -42,6 +42,12 @@ namespace
             }
         }
         
+        // Check subtype blocking (use corrected subtypes for vanilla topics)
+        uint16_t subtype = Config::GetAccurateSubtype(a_topic);
+        if (settings.blacklistedSubtypes.find(subtype) != settings.blacklistedSubtypes.end()) {
+            return true;
+        }
+        
         // Check topic FormID
         uint32_t topicFormID = a_topic->GetFormID();
         if (settings.blacklistedFormIDs.find(topicFormID) != settings.blacklistedFormIDs.end()) {
@@ -59,20 +65,6 @@ namespace
     
     void Hook_InitiateDialogue(RE::Actor* a_this, RE::Actor* a_target, RE::PackageLocation* a_loc1, RE::PackageLocation* a_loc2)
     {
-        spdlog::info("========================================");
-        spdlog::info("[HOOK] Actor::InitiateDialogue");
-        
-        const char* initiatorName = a_this ? a_this->GetName() : "Unknown";
-        const char* targetName = a_target ? a_target->GetName() : "Unknown";
-        
-        spdlog::info("[INITIATOR] {}", initiatorName);
-        spdlog::info("[TARGET] {}", targetName);
-        
-        // For now, let all dialogue through to see what gets logged
-        // In future, check if we should block based on actor or other criteria
-        spdlog::info("[STATUS] Allowing dialogue to proceed");
-        spdlog::info("========================================");
-        
         // Call original function using member function pointer syntax
         if (_OriginalInitiateDialogue) {
             (a_this->*_OriginalInitiateDialogue)(a_target, a_loc1, a_loc2);
@@ -81,28 +73,15 @@ namespace
     
     RE::DialogueItem* Hook_DialogueItemCtor(RE::DialogueItem* a_this, RE::TESQuest* a_quest, RE::TESTopic* a_topic, RE::TESTopicInfo* a_topicInfo, RE::Actor* a_speaker)
     {
-        spdlog::info("========================================");
-        spdlog::info("[HOOK] DialogueItem::Ctor");
-        
-        const char* speakerName = a_speaker ? a_speaker->GetName() : "Unknown";
-        uint32_t questFormID = a_quest ? a_quest->GetFormID() : 0;
-        const char* questEditorID = a_quest ? a_quest->GetFormEditorID() : "(none)";
-        uint32_t topicFormID = a_topic ? a_topic->GetFormID() : 0;
-        const char* topicEditorID = a_topic ? a_topic->GetFormEditorID() : "(none)";
-        uint32_t responseFormID = a_topicInfo ? a_topicInfo->GetFormID() : 0;
-        
-        spdlog::info("[SPEAKER] {}", speakerName);
-        spdlog::info("[QUEST] FormID: 0x{:08X}, EditorID: {}", questFormID, questEditorID ? questEditorID : "(none)");
-        spdlog::info("[TOPIC] FormID: 0x{:08X}, EditorID: {}", topicFormID, topicEditorID ? topicEditorID : "(none)");
-        spdlog::info("[RESPONSE] FormID: 0x{:08X}", responseFormID);
-        
-        if (ShouldBlockDialogue(a_quest, a_topic, speakerName)) {
-            spdlog::warn("[BLOCKED] SkyrimNet logging prevented (follower/merchant topic)");
-            spdlog::info("========================================");
+        if (ShouldBlockDialogue(a_quest, a_topic, nullptr)) {
+            const char* speakerName = a_speaker ? a_speaker->GetName() : "Unknown";
+            const char* topicEditorID = a_topic ? a_topic->GetFormEditorID() : "(none)";
+            uint16_t subtype = a_topic ? static_cast<uint16_t>(a_topic->data.subtype.get()) : 0;
+            
+            spdlog::info("Dialogue blocked: {} - {} (subtype: {})", speakerName, topicEditorID, subtype);
             return nullptr;  // Blocks SkyrimNet logging, scripts still execute
         }
         
-        spdlog::info("========================================");
         return _DialogueItemCtor(a_this, a_quest, a_topic, a_topicInfo, a_speaker);
     }
 }
@@ -114,8 +93,6 @@ namespace
         switch (a_msg->type) {
         case SKSE::MessagingInterface::kDataLoaded:
             {
-                spdlog::info("Data loaded - Installing hooks");
-                
                 SKSE::AllocTrampoline(1 << 7);
                 auto& trampoline = SKSE::GetTrampoline();
                 
@@ -131,28 +108,19 @@ namespace
                     } converter;
                     converter.addr = originalAddr;
                     _OriginalInitiateDialogue = converter.func;
-                    
-                    spdlog::info("[HOOK 1] Actor::InitiateDialogue installed (virtual 0xD8)");
                 } catch (const std::exception& e) {
-                    spdlog::error("[HOOK 1] Failed to install InitiateDialogue hook: {}", e.what());
+                    spdlog::error("Failed to install InitiateDialogue hook: {}", e.what());
                 }
                 
                 // Hook #2: DialogueItem::Ctor - Fallback for logging prevention
                 REL::Relocation<std::uintptr_t> target{ RELOCATION_ID(34413, 35220) };
                 _DialogueItemCtor = trampoline.write_branch<5>(target.address(), Hook_DialogueItemCtor);
-                spdlog::info("[HOOK 2] DialogueItem::Ctor installed (fallback)");
-                
-                spdlog::info("[STATUS] Testing dialogue initiation hook");
                 
                 Config::Load();
-                spdlog::info("Configuration loaded");
             }
             break;
         case SKSE::MessagingInterface::kPostLoadGame:
-            spdlog::info("Game loaded");
-            break;
         case SKSE::MessagingInterface::kNewGame:
-            spdlog::info("New game started");
             break;
         }
     }
@@ -180,12 +148,6 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_s
 {
     Logger::Setup();
 
-    spdlog::info("========================================");
-    spdlog::info("{} v{}", PLUGIN_NAME, PLUGIN_VERSION);
-    spdlog::info("{}", PLUGIN_DESCRIPTION);
-    spdlog::info("By {}", PLUGIN_AUTHOR);
-    spdlog::info("========================================");
-
     SKSE::Init(a_skse);
 
     auto messaging = SKSE::GetMessagingInterface();
@@ -194,6 +156,5 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_s
         return false;
     }
 
-    spdlog::info("Plugin loaded successfully");
     return true;
 }

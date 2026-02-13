@@ -281,9 +281,12 @@ topics:
   # NFF
   - nwsFollowerXStorageTopic
 
-quests: # Block all topics from these quests from being logged
+quests: #Block all topics from these quests from being logged
   - nwsFollowerController #NFF follower management dialogue
-  - sosQuest #Simple outfit system dialogue controls
+  - sosQuest #Simple Outfit System dialogue controls
+  
+subtypes: #Block topics by subtype from being logged in SkyrimNet's event history
+  - Hello
 ```
 
 You don't need to need to re-run the patcher if editing STFU_SkyrimNetFilter.yaml

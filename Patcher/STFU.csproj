@@ -5,6 +5,8 @@
     <ImplicitUsings>true</ImplicitUsings>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <EnableDynamicLoading>true</EnableDynamicLoading>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Mutagen.Bethesda.Synthesis" Version="5.1.0" />
@@ -15,6 +17,7 @@
       <FilesToCopy Include="$(OutputPath)STFU.exe" />
       <FilesToCopy Include="$(OutputPath)STFU.dll" />
       <FilesToCopy Include="$(OutputPath)STFU.runtimeconfig.json" />
+      <FilesToCopy Include="$(OutputPath)STFU.deps.json" />
       <FilesToCopy Include="$(OutputPath)*.dll" Exclude="$(OutputPath)STFU.dll" />
     </ItemGroup>
     <Copy SourceFiles="@(FilesToCopy)" DestinationFolder="..\STFU Patcher\\" SkipUnchangedFiles="true" />

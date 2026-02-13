@@ -17,6 +17,7 @@ scenes:
   -
 
 quests: 
+  - DLC2MQ05
   # Great Cities (houses won't be purchasable if Hello dialogue doesn't trigger quest)
   - WinterholdBuyHomeTGCoWH
   - DialogueKynesgroveBuyHomeTGCoKG

@@ -705,3 +705,11 @@ DialogueInterceptor/README.md
 DialogueInterceptor/SKSE_PLUGIN_SPEC.md
 DialogueInterceptor/TESTING.md
 DialogueInterceptor/vcpkg.json
+Patcher/runtimeconfig.template.json
+Patcher/STFU.csproj
+Patcher/STFU.csproj
+STFU Patcher/STFU.deps.json
+Patcher/STFU.csproj
+Patcher/STFU.csproj
+Patcher/STFU.csproj
+*.csproj

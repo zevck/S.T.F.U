@@ -1,8 +1,12 @@
 # Blacklist - Topics that will be blocked when MCM toggle is OFF
-# Supports both FormKeys (with :) and Editor IDs. Editor IDs are recommended for ESPFE plugins.
+# Supports both FormKeys (with :) and Editor IDs. Editor IDs are recommended for ESPFE plugins
 # For any ESP or Editor ID with special YAML characters like [, ], {, }, :, #, @, &, *, etc., use quotes
 topics:
- - 
+ - WICastMagicNonHostileSpellStealthTopic
+ - WICastMagicNonHostileSpellHealingTopic
+ - WICastMagicNonHostileSpellWeirdTopic
+ - WICastMagicNonHostileSpellCourageTopic
+ - WICastMagicNonHostileSpellCalmTopic
  
 plugins: #Block every dialogue response in a plugin. Probably not a good idea
   -
@@ -10,15 +14,39 @@ plugins: #Block every dialogue response in a plugin. Probably not a good idea
 #---------------------------
 #      Scene blocking
 #---------------------------
-#Use carefully, this blocks scenes from playing entirely and may break quests that rely on them
+# Use carefully, this blocks scenes from playing entirely and may break quests that rely on them
 scenes:
   - WhiterunMikaelSongScene
   - WICraftItem01Scene
   - WICraftItem02Scene
   - WICraftItem03Scene
+  # nwsFollowerFramework.esp
+  - nwsFollowerLeveledScene
   
-quests: #Block every scene referenced by a quest
-  - 
+quests: # Block every scene referenced by a quest
+  - DA07MuseumScenes
+  # FaceSculptorExpanded.esp scenes
+  - FaceSculptor_Events
+  # 3DNPC.esp
+  - GorrHjoromirScene
+  - AlvorHjoromirScene
+  - DelphineHjoromirScene
+  - EldawynSinmirScene1
+  - EldawynSinmirScene
+  - EldawynHuldaScene
+  - EldawynIriaScene
+  - LarkspurEldawynScene
+  - MorisCallenScene
+  - DialogueEleanorInn1
+  - JerulithBolundScene1
+  # Relationship Dialogue Overhaul.esp
+  - a_RDOSolitudeMarketAddvarJawananScene1
 
-quest_patterns: #EditorIDs only. Use * wildcard to catch multiple quests with similar naming schemes
-  - 
+quest_patterns: # EditorIDs only. Use * wildcard to catch multiple quests with similar naming schemes
+  # 3DNPC
+  - "OletteGorrScene*"
+  - "BeatriceUrzubScene*"
+  - "BergKaritaScene*"
+  - "LuaffynBandScene*"
+  # Companions Dialogue Bundle.esp
+  - "_JQ_CompanionsScenes*"
