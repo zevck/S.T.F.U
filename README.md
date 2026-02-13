@@ -300,33 +300,33 @@ You don't need to need to re-run the patcher if only editing STFU_SkyrimNetFilte
 ## Troubleshooting
 
 ### // Missing globals, topics aren't patched
-    **Problem**: STFU.esp not detected by Synthesis
+**Problem**: STFU.esp not detected by Synthesis
   
-    **Solution**: 
-    1. Check that `STFU.esp` is enabled in your mod manager
-    2. Move STFU.esp **ABOVE** any other Synthesis patches in load order
-    3. Re-run Synthesis
+**Solution**: 
+1. Check that `STFU.esp` is enabled in your mod manager
+2. Move STFU.esp **ABOVE** any other Synthesis patches in load order
+3. Re-run Synthesis
 
 ### // Config changes not taking effect
-    After editing YAML/INI files, you must re-run Synthesis to regenerate the patch.
+After editing YAML/INI files, you must re-run Synthesis to regenerate the patch.
 
 ### // Dialogue I want is blocked
-    Uncheck the subtype in the MCM or add it to `STFU_Whitelist.yaml`. Look below for how to locate dialogue's FormID or EditorID.
+Uncheck the subtype in the MCM or add it to `STFU_Whitelist.yaml`. Look below for how to locate dialogue's FormID or EditorID.
 
 ### // Dialogue I don't want is NOT blocked
-   Check the subtype in the MCM or add it to `STFU_Blacklist.yaml`. Look below for how to locate dialogue's FormID or EditorID.
+Check the subtype in the MCM or add it to `STFU_Blacklist.yaml`. Look below for how to locate dialogue's FormID or EditorID.
 
 ### // Patch isn't being updated when re-running Synthesis
-    Delete the generated patch ESP and run it again.
+Delete the generated patch ESP and run it again.
 
 ### // S.T.F.U MCM is loading but nothing is being blocked
-    Make sure the generated patch ESP is enabled and below any mods with dialogue. Check the Synthesis output log to ensure it completed without any errors.
+Make sure the generated patch ESP is enabled and below any mods with dialogue. Check the Synthesis output log to ensure it completed without any errors.
 
 ### // Can't find the patch ESP after running
-    The ESP will be named after the group the patcher was in. Ensure that the patcher completed successfully without errors.
+The ESP will be named after the group the patcher was in. Ensure that the patcher completed successfully without errors.
 
 ### // Writing with compression enabled is not currently supported
-    Move the STFU patch into it's own group that doesn't have compression enabled.
+Move the STFU patch into it's own group that doesn't have compression enabled.
 
 ## Useful Tools
 You can use these to find the EditorID or FormID of dialogue topics so they can be added to configuration yamls. EditorIDs are better, but FormIDs will work fine for non-ESL flagged mods.
