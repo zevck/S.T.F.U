@@ -17,7 +17,7 @@ Skyrim Talk Filter Utility allows you to block dialogue from playing at the sour
 
 **Other**: VoicePower, Bard songs, a curated list of safe to block scenes, and a custom user-defined blacklist
 
-***NEW***: Prevent certain topics from being included in SkyrimNet's event history. Topics are defined in STFU_SkyrimNetFilter.yaml. SKSE plugin hijacks `DialogueItem::Cotr` and sets it to null after dialogue plays but before SkyrimNet logs it. Experimental.
+***NEW***: Prevent certain topics from being included in SkyrimNet's event history. Topics are defined in STFU_SkyrimNetFilter.yaml. An SKSE plugin hijacks `DialogueItem::Cotr` and sets it to null after dialogue plays but before SkyrimNet logs it. Experimental.
 
 This mod does **NOT** block dialogue with the Scene or Custom subtypes, as these are important for game functions and quests. Certain topics belonging to those subtypes can be added to the blacklist if safe.
 
