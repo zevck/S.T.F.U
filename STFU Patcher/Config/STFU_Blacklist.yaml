@@ -25,28 +25,7 @@ scenes:
   
 quests: # Block every scene referenced by a quest
   - DA07MuseumScenes
-  # FaceSculptorExpanded.esp scenes
-  - FaceSculptor_Events
-  # 3DNPC.esp
-  - GorrHjoromirScene
-  - AlvorHjoromirScene
-  - DelphineHjoromirScene
-  - EldawynSinmirScene1
-  - EldawynSinmirScene
-  - EldawynHuldaScene
-  - EldawynIriaScene
-  - LarkspurEldawynScene
-  - MorisCallenScene
-  - DialogueEleanorInn1
-  - JerulithBolundScene1
-  # Relationship Dialogue Overhaul.esp
-  - a_RDOSolitudeMarketAddvarJawananScene1
 
 quest_patterns: # EditorIDs only. Use * wildcard to catch multiple quests with similar naming schemes
-  # 3DNPC
-  - "OletteGorrScene*"
-  - "BeatriceUrzubScene*"
-  - "BergKaritaScene*"
-  - "LuaffynBandScene*"
   # Companions Dialogue Bundle.esp
   - "_JQ_CompanionsScenes*"

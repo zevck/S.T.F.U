@@ -9,7 +9,26 @@ topics:
   - 062103:Skyrim.esm #Scavenger encounter dialogue
   - 04C592:Skyrim.esm #Draugr Attack dialogue
   - 04C2D2:Skyrim.esm #Ayarg garag gar! (giants)
-
+  # A Cat's Life cat noises
+  - ACLDialogueCatsHello
+  - ACLCatDialogueFollow
+  - ACLCatDialogueBranchReFollowTopic
+  - ACLCatDialogueBranchMortalityTopic
+  - ACLCatDialogueAdopt
+  - ACLCatDialogueDismiss
+  - ACLCatDialogueAbandonReject
+  - ACLCatDialogueWait
+  - ACLCatDialogueCommand
+  - ACLDialogueCatsHit
+  - CLCatDialogueAssignHome
+  - ACLCatDialoguePet
+  - ACLCatDialogueAbandonConfirm
+  - ACLCatDialogueGiveYarnTopic
+  - ACLDialogueCatsMiscSwingWeapon
+  - ACLDialogueCatsMiscBow
+  - ACLDialogueCatsMiscShout
+  - ACLDialogueCatsFlee
+  - ACLDialogueCatsMiscCollide
 plugins:
   - 
   

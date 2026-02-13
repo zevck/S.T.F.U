@@ -17,7 +17,7 @@ Skyrim Talk Filter Utility allows you to block dialogue from playing at the sour
 
 **Other**: VoicePower, Bard songs, a curated list of safe to block scenes, and a custom user-defined blacklist
 
-***NEW***: Prevent certain topics from being included in SkyrimNet's event history. Topics are defined in STFU_SkyrimNetFilter.yaml
+***NEW***: Prevent certain topics from being included in SkyrimNet's event history. Topics are defined in STFU_SkyrimNetFilter.yaml. Hijacks DialogueItem::Cotr and sets it to null after dialogue plays but before SkyrimNet logs it. Experimental.
 
 This mod does **NOT** block dialogue with the Scene or Custom subtypes, as these are important for game functions and quests. Certain topics belonging to those subtypes can be added to the blacklist if safe.
 
@@ -168,28 +168,34 @@ filterVoicePowerStartShort = true
 Blacklist specific dialogue topics or scenes. Becareful what you include in here, some topics and scenes are essential for the game to function.
 ```yaml
 # Blacklist - Topics that will be blocked when MCM toggle is OFF
-# Supports both FormKeys (with :) and Editor IDs. Editor IDs are recommended for ESPFE plugins.
+# Supports both FormKeys (with :) and Editor IDs. Editor IDs are recommended for ESPFE plugins
 # For any ESP or Editor ID with special YAML characters like [, ], {, }, :, #, @, &, *, etc., use quotes
 topics:
- - 021405:Skyrim.esm #DialogueGenericPoisonCoughBranchTopic "Cough"
+ - WICastMagicNonHostileSpellStealthTopic
+ - WICastMagicNonHostileSpellHealingTopic
+ - WICastMagicNonHostileSpellWeirdTopic
+ - WICastMagicNonHostileSpellCourageTopic
+ - WICastMagicNonHostileSpellCalmTopic
  
 plugins: #Block every dialogue response in a plugin. Probably not a good idea
-  - "This is a bad idea.esp"
+  -
   
 #---------------------------
 #      Scene blocking
 #---------------------------
-#Use carefully, this blocks scenes from playing entirely and may break quests that rely on them
+# Use carefully, this blocks scenes from playing entirely and may break quests that rely on them
 scenes:
   - WhiterunMikaelSongScene
+  - WICraftItem01Scene
+  - WICraftItem02Scene
+  - WICraftItem03Scene
   # nwsFollowerFramework.esp
-  - nwsFollowerLeveledScene #Congratulating
+  - nwsFollowerLeveledScene
   
-quests: #Block every scene referenced by a quest
-  # FaceSculptorExpanded.esp scenes
-  - FaceSculptor_Events
+quests: # Block every scene referenced by a quest
+  - DA07MuseumScenes
 
-quest_patterns: #EditorIDs only. Use * wildcard to catch multiple quests with similar naming schemes
+quest_patterns: # EditorIDs only. Use * wildcard to catch multiple quests with similar naming schemes
   # Companions Dialogue Bundle.esp
   - "_JQ_CompanionsScenes*"
 ```
@@ -252,7 +258,7 @@ Override subtype classification for specific topics. Originally to fix miscatego
 # Key can be FormKey or Editor ID. Editor IDs are recommended for ESPFE plugins.
 # For any ESP or Editor ID with special YAML characters like [, ], {, }, :, #, @, &, *, etc., use quotes
 overrides:
-  021405:Skyrim.esm: Hit #Patches the coughing topic to be filtered with the Hit condition
+  DLC2PillarBlockingTopic: Idle #Enthralled worker chants
 ```
 
 After editing configs, re-run Synthesis to apply changes.
@@ -289,7 +295,7 @@ subtypes: #Block topics by subtype from being logged in SkyrimNet's event histor
   - Hello
 ```
 
-You don't need to need to re-run the patcher if editing STFU_SkyrimNetFilter.yaml
+You don't need to need to re-run the patcher if only editing STFU_SkyrimNetFilter.yaml
 
 ## Troubleshooting
 
