@@ -70,7 +70,9 @@ This mod does **NOT** block dialogue with the Scene or Custom subtypes, as these
 - [Other Synthesis patches]
 
 ## Configuration
-All config files are in `\STFU Patcher\Config\`:
+All config files are in `\STFU Patcher\Config\`. 
+
+For a more detailed guide on configuration see [CONFIG_TUTORIAL.md](https://github.com/zevck/S.T.F.U/blob/main/CONFIG_TUTORIAL.md)
 
 ### STFU_Config.ini
 ```ini
@@ -334,6 +336,7 @@ You can use these to find the EditorID or FormID of dialogue topics so they can 
 - [xEdit](https://www.nexusmods.com/skyrimspecialedition/mods/164) More detailed information than xTranslator but slower to search
   - [Dialogue Search Scipt](https://gist.github.com/tasairis/51e530a1af9e8a4be089328376e41108)
 
+For a guide on how to use these, see [CONFIG_TUTORIAL.md](https://github.com/zevck/S.T.F.U/blob/main/CONFIG_TUTORIAL.md)
 ## Reporting Issues
 If you encounter any vanilla dialogue not being blocked when it should, send me the quote and the context that it happened. I won't make patches for modded dialogue, that should be done with the yaml configs.
 

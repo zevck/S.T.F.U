@@ -19,12 +19,12 @@ Next, load the ESP containing the dialogue you want to look up:
 </tr>
 </table>
 
-Now you can search for the quote you heard in game. For an example, I'll look for the quote "One more song, what say you? Yeah? All right, then!" from Mikael before he starts singing. Dialogue strings are typically located in the "ILSTRINGS" tab:
+Now you can search for the quote you heard in game. For an example, I'll look for the quote "One more song, what say you? Yeah? All right, then!" from Mikael before he starts singing. Dialogue strings are typically located in the "ILSTRINGS" tab. Double click on the result to open a new window:
 <p align="center">
   <img src="images/stfuTranslator4.png">
 </p>
 
-In this case, the dialogue comes from the scene "WhiterunMikaelSongScene" which includes the whole song sequence. Open `STFU_Blacklist.yaml` and add the editorID to block it:
+In this case, the dialogue comes from the scene "WhiterunMikaelSongScene" which includes the whole song sequence. Open `STFU_Blacklist.yaml` and add the EditorID to block it:
 ```yaml
 #---------------------------
 #      Scene blocking
@@ -56,7 +56,7 @@ A limitation of using xTranslator is if you have no idea what the source of the 
 </p>
 
 ## SSEEdit
-SSEEdit, or xEdit, is a tool that every modder should be acquainted with. Launch it through your mod manager and load all of your mods (or at least the mods with dialogue). To search for dialogue you will need to add [this script](https://gist.github.com/tasairis/51e530a1af9e8a4be089328376e41108). Right click on any ESP/ESM on the left side and select "Apply Script...". Choose "<new script>" then clear the box and paste the linked script. Click save and name it something like "Dialogue search".
+SSEEdit, or xEdit, is a tool that every modder should be acquainted with. Launch it through your mod manager and load all of your mods (or at least the mods with dialogue). To search for dialogue you will need to add [this script](https://gist.github.com/tasairis/51e530a1af9e8a4be089328376e41108). Right click on any ESP/ESM on the left side and select "Apply Script...". Choose `<new script>` then clear the box and paste the linked script. Click save and name it something like "Dialogue search".
 <table>
 <tr>
 <td><img src="images/stfuSSEEdit1.png"></td>
@@ -74,7 +74,7 @@ Check the "Messages" tab for the search output and lines like:
 Response: "Our hands once were idle." [Dragonborn.esm] DLC2PillarChant11 [INFO:0401DEA3] ('Our hands once were idle.' in GRUP Topic Children of DLC2PillarSharedInfo [DIAL:0401DE97])
 ```
 
-Copy the FormID of the SharedInfo response you want contained in [INFO:0xxxxxxx], in this case `0401DEA3`, into the FormID search box in the top left. Click on the "Referenced By" tab on the bottom of the right window and you will see everything that references that response, including the topic's response that is actually playing in game. If this was a normal topic you could skip these steps and jump straight to the topic FormID contained in [DIAL:0xxxxxxx].
+Copy the FormID of the SharedInfo response you want contained in [INFO:0xxxxxxx], in this case `0401DEA3`, into the FormID search box in the top left and hit enter. Click on the "Referenced By" tab on the bottom of the right window and you will see everything that references that response, including the topic's response that is actually playing in game. If this was a normal topic you could skip these steps and jump straight to the topic FormID contained in [DIAL:0xxxxxxx].
 <p align="center">
   <img src="images/stfuSSEEdit4.png">
 </p>
@@ -137,3 +137,107 @@ subtypes: #Block topics by subtype from being logged in SkyrimNet's event histor
 ```
 
 When using FormIDs in here, they must be entered in hex form with the `0x` prefix. No need for a FormKey. EditorIDs work as normal. You can also optionally block entire subtypes from being logged by SkyrimNet instead of listing every single topic if you wish. For it to take effect, uncheck "Block Hello" in the MCM and check "Block SkyrimNet Logging", as an example.
+
+When editing `STFU_SkyrimNetFilter.yaml` you don't need to rerun the patcher, just restart your game.
+
+# STFU_Config.ini
+```ini
+[General]
+; Only process dialogue topics from Skyrim.esm and official DLCs
+vanillaOnly = false
+; Don't patch any responses with scripts attached, overkill and not recommended
+safeMode = false
+
+[Combat]
+; Combat-related dialogue subtypes
+filterAcceptYield = true
+filterAlertIdle = true
+filterAlertToCombat = true
+filterAlertToNormal = true
+filterAllyKilled = true
+filterAttack = true
+filterAvoidThreat = true
+filterBash = true
+filterBlock = true
+filterBleedout = true
+filterCombatToLost = true
+filterCombatToNormal = true
+filterDeath = true
+filterDetectFriendDie = true
+filterFlee = true
+filterHit = true
+filterLostIdle = true
+filterLostToCombat = true
+filterLostToNormal = true
+filterNormalToAlert = true
+filterNormalToCombat = true
+filterObserveCombat = true
+filterPickpocketCombat = true
+filterPowerAttack = true
+filterPreserveGrunts = true
+filterTaunt = true
+filterYield = true
+
+[Generic]
+; Generic dialogue (non-combat)
+filterActorCollideWithActor = true
+filterAssault = true
+filterAssaultNC = true
+filterBarterExit = true
+filterDestroyObject = true
+filterGoodbye = true
+filterHello = true
+filterIdle = true
+filterKnockOverObject = true
+filterLockedObject = true
+filterMurder = true
+filterMurderNC = true
+filterNoticeCorpse = true
+filterPickpocketNC = true
+filterPickpocketTopic = true
+filterPlayerCastProjectileSpell = true
+filterPlayerCastSelfSpell = true
+filterPlayerInIronSights = true
+filterPlayerShout = true
+filterPursueIdleTopic = true
+filterShootBow = true
+filterStandOnFurniture = true
+filterSteal = true
+filterStealFromNC = true
+filterSwingMeleeWeapon = true
+filterTimeToGo = true
+filterTrainingExit = true
+filterTrespass = true
+filterTrespassAgainstNC = true
+filterWerewolfTransformCrime = true
+filterZKeyObject = true
+
+[Follower]
+; Follower-specific dialogue
+filterAgree = true
+filterExitFavorState = true
+filterFollowerCommentary = true
+filterMoralRefusal = true
+filterRefuse = true
+filterShow = true
+
+[Other]
+; Miscellaneous dialogue filtering
+filterBardSongs = true
+filterBlacklist = true
+; Curated list of repeating town scenes
+filterScenes = true
+filterVoicePowerEndLong = true
+filterVoicePowerEndShort = true
+filterVoicePowerStartLong = true
+filterVoicePowerStartShort = true
+```
+
+### vanillaOnly
+If true, makes the patcher only patch vanilla dialogue topics originating from Skyrim.esm or the DLCs. If a mod adds responses to one of these topics, like Relationship Dialogue Overhaul for example, the responses added by that mod will still be patched. Any topic unique to RDO will be untouched.
+
+### safeMode
+If true, prevents the patcher from patching any dialogue responses that have a script attached to prevent any potential bugs. I don't recommend this though as it is overkill and will result in ~40% responses patched. The vast majority (if not all) of dialogue scripts are harmless. If any problematic scripts are encountered, I will create a patch for them. Enabling this can have the side effect of making dialogue even more repetitive as there is less variety to choose from than if you had blocked nothing.
+
+### filterX
+The INI can be used to prevent certain subtypes from being patched at all. For example, if you never want to block greetings from the "Hello" subtype, you can set `filterHello = false`. You can already freely control what is blocked in the MCM, but with this you can speed up patcher times and reduce file size by excluding potentially thousands of records that you aren't planning to use.
