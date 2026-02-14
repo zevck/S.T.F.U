@@ -1,6 +1,10 @@
 # Dialogue Subtypes Reference
 
-This document lists all dialogue subtypes used in Skyrim's dialogue system, organized by category. Subtype names match those used in YAML configuration files. These subtypes determine when and how NPCs speak during various situations.
+Skyrim organizes dialogue topics into various subtypes based on the conditions in which they happen. These can subtypes can be used to create a broad filters encompassing thousands of responses all with the same behavior.
+
+This document lists all dialogue subtypes used in Skyrim's dialogue system, organized by category. Subtype names match those used in YAML configuration files. These subtypes determine when and how NPCs speak during various situations. 
+
+There are more subtypes than this but not all are safe to block. For example, "Rumors" isn't background dialogue, but the dialogue responses when you ask an innkeeper if they have heard any rumors, which is necessary for starting some quests. Most notably, Custom and Scene subtypes are very important for game functions.
 
 ## Combat Dialogue
 
@@ -21,8 +25,6 @@ This document lists all dialogue subtypes used in Skyrim's dialogue system, orga
 **AllyKilled:** "No!! How dare you!", "Why, why?!", "Gods, no!". NPC witnesses an ally's death.
 
 **Taunt:** "Skyrim belongs to the Nords!", "I'll rip your heart out!", "Prepare to die!". Aggressive taunting during combat.
-
-**PreserveGrunts:** "Agh!", "Oof!", "Nargh!", "Argh!", "Yeagh!". Generic combat effort sounds and grunts.
 
 ## Combat State Transitions
 
@@ -64,13 +66,13 @@ This document lists all dialogue subtypes used in Skyrim's dialogue system, orga
 
 ## Voice Powers (Shouts)
 
-**VoicePowerStartLong:** Long shout starting dialogue.
+**VoicePowerStartShort:** Short shout starting dialogue. "Fus!"
 
-**VoicePowerStartShort:** Short shout starting dialogue.
+**VoicePowerStartLong:** Long shout starting dialogue. "Fus..."
 
-**VoicePowerEndLong:** Long shout ending dialogue.
+**VoicePowerEndShort:** Short shout ending dialogue. "Ro!"
 
-**VoicePowerEndShort:** Short shout ending dialogue.
+**VoicePowerEndLong:** Long shout ending dialogue. "Ro Dah!"
 
 ## Non-Combat Dialogue
 
