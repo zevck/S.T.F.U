@@ -12,9 +12,12 @@ Start with the basic setup of launching xTranslator through your mod manager and
 </p>
 
 Next, load the ESP containing the dialogue you want to look up:
-<p align="center">
-  <img src="images/stfuTranslator2.png"> <img src="images/stfuTranslator3.png">
-</p>
+<table>
+<tr>
+<td><img src="images/stfuTranslator2.png"></td>
+<td><img src="images/stfuTranslator3.png"></td>
+</tr>
+</table>
 
 Now you can search for the quote you heard in game. For an example, I'll look for the quote "One more song, what say you? Yeah? All right, then!" from Mikael before he starts singing. Dialogue strings are typically located in the "ILSTRINGS" tab:
 <p align="center">
