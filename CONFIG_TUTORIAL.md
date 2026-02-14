@@ -138,7 +138,7 @@ subtypes: #Block topics by subtype from being logged in SkyrimNet's event histor
 
 When using FormIDs in here, they must be entered in hex form with the `0x` prefix. No need for a FormKey. EditorIDs work as normal. You can also optionally block entire subtypes from being logged by SkyrimNet instead of listing every single topic if you wish. For it to take effect, uncheck "Block Hello" in the MCM and check "Block SkyrimNet Logging", as an example.
 
-When editing `STFU_SkyrimNetFilter.yaml` you don't need to rerun the patcher, just restart your game.
+When editing `STFU_SkyrimNetFilter.yaml` you don't need to rerun the patcher, just restart your game. The SkyrimNet filter feature is completely independent from the patcher. If preventing SkyrimNet filtering is all you care about then you don't even need to run the patcher.
 
 # STFU_Config.ini
 ```ini
@@ -237,7 +237,7 @@ filterVoicePowerStartShort = true
 If true, makes the patcher only patch vanilla dialogue topics originating from Skyrim.esm or the DLCs. If a mod adds responses to one of these topics, like Relationship Dialogue Overhaul for example, the responses added by that mod will still be patched. Any topic unique to RDO will be untouched.
 
 ### safeMode
-If true, prevents the patcher from patching any dialogue responses that have a script attached to prevent any potential bugs. I don't recommend this though as it is overkill and will result in ~40% responses patched. The vast majority (if not all) of dialogue scripts are harmless. If any problematic scripts are encountered, I will create a patch for them. Enabling this can have the side effect of making dialogue even more repetitive as there is less variety to choose from than if you had blocked nothing.
+If true, prevents the patcher from patching any dialogue responses that have a script attached to prevent any potential bugs. I don't recommend this though as it is overkill and will result in ~40% less responses patched. The vast majority (if not all) of dialogue scripts are harmless. If any problematic scripts are encountered, I will create a patch for them. Enabling this can have the side effect of making dialogue even more repetitive as there is less variety to choose from than if you had blocked nothing.
 
 ### filterX
-The INI can be used to prevent certain subtypes from being patched at all. For example, if you never want to block greetings from the "Hello" subtype, you can set `filterHello = false`. You can already freely control what is blocked in the MCM, but with this you can speed up patcher times and reduce file size by excluding potentially thousands of records that you aren't planning to use.
+The INI can be used to prevent certain subtypes from being patched at all. For example, if you never want to block greetings from the "Hello" subtype, you can set `filterHello = false`. You can already freely control what is blocked in the MCM, but with this you can speed up patcher times and reduce file size by excluding potentially thousands of records that you aren't planning to use. This is independent from `STFU_SkyrimNetFilter.yaml`, if you disable a subtype from being patched you can still prevent it from being logged by SkyrimNet.
