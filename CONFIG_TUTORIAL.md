@@ -39,7 +39,7 @@ scenes:
 
 If a topic just shows as {Topic} that means it is either Custom or Scene. If it says {Topic:Hello} then that topic belongs to the listed subtype.
 
-If you want to whitelist a topic, such as the Hello dialogue from "DialogueWhiterun" shown above, then add the topic's FormKey or EditorID to `STFU_Whitelist.yaml`. EditorIDs are preferable but not everything has one, in which case you need to use a FormKey which includes a FormID and the ESP/ESM. For example, `02707A:Skyrim.esm`.
+If you want to whitelist a topic, such as the Hello topic from "DialogueWhiterun" shown above, then add the topic's FormKey or EditorID to `STFU_Whitelist.yaml`. EditorIDs are preferable but not everything has one, in which case you need to use a FormKey which includes a FormID and the ESP/ESM. For example, `02707A:Skyrim.esm`.
 ```yaml
 # Whitelist - Topics that will NEVER be touched by the patcher
 # Use this to exclude specific dialogue you want to keep
