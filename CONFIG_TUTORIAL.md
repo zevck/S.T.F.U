@@ -57,9 +57,12 @@ A limitation of using xTranslator is if you have no idea what the source of the 
 
 ## SSEEdit
 SSEEdit, or xEdit, is a tool that every modder should be acquainted with. Launch it through your mod manager and load all of your mods (or at least the mods with dialogue). To search for dialogue you will need to add [this script](https://gist.github.com/tasairis/51e530a1af9e8a4be089328376e41108). Right click on any ESP/ESM on the left side and select "Apply Script...". Choose "<new script>" then clear the box and paste the linked script. Click save and name it something like "Dialogue search".
-<p align="center">
-  <img src="images/stfuSSEEdit1.png"> <img src="images/stfuSSEEdit2.png">
-</p>
+<table>
+<tr>
+<td><img src="images/stfuSSEEdit1.png"></td>
+<td><img src="images/stfuSSEEdit2.png"></td>
+</tr>
+</table>
 
 Once the new script is saved click "Apply Script..." again and select "Dialogue search" or whatever you named it. Enter the quote into the box that appears, click OK and wait. This can take awhile, ensure the quote is spelled correctly or you won't find matches.
 <p align="center">
