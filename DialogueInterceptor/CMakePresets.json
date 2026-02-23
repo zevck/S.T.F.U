@@ -1,0 +1,39 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "vcpkg",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+      }
+    },
+    {
+      "name": "vs2022-windows",
+      "inherits": "vcpkg",
+      "generator": "Visual Studio 18",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "binaryDir": "${sourceDir}/build"
+    },
+    {
+      "name": "ninja-release",
+      "inherits": "vcpkg",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER": "cl.exe"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "release",
+      "configurePreset": "vs2022-windows",
+      "configuration": "Release"
+    }
+  ]
+}
