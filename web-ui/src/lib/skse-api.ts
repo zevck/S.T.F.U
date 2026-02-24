@@ -94,4 +94,16 @@ export const SKSE_API = {
     const jsonData = `{"id":${id},"blockType":"${blockType}","filterCategory":"${filterCategory}","notes":"${escapedNotes}"}`;
     SKSE_API.sendToSKSE('updateBlacklistEntry', jsonData);
   },
+  
+  addToBlacklist: (entries: any[], blockType: 'Soft' | 'Hard' | 'SkyrimNet') => {
+    log(`[SKSE_API] Adding ${entries.length} entries to blacklist as ${blockType} Block`);
+    const jsonData = JSON.stringify({ entries, blockType });
+    SKSE_API.sendToSKSE('addToBlacklist', jsonData);
+  },
+  
+  addToWhitelist: (entries: any[]) => {
+    log(`[SKSE_API] Adding ${entries.length} entries to whitelist (placeholder)`);
+    const jsonData = JSON.stringify({ entries });
+    SKSE_API.sendToSKSE('addToWhitelist', jsonData);
+  },
 };

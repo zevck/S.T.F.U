@@ -1,104 +1,310 @@
 #include "../include/PCH.h"
 #include "Logger.h"
 #include "DialogueHook.h"
+#include "DialogueDatabase.h"
+#include "ConstructResponseHook.h"
+#include "PopulateTopicInfoHook.h"
+#include "SceneHook.h"
+#include "SceneMonitor.h"
 #include "Config.h"
-<<<<<<< Updated upstream
-=======
 #include "STFUMenu.h"
-#include "PrismaUIMenu.h"
 #include "TopicResponseExtractor.h"
+#include "PrismaUIMenu.h"
 #include "SettingsPersistence.h"
 #include "PapyrusInterface.h"
 #include "../external/Detours/src/detours.h"
->>>>>>> Stashed changes
 #include "../include/version.h"
+#include <algorithm>
+#include <string>
+#include <unordered_set>
 
-// Hook Actor::InitiateDialogue - Attempt to block at dialogue initiation point
-namespace
+// Forward declare function for PopulateTopicInfo to check if dialogue should be force-logged
+namespace DialogueItemCtorHook {
+    bool WasBlockedWithNullptr(uint32_t speakerFormID, const std::string& responseText);
+    void Install();
+}
+
+namespace PopulateTopicInfoHook {
+    bool WasRecentlyLogged(uint32_t speakerFormID, const std::string& responseText, int64_t withinMs);
+}
+
+// DialogueItem::Ctor hook - blocks SkyrimNet logging only
+namespace DialogueItemCtorHook
 {
-    using InitiateDialogue_t = void (RE::Actor::*)(RE::Actor*, RE::PackageLocation*, RE::PackageLocation*);
-    InitiateDialogue_t _OriginalInitiateDialogue = nullptr;
-    
     using DialogueItemCtor_t = RE::DialogueItem* (*)(RE::DialogueItem*, RE::TESQuest*, RE::TESTopic*, RE::TESTopicInfo*, RE::Actor*);
-    REL::Relocation<DialogueItemCtor_t> _DialogueItemCtor;
+    static DialogueItemCtor_t _DialogueItemCtor = nullptr;
     
-    bool ShouldBlockDialogue(RE::TESQuest* a_quest, RE::TESTopic* a_topic, const char* speakerName)
-    {
-        if (!a_topic) return false;
+    // Track dialogues where we returned nullptr so PopulateTopicInfo can log them
+    struct NullptrDialogueKey {
+        uint32_t speakerFormID;
+        std::string responseText;
+        int64_t timestamp;
         
-        const auto& settings = Config::GetSettings();
-        
-        // Check if globally enabled (if toggle exists, check its value)
-        if (settings.toggleGlobal) {
-            float globalValue = settings.toggleGlobal->value;
-            if (globalValue == 0.0f) {
-                // Toggle is OFF - don't block anything
-                return false;
-            }
+        bool operator==(const NullptrDialogueKey& other) const {
+            return speakerFormID == other.speakerFormID && responseText == other.responseText;
         }
-        // If no toggle global exists, default to enabled (always block)
-        
-        // Check quest-level blocking first (blocks all topics from this quest)
-        if (a_quest) {
-            uint32_t questFormID = a_quest->GetFormID();
-            if (settings.blacklistedQuestFormIDs.find(questFormID) != settings.blacklistedQuestFormIDs.end()) {
-                return true;
-            }
-            
-            const char* questEditorID = a_quest->GetFormEditorID();
-            if (questEditorID && settings.blacklistedQuestEditorIDs.find(questEditorID) != settings.blacklistedQuestEditorIDs.end()) {
-                return true;
-            }
-        }
-        
-        // Check subtype blocking (use corrected subtypes for vanilla topics)
-        uint16_t subtype = Config::GetAccurateSubtype(a_topic);
-        if (settings.blacklistedSubtypes.find(subtype) != settings.blacklistedSubtypes.end()) {
-            return true;
-        }
-        
-        // Check topic FormID
-        uint32_t topicFormID = a_topic->GetFormID();
-        if (settings.blacklistedFormIDs.find(topicFormID) != settings.blacklistedFormIDs.end()) {
-            return true;
-        }
-        
-        // Check topic EditorID
-        const char* topicEditorID = a_topic->GetFormEditorID();
-        if (topicEditorID && settings.blacklistedEditorIDs.find(topicEditorID) != settings.blacklistedEditorIDs.end()) {
-            return true;
-        }
-        
-        return false;
-    }
+    };
     
-    void Hook_InitiateDialogue(RE::Actor* a_this, RE::Actor* a_target, RE::PackageLocation* a_loc1, RE::PackageLocation* a_loc2)
-    {
-        // Call original function using member function pointer syntax
-        if (_OriginalInitiateDialogue) {
-            (a_this->*_OriginalInitiateDialogue)(a_target, a_loc1, a_loc2);
+    struct NullptrDialogueKeyHash {
+        size_t operator()(const NullptrDialogueKey& key) const {
+            return std::hash<uint32_t>()(key.speakerFormID) ^ std::hash<std::string>()(key.responseText);
         }
-    }
+    };
+    
+    static std::unordered_set<NullptrDialogueKey, NullptrDialogueKeyHash> g_nullptrLoggedDialogues;
+    static std::mutex g_nullptrMutex;    
     
     RE::DialogueItem* Hook_DialogueItemCtor(RE::DialogueItem* a_this, RE::TESQuest* a_quest, RE::TESTopic* a_topic, RE::TESTopicInfo* a_topicInfo, RE::Actor* a_speaker)
     {
-        if (ShouldBlockDialogue(a_quest, a_topic, nullptr)) {
-            const char* speakerName = a_speaker ? a_speaker->GetName() : "Unknown";
-            const char* topicEditorID = a_topic ? a_topic->GetFormEditorID() : "(none)";
-            uint16_t subtype = a_topic ? static_cast<uint16_t>(a_topic->data.subtype.get()) : 0;
-            
-            spdlog::info("Dialogue blocked: {} - {} (subtype: {})", speakerName, topicEditorID, subtype);
-            return nullptr;  // Blocks SkyrimNet logging, scripts still execute
+        // Log entry for all dialogue constructions
+        if (a_topic && a_topicInfo && a_speaker) {
+            const char* topicEditorID = a_topic->GetFormEditorID();
+            const char* speakerName = a_speaker->GetName();
+            uint16_t subtype = Config::GetAccurateSubtype(a_topic);
+            spdlog::info("[CTOR ENTRY] Speaker: {}, Topic: {}, TopicInfo: 0x{:08X}, Subtype: {}",
+                speakerName ? speakerName : "Unknown",
+                topicEditorID ? topicEditorID : "(none)",
+                a_topicInfo->GetFormID(),
+                Config::GetSubtypeName(subtype));
         }
         
+        // If SkyrimNet is loaded AND this is MENU dialogue AND should be SkyrimNet-blocked, return nullptr
+        // This prevents SkyrimNet from seeing this dialogue while allowing subtitles to work normally
+        // NOTE: Only for MENU dialogue - background/ambient dialogue uses ConstructResponse blocking
+        if (STFUMenu::IsSkyrimNetLoaded() && a_topic && a_topicInfo && a_speaker) {
+            const char* topicEditorID = a_topic->GetFormEditorID();
+            const char* speakerName = a_speaker->GetName();
+            uint16_t subtype = Config::GetAccurateSubtype(a_topic);
+            
+            // Check if this is menu dialogue (player actively talking to NPC)
+            bool isMenuDialogue = false;
+            auto* ui = RE::UI::GetSingleton();
+            if (ui && ui->IsMenuOpen(RE::DialogueMenu::MENU_NAME)) {
+                auto* menuTopicManager = RE::MenuTopicManager::GetSingleton();
+                if (menuTopicManager && a_speaker) {
+                    auto speakerHandle = a_speaker->GetHandle();
+                    isMenuDialogue = (speakerHandle == menuTopicManager->speaker);
+                }
+            }
+            
+            // Only process blocking for menu dialogue - background dialogue uses ConstructResponse
+            if (isMenuDialogue) {
+                // Extract response text for checking block status
+                std::string responseText;
+                if (a_topicInfo) {
+                    auto responses = TopicResponseExtractor::ExtractResponsesFromTopicInfo(a_topicInfo);
+                    for (size_t i = 0; i < responses.size(); ++i) {
+                        if (i > 0) responseText += " ";
+                        responseText += responses[i];
+                    }
+                }
+                
+                // Check block status
+                bool shouldBlockSkyrimNet = Config::ShouldBlockSkyrimNet(a_quest, a_topic, speakerName);
+                bool shouldBlockAudio = Config::ShouldBlockAudio(a_quest, a_topic, speakerName, responseText.c_str());
+                bool shouldBlockSubtitles = Config::ShouldBlockSubtitles(a_quest, a_topic, speakerName, responseText.c_str());
+                
+                // Return nullptr for SkyrimNet-only blocked menu dialogue (not soft-blocked)
+                // Soft-blocked menu dialogue has responseText cleared in PopulateTopicInfo
+                bool isSoftBlocked = shouldBlockAudio && shouldBlockSubtitles;
+                if (shouldBlockSkyrimNet && !isSoftBlocked) {
+                    auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::system_clock::now().time_since_epoch()).count();
+                    
+                    // Check if already logged (either manually or by PopulateTopicInfo)
+                    bool alreadyLogged = false;
+                    
+                    // First check PopulateTopicInfo's recent logs
+                    if (PopulateTopicInfoHook::WasRecentlyLogged(a_speaker->GetFormID(), responseText, 5000)) {
+                        alreadyLogged = true;
+                        spdlog::info("[CTOR NULLPTR] DUPLICATE - PopulateTopicInfo already logged this, skipping: text='{}'",
+                            responseText.substr(0, 50));
+                    }
+                    
+                    // Also check our own manual logs
+                    if (!alreadyLogged) {
+                        std::lock_guard<std::mutex> lock(g_nullptrMutex);
+                        
+                        // Clean up old entries first (>5 seconds)
+                        for (auto it = g_nullptrLoggedDialogues.begin(); it != g_nullptrLoggedDialogues.end();) {
+                            if (now - it->timestamp > 5000) {
+                                it = g_nullptrLoggedDialogues.erase(it);
+                            } else {
+                                ++it;
+                            }
+                        }
+                        
+                        // Check if this speaker+text combo was already manually logged
+                        NullptrDialogueKey searchKey{ a_speaker->GetFormID(), responseText, 0 };
+                        for (const auto& key : g_nullptrLoggedDialogues) {
+                            if (key.speakerFormID == searchKey.speakerFormID && key.responseText == searchKey.responseText) {
+                                int64_t timeSince = now - key.timestamp;
+                                if (timeSince < 5000) { // Within last 5 seconds
+                                    alreadyLogged = true;
+                                    spdlog::info("[CTOR NULLPTR] DUPLICATE - Already manually logged {}ms ago, skipping: text='{}'",
+                                        timeSince, responseText.substr(0, 50));
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (!alreadyLogged) {
+                        // Skip if no text content
+                        std::string trimmedText = responseText;
+                        trimmedText.erase(0, trimmedText.find_first_not_of(" \t\n\r"));
+                        trimmedText.erase(trimmedText.find_last_not_of(" \t\n\r") + 1);
+                        
+                        if (trimmedText.empty()) {
+                            spdlog::info("[CTOR NULLPTR] Skipping log - no text for TopicInfo 0x{:08X}",
+                                a_topicInfo->GetFormID());
+                            return nullptr;
+                        }
+                        
+                        // Manually log to database BEFORE returning nullptr (PopulateTopicInfo won't log it)
+                        spdlog::info("[CTOR NULLPTR] Manually logging to database before returning nullptr");
+                        
+                        DialogueDB::DialogueEntry entry;
+                        entry.timestamp = now / 1000;
+                        
+                        entry.speakerName = speakerName ? speakerName : "";
+                        entry.speakerFormID = a_speaker->GetFormID();
+                        entry.speakerBaseFormID = a_speaker->GetActorBase() ? a_speaker->GetActorBase()->GetFormID() : 0;
+                        
+                        entry.topicEditorID = topicEditorID ? topicEditorID : "";
+                        entry.topicFormID = a_topic->GetFormID();
+                        entry.topicSubtype = subtype;
+                        entry.topicSubtypeName = Config::GetSubtypeName(subtype);
+                        
+                        entry.questEditorID = a_quest && a_quest->GetFormEditorID() ? a_quest->GetFormEditorID() : "";
+                        entry.questFormID = a_quest ? a_quest->GetFormID() : 0;
+                        entry.questName = a_quest && a_quest->GetName() ? a_quest->GetName() : "";
+                        
+                        auto* topicInfoFile = a_topicInfo->GetFile(0);
+                        entry.sourcePlugin = topicInfoFile ? std::string(topicInfoFile->GetFilename()) : "";
+                        
+                        auto* topicFile = a_topic->GetFile(0);
+                        entry.topicSourcePlugin = topicFile ? std::string(topicFile->GetFilename()) : "";
+                        
+                        entry.topicInfoFormID = a_topicInfo->GetFormID();
+                        entry.responseText = responseText;
+                        
+                        // Extract all responses
+                        if (!entry.topicEditorID.empty()) {
+                            entry.allResponses = TopicResponseExtractor::ExtractAllResponsesForTopic(entry.topicEditorID);
+                        } else if (entry.topicFormID > 0) {
+                            entry.allResponses = TopicResponseExtractor::ExtractAllResponsesForTopic(entry.topicFormID);
+                        }
+                        if (entry.allResponses.empty() && !responseText.empty()) {
+                            entry.allResponses.push_back(responseText);
+                        }
+                        
+                        entry.voiceFilepath = "";
+                        entry.blockedStatus = DialogueDB::BlockedStatus::SoftBlock;
+                        entry.isScene = false;
+                        entry.isBardSong = Config::IsBardSongQuest(a_quest);
+                        entry.isHardcodedScene = Config::IsHardcodedAmbientScene(a_topic);
+                        entry.skyrimNetBlockable = true;
+                        entry.sceneEditorID = "";
+                        
+                        // Log to database
+                        DialogueDB::GetDatabase()->LogDialogue(entry);
+                        spdlog::info("[CTOR NULLPTR] Logged to database: speaker=0x{:08X}, topicInfo=0x{:08X}, text='{}'",
+                            entry.speakerFormID, entry.topicInfoFormID, responseText.substr(0, 50));
+                        
+                        // Track that this was manually logged (using speaker + responseText as key)
+                        {
+                            std::lock_guard<std::mutex> lock(g_nullptrMutex);
+                            NullptrDialogueKey key{ a_speaker->GetFormID(), responseText, now };
+                            g_nullptrLoggedDialogues.insert(key);
+                        }
+                    }
+                    
+                    spdlog::info("[CTOR NULLPTR] Returning nullptr to block dialogue from SkyrimNet: Topic='{}', Speaker='{}'", 
+                        topicEditorID ? topicEditorID : "(none)", 
+                        speakerName ? speakerName : "Unknown");
+                    
+                    return nullptr;
+                }
+                else if (shouldBlockSkyrimNet && isSoftBlocked) {
+                    // This dialogue is SOFT-BLOCKED - it shouldn't have reached DialogueItem::Ctor at all!
+                    // PopulateTopicInfo should have cleared responseText, preventing construction
+                    spdlog::warn("[CTOR SOFT-BLOCKED] Soft-blocked dialogue reached Ctor (shouldn't happen): Topic='{}', Speaker='{}', Text='{}'",
+                        topicEditorID ? topicEditorID : "(none)", 
+                        speakerName ? speakerName : "Unknown",
+                        responseText.substr(0, 50));
+                    // Don't return nullptr - let it construct normally (ConstructResponse will handle blocking)
+                }
+            } // End isMenuDialogue check
+        }
+        
+        // Record this construction for correlation with PopulateTopicInfo
+        if (a_speaker && a_topicInfo) {
+            uint32_t speakerID = a_speaker->GetFormID();
+            uint32_t topicInfoID = a_topicInfo->GetFormID();
+            const char* speakerName = a_speaker->GetName();
+            
+            spdlog::trace("[CTOR RECORD] Recording construct: speaker={} (0x{:08X}), topicInfo=0x{:08X}", 
+                speakerName ? speakerName : "Unknown", speakerID, topicInfoID);
+            PopulateTopicInfoHook::RecordDialogueConstruct(speakerID, topicInfoID);
+        }
+        
+        // Call original Dialogue Item constructor
+        spdlog::trace("[CTOR ALLOW] Creating DialogueItem normally");
         return _DialogueItemCtor(a_this, a_quest, a_topic, a_topicInfo, a_speaker);
     }
+    
+    // Check if a dialogue was blocked (nullptr returned) by DialogueItem::Ctor
+    bool WasBlockedWithNullptr(uint32_t speakerFormID, const std::string& responseText)
+    {
+        std::lock_guard<std::mutex> lock(g_nullptrMutex);
+        
+        auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        
+        // Check if this dialogue was manually logged by DialogueItem::Ctor (speaker + responseText match)
+        for (auto it = g_nullptrLoggedDialogues.begin(); it != g_nullptrLoggedDialogues.end();) {
+            // Clean up old entries (older than 5 seconds)
+            if (now - it->timestamp > 5000) {
+                it = g_nullptrLoggedDialogues.erase(it);
+                continue;
+            }
+            
+            // Check if this matches (speaker + responseText)
+            if (it->speakerFormID == speakerFormID && it->responseText == responseText) {
+                int64_t timeSince = now - it->timestamp;
+                if (timeSince < 5000) {
+                    spdlog::info("[CTOR NULLPTR] Found nullptr-blocked dialogue {}ms ago, PopulateTopicInfo should skip", timeSince);
+                    return true; // Don't erase - multiple PopulateTopicInfo calls need to see it
+                }
+            }
+            ++it;
+        }
+        
+        return false; // Not found in recent logs
+    }
+    
+    void Install()
+    {
+        REL::Relocation<std::uintptr_t> target{ RELOCATION_ID(34413, 35220) };
+        _DialogueItemCtor = reinterpret_cast<DialogueItemCtor_t>(target.address());
+        
+        DetourTransactionBegin();
+        DetourUpdateThread(GetCurrentThread());
+        DetourAttach(&(PVOID&)_DialogueItemCtor, (PBYTE)&Hook_DialogueItemCtor);
+        
+        if (DetourTransactionCommit() != NO_ERROR) {
+            spdlog::error("Failed to install DialogueItem::Ctor hook!");
+        } else {
+            spdlog::info("DialogueItem::Ctor hook installed (Detours - early execution)");
+        }
+    }
+    
+
 }
 
 namespace
 {
-<<<<<<< Updated upstream
-=======
     // SKSEMenuFramework input event callback for menu hotkey
     // Lifetime: Created during kDataLoaded, automatically cleaned up by unique_ptr on DLL unload
     // SKSEMenuFramework maintains weak references, so no explicit unregistration needed
@@ -123,25 +329,18 @@ namespace
             const auto keyCode = button->GetIDCode();
             
             // If in hotkey capture mode, prioritize capturing the key
-            if (STFUMenu::IsCapturingHotkey()) {
-                if (STFUMenu::CaptureHotkey(keyCode)) {
-                    return true;  // Consume the event
-                }
-            }
-            
-            // F10 - hardcoded test key for legacy ImGui menu (for comparison during PrismaUI migration)
-            if (keyCode == 0x44) {  // F10
-                spdlog::debug("[HOTKEY] F10 detected - toggling ImGui menu (test/comparison)");
-                STFUMenu::Toggle();
-                return true;  // Consume the event
-            }
+            // if (STFUMenu::IsCapturingHotkey()) {  // DISABLED
+            //     if (STFUMenu::CaptureHotkey(keyCode)) {  // DISABLED
+            //         return true;  // Consume the event  // DISABLED
+            //     }  // DISABLED
+            // }  // DISABLED
             
             // Check for configured menu hotkey (when not in capture mode)
             const auto& settings = Config::GetSettings();
             if (keyCode == settings.menuHotkey) {
-                spdlog::debug("[HOTKEY] Menu hotkey (0x{:X}) detected - toggling PrismaUI menu", keyCode);
+                spdlog::debug("[HOTKEY] Menu hotkey (0x{:X}) detected - toggling menu", keyCode);
+                // STFUMenu::Toggle();  // DISABLED: Using PrismaUI
                 PrismaUIMenu::Toggle();
-                return true;  // Consume the event
             }
             
             // Note: We intentionally DON'T consume keyboard events while typing
@@ -184,38 +383,13 @@ namespace
         CellLoadEventHandler& operator=(CellLoadEventHandler&&) = delete;
     };
     
->>>>>>> Stashed changes
     void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
     {
         switch (a_msg->type) {
         case SKSE::MessagingInterface::kDataLoaded:
             {
-                SKSE::AllocTrampoline(1 << 7);
-                auto& trampoline = SKSE::GetTrampoline();
-                
-                // Hook #1: Actor::InitiateDialogue (virtual 0xD8) - Dialogue start point
-                try {
-                    REL::Relocation<std::uintptr_t> actorVtbl{ RE::VTABLE_Actor[0] };
-                    auto originalAddr = actorVtbl.write_vfunc(0xD8, reinterpret_cast<std::uintptr_t>(&Hook_InitiateDialogue));
-                    
-                    // Convert uintptr_t to member function pointer via union
-                    union {
-                        std::uintptr_t addr;
-                        InitiateDialogue_t func;
-                    } converter;
-                    converter.addr = originalAddr;
-                    _OriginalInitiateDialogue = converter.func;
-                } catch (const std::exception& e) {
-                    spdlog::error("Failed to install InitiateDialogue hook: {}", e.what());
-                }
-                
-                // Hook #2: DialogueItem::Ctor - Fallback for logging prevention
-                REL::Relocation<std::uintptr_t> target{ RELOCATION_ID(34413, 35220) };
-                _DialogueItemCtor = trampoline.write_branch<5>(target.address(), Hook_DialogueItemCtor);
-                
+                // Load configuration first
                 Config::Load();
-<<<<<<< Updated upstream
-=======
                 
                 // Check if SkyrimNet is loaded
                 bool skyrimNetLoaded = false;
@@ -293,11 +467,11 @@ namespace
                 // Install DialogueItem::Ctor hook using Detours (better hook priority than SKSE trampoline)
                 DialogueItemCtorHook::Install();
                 
-                // Initialize STFU menus (must be done after database init)
-                STFUMenu::Initialize();          // ImGui menu (legacy, will be removed)
-                PrismaUIMenu::Initialize();      // PrismaUI menu (new)
-                
-                // Register input handler using SKSEMenuFramework
+                // Initialize STFU menu (must be done after database init)
+                // STFUMenu::Initialize();  // DISABLED: Using PrismaUI instead
+
+                // Initialize PrismaUI menu (must be done after database init)
+                PrismaUIMenu::Initialize();
                 if (!SKSEMenuFramework::IsInstalled()) {
                     spdlog::error("SKSEMenuFramework is not installed!");
                 } else {
@@ -312,11 +486,32 @@ namespace
                 SceneHook::PatchScenes();
                 
                 spdlog::info("STFU initialized successfully");
->>>>>>> Stashed changes
             }
             break;
+            
         case SKSE::MessagingInterface::kPostLoadGame:
+            {
+                spdlog::info("[MAIN] kPostLoadGame event fired - reloading settings from INI");
+                // Reload settings from INI after save game loads (save game overwrites global values)
+                SettingsPersistence::LoadSettings();
+                // Flush database queue periodically
+                DialogueDB::GetDatabase()->FlushQueue();
+            }
+            break;
+            
         case SKSE::MessagingInterface::kNewGame:
+            {
+                spdlog::info("[MAIN] kNewGame event fired - loading settings from INI");
+                // Load settings from INI for new game
+                SettingsPersistence::LoadSettings();
+            }
+            break;
+            
+        case SKSE::MessagingInterface::kPreLoadGame:
+            {
+                // Note: g_inputHandler cleanup not needed here - it persists across save loads
+                // Only cleaned up on DLL unload via unique_ptr destructor
+            }
             break;
         }
     }
@@ -351,6 +546,15 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_s
         spdlog::error("Failed to register messaging listener!");
         return false;
     }
+// Register Papyrus functions for MCM
+    auto papyrus = SKSE::GetPapyrusInterface();
+    if (papyrus) {
+        papyrus->Register(PapyrusInterface::RegisterFunctions);
+        spdlog::info("Registered Papyrus interface for STFU_MCM");
+    } else {
+        spdlog::warn("Failed to get Papyrus interface - MCM functions will not be available");
+    }
 
+    
     return true;
 }

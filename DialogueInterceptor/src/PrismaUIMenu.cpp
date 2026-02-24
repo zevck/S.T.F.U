@@ -41,6 +41,8 @@ void PrismaUIMenu::Initialize()
     prismaUI_->RegisterJSListener(view_, "clearBlacklist", &OnClearBlacklist);
     prismaUI_->RegisterJSListener(view_, "refreshBlacklist", &OnRefreshBlacklist);
     prismaUI_->RegisterJSListener(view_, "updateBlacklistEntry", &OnUpdateBlacklistEntry);
+    prismaUI_->RegisterJSListener(view_, "addToBlacklist", &OnAddToBlacklist);
+    prismaUI_->RegisterJSListener(view_, "addToWhitelist", &OnAddToWhitelist);
     
     // Set faster scroll speed (default is usually ~40 pixels)
     prismaUI_->SetScrollingPixelSize(view_, 100);
@@ -583,4 +585,162 @@ std::string PrismaUIMenu::SerializeBlacklistToJSON()
     json << "]";
     
     return json.str();
+}
+
+void PrismaUIMenu::OnAddToBlacklist(const char* data)
+{
+    if (!data) {
+        spdlog::error("[PrismaUIMenu::OnAddToBlacklist] Null data received");
+        return;
+    }
+    
+    spdlog::info("[PrismaUIMenu::OnAddToBlacklist] Received: {}", data);
+    
+    try {
+        auto* db = DialogueDB::GetDatabase();
+        if (!db) {
+            spdlog::error("[PrismaUIMenu::OnAddToBlacklist] Database not available");
+            return;
+        }
+        
+        // Parse JSON data: {"entries":[{...}],"blockType":"Soft|Hard|SkyrimNet"}
+        std::string jsonStr(data);
+        size_t entriesPos = jsonStr.find("\"entries\":");
+        size_t blockTypePos = jsonStr.find("\"blockType\":\"");
+        
+        if (entriesPos == std::string::npos || blockTypePos == std::string::npos) {
+            spdlog::error("[PrismaUIMenu::OnAddToBlacklist] Invalid JSON format");
+            return;
+        }
+        
+        // Extract block type
+        size_t blockTypeStart = blockTypePos + 13;  // After \"blockType\":\"
+        size_t blockTypeEnd = jsonStr.find("\"", blockTypeStart);
+        std::string blockTypeStr = jsonStr.substr(blockTypeStart, blockTypeEnd - blockTypeStart);
+        
+        DialogueDB::BlockType blockType;
+        if (blockTypeStr == "Hard") {
+            blockType = DialogueDB::BlockType::Hard;
+        } else if (blockTypeStr == "SkyrimNet") {
+            blockType = DialogueDB::BlockType::SkyrimNet;
+        } else {
+            blockType = DialogueDB::BlockType::Soft;
+        }
+        
+        spdlog::info("[PrismaUIMenu::OnAddToBlacklist] Block type: {}", blockTypeStr);
+        
+        // Extract entries array (simplified parsing)
+        size_t arrayStart = jsonStr.find("[", entriesPos);
+        size_t arrayEnd = jsonStr.find("]", arrayStart);
+        
+        if (arrayStart == std::string::npos || arrayEnd == std::string::npos) {
+            spdlog::error("[PrismaUIMenu::OnAddToBlacklist] Could not find entries array");
+            return;
+        }
+        
+        std::string entriesStr = jsonStr.substr(arrayStart + 1, arrayEnd - arrayStart - 1);
+        
+        // Split by objects (look for },{ pattern)
+        std::vector<DialogueDB::BlacklistEntry> entriesToAdd;
+        size_t pos = 0;
+        
+        while (pos < entriesStr.length()) {
+            size_t objStart = entriesStr.find("{", pos);
+            if (objStart == std::string::npos) break;
+            
+            size_t objEnd = entriesStr.find("}", objStart);
+            if (objEnd == std::string::npos) break;
+            
+            std::string entryStr = entriesStr.substr(objStart, objEnd - objStart + 1);
+            
+            // Parse individual entry fields
+            DialogueDB::BlacklistEntry entry;
+            entry.blockType = blockType;
+            entry.addedTimestamp = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()
+            ).count();
+            
+            // Helper to extract JSON string value
+            auto extractString = [](const std::string& json, const std::string& key) -> std::string {
+                size_t keyPos = json.find("\"" + key + "\":\"");
+                if (keyPos == std::string::npos) return "";
+                size_t valueStart = keyPos + key.length() + 4;
+                size_t valueEnd = json.find("\"", valueStart);
+                if (valueEnd == std::string::npos) return "";
+                return json.substr(valueStart, valueEnd - valueStart);
+            };
+            
+            // Extract fields
+            entry.targetEditorID = extractString(entryStr, "topicEditorID");
+            entry.questEditorID = extractString(entryStr, "questEditorID");
+            entry.sourcePlugin = extractString(entryStr, "sourcePlugin");
+            entry.subtypeName = extractString(entryStr, "subtypeName");
+            
+            // Extract FormID from topicFormID field
+            std::string formIDStr = extractString(entryStr, "topicFormID");
+            if (!formIDStr.empty()) {
+                entry.targetFormID = std::stoul(formIDStr, nullptr, 16);
+            }
+            
+            // Set target type (Topic for now, could be Scene in future)
+            entry.targetType = DialogueDB::BlacklistTarget::Topic;
+            
+            // Set filter category
+            if (blockType == DialogueDB::BlockType::SkyrimNet) {
+                entry.filterCategory = "SkyrimNet";
+            } else if (!entry.subtypeName.empty()) {
+                entry.filterCategory = entry.subtypeName;
+            } else {
+                entry.filterCategory = "Blacklist";
+            }
+            
+            // Set granular blocking options
+            if (blockType == DialogueDB::BlockType::SkyrimNet) {
+                entry.blockAudio = false;
+                entry.blockSubtitles = false;
+                entry.blockSkyrimNet = true;
+            } else {
+                entry.blockAudio = true;
+                entry.blockSubtitles = true;
+                entry.blockSkyrimNet = (blockType == DialogueDB::BlockType::Soft);
+            }
+            
+            entriesToAdd.push_back(entry);
+            
+            pos = objEnd + 1;
+        }
+        
+        // Add entries to blacklist
+        int successCount = 0;
+        for (const auto& entry : entriesToAdd) {
+            spdlog::info("[PrismaUIMenu::OnAddToBlacklist] Adding: EditorID='{}', FormID=0x{:08X}, Type={}",
+                entry.targetEditorID, entry.targetFormID, static_cast<int>(entry.blockType));
+            
+            if (db->AddToBlacklist(entry)) {
+                successCount++;
+            } else {
+                spdlog::error("[PrismaUIMenu::OnAddToBlacklist] Failed to add entry: {}", entry.targetEditorID);
+            }
+        }
+        
+        spdlog::info("[PrismaUIMenu::OnAddToBlacklist] Successfully added {} of {} entries", 
+            successCount, entriesToAdd.size());
+        
+        // Refresh blacklist display
+        SendBlacklistData();
+        
+    } catch (const std::exception& e) {
+        spdlog::error("[PrismaUIMenu::OnAddToBlacklist] Exception: {}", e.what());
+    }
+}
+
+void PrismaUIMenu::OnAddToWhitelist(const char* data)
+{
+    if (!data) {
+        spdlog::error("[PrismaUIMenu::OnAddToWhitelist] Null data received");
+        return;
+    }
+    
+    spdlog::info("[PrismaUIMenu::OnAddToWhitelist] Received (NOT IMPLEMENTED): {}", data);
+    // TODO: Implement whitelist functionality
 }

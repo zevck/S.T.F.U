@@ -12,7 +12,7 @@ namespace Logger
         std::filesystem::path path(docPath);
         CoTaskMemFree(docPath);
         
-        path /= L"My Games\\Skyrim Special Edition\\SKSE\\DialogueInterceptor.log";
+        path /= L"My Games\\Skyrim Special Edition\\SKSE\\STFU.log";
         
         // Create directories if needed
         std::filesystem::create_directories(path.parent_path());
@@ -26,12 +26,12 @@ namespace Logger
         auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path.string(), true);
 
         auto log = std::make_shared<spdlog::logger>("global log", std::move(sink));
-        log->set_level(spdlog::level::info);
-        log->flush_on(spdlog::level::info);
+        log->set_level(spdlog::level::debug);
+        log->flush_on(spdlog::level::debug);
 
         spdlog::set_default_logger(std::move(log));
         spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
 
-        spdlog::info("DialogueInterceptor v{} loaded", PLUGIN_VERSION);
+        spdlog::info("STFU loaded");
     }
 }

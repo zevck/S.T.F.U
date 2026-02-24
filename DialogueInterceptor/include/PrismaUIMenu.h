@@ -26,6 +26,8 @@ private:
     static void OnClearBlacklist(const char* data);
     static void OnRefreshBlacklist(const char* data);
     static void OnUpdateBlacklistEntry(const char* data);
+    static void OnAddToBlacklist(const char* data);
+    static void OnAddToWhitelist(const char* data);
     static std::string SerializeHistoryToJSON();
     static std::string SerializeBlacklistToJSON();
 };
