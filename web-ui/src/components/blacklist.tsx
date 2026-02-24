@@ -1,8 +1,10 @@
 import { useState, useMemo, memo, useCallback, useRef, useEffect } from 'react';
 import { useBlacklistStore } from '../stores/blacklist';
 import { BlacklistEntry } from '../types';
-import { Search, Trash2, X, RotateCw, Save } from 'lucide-react';
+import { Search, Trash2, X, RotateCw, Save, Plus } from 'lucide-react';
 import { SKSE_API, log } from '../lib/skse-api';
+import { ResponsesModal } from './responses-modal';
+import { ManualEntryModal } from './manual-entry-modal';
 
 // Memoized list item component for better performance
 const BlacklistItem = memo(({ 
@@ -42,10 +44,26 @@ const BlacklistItem = memo(({
             </span>
           )}
         </div>
-        <div className="text-lg font-medium text-white truncate">{entry.topicEditorID || 'No Topic ID'}</div>
-        {entry.questName && (
-          <div className="text-base text-gray-400 truncate mt-1">{entry.questName}</div>
-        )}
+        <div className="text-lg font-medium text-white truncate">
+          {entry.questEditorID && (
+            <span className="text-gray-300">{entry.questEditorID}</span>
+          )}
+          {entry.questEditorID && entry.topicEditorID && (
+            <span> - {entry.topicEditorID}</span>
+          )}
+          {entry.questEditorID && !entry.topicEditorID && entry.topicFormID && (
+            <span className="text-gray-400"> - {entry.topicFormID}</span>
+          )}
+          {!entry.questEditorID && entry.questName && (
+            <span className="text-gray-300">{entry.questName}</span>
+          )}
+          {!entry.questEditorID && entry.topicEditorID && (
+            <span>{entry.questName ? ` - ${entry.topicEditorID}` : entry.topicEditorID}</span>
+          )}
+          {!entry.questEditorID && !entry.questName && !entry.topicEditorID && entry.topicFormID && (
+            <span className="text-gray-400">{entry.topicFormID}</span>
+          )}
+        </div>
       </div>
       <button
         onClick={(e) => {
@@ -66,11 +84,31 @@ const BlacklistItem = memo(({
 BlacklistItem.displayName = 'BlacklistItem';
 
 export const Blacklist = () => {
-  const { entries, searchQuery, setSearchQuery } = useBlacklistStore();
+  const { 
+    entries, 
+    searchQuery, 
+    setSearchQuery,
+    typeFilter,
+    setTypeFilter,
+    blockSoft,
+    setBlockSoft,
+    blockHard,
+    setBlockHard,
+    blockSkyrimNet,
+    setBlockSkyrimNet,
+    showTopics,
+    setShowTopics,
+    showScenes,
+    setShowScenes
+  } = useBlacklistStore();
   const [selectedEntries, setSelectedEntries] = useState<BlacklistEntry[]>([]);
   const [lastClickedIndex, setLastClickedIndex] = useState<number>(-1);
   const [displayCount, setDisplayCount] = useState(100); // Increased initial load
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const [showResponsesModal, setShowResponsesModal] = useState(false);
+  const [showManualEntryModal, setShowManualEntryModal] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalResponses, setModalResponses] = useState<string[]>([]);
   
   // For single-item detail panel (first selected item)
   const selectedEntry = selectedEntries.length > 0 ? selectedEntries[0] : null;
@@ -82,14 +120,6 @@ export const Blacklist = () => {
   const [editFilterCategory, setEditFilterCategory] = useState<string>('Blacklist');
   const [editNotes, setEditNotes] = useState<string>('');  // For single entry edit
   const [bulkFilterCategory, setBulkFilterCategory] = useState<string>('Blacklist'); // For bulk edit
-  
-  // Filter states
-  const [typeFilter, setTypeFilter] = useState<string>('All');
-  const [blockSoft, setBlockSoft] = useState(true);
-  const [blockHard, setBlockHard] = useState(true);
-  const [blockSkyrimNet, setBlockSkyrimNet] = useState(true);
-  const [showTopics, setShowTopics] = useState(true);
-  const [showScenes, setShowScenes] = useState(true);
 
   // Memoized filtering logic - only recalculates when dependencies change
   const filteredEntries = useMemo(() => {
@@ -101,6 +131,7 @@ export const Blacklist = () => {
           entry.targetType?.toLowerCase().includes(query) ||
           entry.blockType?.toLowerCase().includes(query) ||
           entry.questName?.toLowerCase().includes(query) ||
+          entry.questEditorID?.toLowerCase().includes(query) ||
           entry.topicEditorID?.toLowerCase().includes(query) ||
           entry.sourcePlugin?.toLowerCase().includes(query) ||
           entry.note?.toLowerCase().includes(query)
@@ -217,11 +248,6 @@ export const Blacklist = () => {
       SKSE_API.refreshBlacklist();
     }, 100);
   }, [selectedEntries]);
-
-  const handleClear = useCallback(() => {
-    log(`[Blacklist] handleClear called - clearing ${entries.length} entries`);
-    SKSE_API.clearBlacklist();
-  }, [entries.length]);
   
   const handleResetFilters = useCallback(() => {
     setSearchQuery('');
@@ -322,6 +348,27 @@ export const Blacklist = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedEntries, handleDeleteSelected]);
   
+  // Handle showing all responses
+  const handleShowAllResponses = useCallback(() => {
+    if (!selectedEntry) return;
+    
+    // Parse responseText JSON if available
+    let responses: string[] = [];
+    if (selectedEntry.responseText) {
+      try {
+        responses = JSON.parse(selectedEntry.responseText);
+      } catch (e) {
+        // If parsing fails, treat as single response
+        responses = [selectedEntry.responseText];
+      }
+    }
+    
+    const identifier = selectedEntry.topicEditorID || selectedEntry.topicFormID || 'Unknown';
+    setModalTitle(`All Responses: ${identifier}`);
+    setModalResponses(responses);
+    setShowResponsesModal(true);
+  }, [selectedEntry]);
+  
   // Filter categories based on target type
   const filterCategories = useMemo(() => {
     const isScene = selectedEntry?.targetType === 'Scene';
@@ -390,32 +437,16 @@ export const Blacklist = () => {
     <div className="flex flex-col h-full">
       {/* Filter Panel */}
       <div className="bg-gray-800 rounded-lg p-4 mb-4 space-y-3">
-        {/* Row 1: Search and Type Filter */}
-        <div className="flex gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-            <input
-              type="text"
-              placeholder="Search blacklist..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 text-base bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-base text-gray-300 font-medium">Type:</label>
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              className="px-3 py-2.5 text-base bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
-            >
-              <option value="All">All</option>
-              <option value="Topic">Topic</option>
-              <option value="Quest">Quest</option>
-              <option value="Subtype">Subtype</option>
-              <option value="Scene">Scene</option>
-            </select>
-          </div>
+        {/* Row 1: Search Bar */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+          <input
+            type="text"
+            placeholder="Search blacklist..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 text-base bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
+          />
         </div>
         
         {/* Row 2: Block Type Checkboxes */}
@@ -484,11 +515,11 @@ export const Blacklist = () => {
             Refresh
           </button>
           <button
-            onClick={handleClear}
-            className="ml-auto px-4 py-2 text-base bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center gap-2 transition-colors"
+            onClick={() => setShowManualEntryModal(true)}
+            className="ml-auto px-4 py-2 text-base bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center gap-2 transition-colors"
           >
-            <Trash2 size={18} />
-            Clear All
+            <Plus size={18} />
+            Manual Entry
           </button>
         </div>
       </div>
@@ -539,7 +570,12 @@ export const Blacklist = () => {
                     <p className="mb-2">Multiple entries selected</p>
                     <ul className="text-sm text-gray-400 space-y-1 max-h-40 overflow-y-auto">
                       {selectedEntries.map(e => (
-                        <li key={e.id} className="truncate">• {e.topicEditorID || 'No Topic ID'}</li>
+                        <li key={e.id} className="truncate">
+                          • {e.questName && <>{e.questName}</>}
+                          {e.questName && !e.topicEditorID && e.topicFormID && <> - {e.topicFormID}</>}
+                          {e.topicEditorID && <>{e.questName ? ` - ${e.topicEditorID}` : e.topicEditorID}</>}
+                          {!e.questName && !e.topicEditorID && e.topicFormID && <>{e.topicFormID}</>}
+                        </li>
                       ))}
                     </ul>
                   </div>
@@ -633,6 +669,27 @@ export const Blacklist = () => {
                   <div className="text-base text-white">{selectedEntry.sourcePlugin}</div>
                 </div>
               )}
+              
+              {/* Show All Responses button */}
+              {selectedEntry.responseText && (() => {
+                let responseCount = 0;
+                try {
+                  const responses = JSON.parse(selectedEntry.responseText);
+                  responseCount = Array.isArray(responses) ? responses.length : 1;
+                } catch {
+                  responseCount = 1;
+                }
+                return responseCount > 0 ? (
+                  <div className="border-t border-gray-700 pt-4 mt-4">
+                    <button
+                      onClick={handleShowAllResponses}
+                      className="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg transition-colors"
+                    >
+                      Show All Responses ({responseCount})
+                    </button>
+                  </div>
+                ) : null;
+              })()}
               
               <div className="border-t border-gray-700 pt-3">
                 <h4 className="text-lg font-semibold mb-3 text-blue-400">Blocking Settings</h4>
@@ -773,6 +830,20 @@ export const Blacklist = () => {
       <div className="mt-4 text-base text-gray-500">
         Showing {displayedEntries.length} of {filteredEntries.length} filtered entries ({entries.length} total)
       </div>
+      
+      {/* Responses Modal */}
+      <ResponsesModal
+        isOpen={showResponsesModal}
+        onClose={() => setShowResponsesModal(false)}
+        title={modalTitle}
+        responses={modalResponses}
+      />
+      
+      {/* Manual Entry Modal */}
+      <ManualEntryModal
+        isOpen={showManualEntryModal}
+        onClose={() => setShowManualEntryModal(false)}
+      />
     </div>
   );
 };

@@ -7,6 +7,7 @@ interface HistoryStore {
   setEntries: (entries: DialogueEntry[]) => void;
   setSearchQuery: (query: string) => void;
   clearEntries: () => void;
+  updateEntryStatus: (entryIds: number[], newStatus: DialogueEntry['status']) => void;
 }
 
 export const useHistoryStore = create<HistoryStore>((set) => ({
@@ -15,4 +16,9 @@ export const useHistoryStore = create<HistoryStore>((set) => ({
   setEntries: (entries) => set({ entries }),
   setSearchQuery: (query) => set({ searchQuery: query }),
   clearEntries: () => set({ entries: [], searchQuery: '' }),
+  updateEntryStatus: (entryIds, newStatus) => set((state) => ({
+    entries: state.entries.map(entry => 
+      entryIds.includes(entry.id) ? { ...entry, status: newStatus } : entry
+    )
+  })),
 }));

@@ -25,6 +25,7 @@ public:
     static void ReimportHardcodedScenes();  // Re-import all default scenes
     static bool HasOpenModal() { return showResponsesPopup_ || showManualEntryModal_; }  // Check if any modal is open
     static float GetUIScale() { return uiScale_; }  // Get UI scale factor for resolution scaling
+    static void OpenManualEntry(bool isWhitelist = false);  // Open manual entry modal
     
 private:
     static void Render();

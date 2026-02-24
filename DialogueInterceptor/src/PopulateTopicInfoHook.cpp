@@ -262,6 +262,15 @@ namespace PopulateTopicInfoHook
                 entry.questFormID = quest ? quest->GetFormID() : 0;
                 entry.questName = quest && quest->GetName() ? quest->GetName() : "";
                 
+                // Debug logging for questEditorID
+                if (entry.questEditorID.empty() && entry.questName.empty()) {
+                    spdlog::warn("[PopulateTopicInfoHook] Quest info missing for topic '{}' (FormID: 0x{:08X}) - quest pointer: {}", 
+                        topicEditorIDStr, topicFormID, quest ? "valid" : "null");
+                } else {
+                    spdlog::debug("[PopulateTopicInfoHook] Topic '{}' -> Quest: '{}' (EditorID: '{}', Name: '{}')", 
+                        topicEditorIDStr, entry.questEditorID, entry.questEditorID, entry.questName);
+                }
+                
                 entry.sceneEditorID = "";
                 entry.topicInfoFormID = a_topicInfo ? a_topicInfo->GetFormID() : 0;
                 
@@ -536,6 +545,15 @@ namespace PopulateTopicInfoHook
             entry.questEditorID = quest && quest->GetFormEditorID() ? quest->GetFormEditorID() : "";
             entry.questFormID = quest ? quest->GetFormID() : 0;
             entry.questName = quest && quest->GetName() ? quest->GetName() : "";
+            
+            // Debug logging for questEditorID
+            if (entry.questEditorID.empty() && entry.questName.empty()) {
+                spdlog::warn("[PopulateTopicInfoHook] Quest info missing for dialogue - topic: '{}' (FormID: 0x{:08X}), quest pointer: {}", 
+                    entry.topicEditorID, topicFormID, quest ? "valid" : "null");
+            } else {
+                spdlog::debug("[PopulateTopicInfoHook] Logging dialogue - Topic: '{}', Quest EditorID: '{}', Quest Name: '{}'", 
+                    entry.topicEditorID, entry.questEditorID, entry.questName);
+            }
             
             // Get source plugin from topicInfo (specific response that played)
             if (a_topicInfo) {

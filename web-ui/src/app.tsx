@@ -11,6 +11,7 @@ type Tab = 'history' | 'blacklist';
 
 export const App = () => {
   const [activeTab, setActiveTab] = useState<Tab>('history');
+  const prevTabRef = useRef<Tab>('history');
   const [isFullscreen, setIsFullscreen] = useState(() => {
     // Load fullscreen preference from localStorage
     const saved = localStorage.getItem('stfu-fullscreen');
@@ -88,6 +89,9 @@ export const App = () => {
   useEffect(() => {
     log('[App] useEffect started - initializing...');
     
+    // Initialize SKSE_API to set up window.SKSE_API for C++ callbacks
+    SKSE_API.init();
+    
     // Subscribe to history updates from SKSE
     SKSE_API.subscribe('updateHistory', (jsonData: string) => {
       log('[App] updateHistory received');
@@ -118,6 +122,9 @@ export const App = () => {
     log(`[App] requestBlacklist exists: ${typeof (window as any).requestBlacklist === 'function'}`);
     log(`[App] closeMenu exists: ${typeof (window as any).closeMenu === 'function'}`);
     log(`[App] jsLog exists: ${typeof (window as any).jsLog === 'function'}`);
+    log(`[App] addToBlacklist exists: ${typeof (window as any).addToBlacklist === 'function'}`);
+    log(`[App] addToWhitelist exists: ${typeof (window as any).addToWhitelist === 'function'}`);
+    log(`[App] deleteBlacklistEntry exists: ${typeof (window as any).deleteBlacklistEntry === 'function'}`);
 
     // Request initial data
     SKSE_API.sendToSKSE('requestHistory');
@@ -141,6 +148,20 @@ export const App = () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
+
+  // Refresh data when switching tabs
+  useEffect(() => {
+    if (prevTabRef.current !== activeTab) {
+      if (activeTab === 'history') {
+        log('[App] Switching to history tab - requesting refresh');
+        SKSE_API.requestHistoryRefresh();
+      } else if (activeTab === 'blacklist') {
+        log('[App] Switching to blacklist tab - requesting refresh');
+        SKSE_API.requestBlacklistRefresh();
+      }
+      prevTabRef.current = activeTab;
+    }
+  }, [activeTab]);
 
   return (
     <div className="w-full h-full bg-gray-900 text-white flex flex-col">

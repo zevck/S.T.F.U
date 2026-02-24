@@ -111,6 +111,9 @@ namespace Config
     // Check if a subtype has a toggle that exists but is disabled
     bool HasDisabledSubtypeToggle(uint16_t topicSubtype);
     
+    // Toggle a subtype's MCM filter setting (flip between enabled/disabled)
+    bool ToggleSubtypeFilter(uint16_t topicSubtype);
+    
     // Check if a filterCategory's toggle is enabled (for database blacklist entries)
     bool IsFilterCategoryEnabled(const std::string& filterCategory);
     

@@ -1,7 +1,8 @@
 import { useMemo, useState, memo, useRef, useEffect, useCallback } from 'react';
 import { useHistoryStore } from '@/stores/history';
 import { DialogueEntry } from '@/types';
-import { SKSE_API } from '@/lib/skse-api';
+import { SKSE_API, log } from '@/lib/skse-api';
+import { ResponsesModal } from './responses-modal';
 
 const getStatusColor = (status: DialogueEntry['status']): string => {
   switch (status) {
@@ -13,14 +14,51 @@ const getStatusColor = (status: DialogueEntry['status']): string => {
       return 'text-red-400';
     case 'Skyrim':
       return 'text-gray-400';
+    case 'SkyrimNet Block':
+      return 'text-indigo-400';
     case 'Filter':
-      return 'text-yellow-400';
+      return 'text-yellow-400';  // Filter displays as "Soft Block" in yellow
     case 'Toggled Off':
       return 'text-cyan-400';
     case 'Whitelist':
       return 'text-purple-300';
     default:
       return 'text-white';
+  }
+};
+
+const getStatusDisplay = (status: DialogueEntry['status']): string => {
+  // Short names for history list
+  switch (status) {
+    case 'Toggled Off':
+    case 'Skyrim':
+      return 'Allowed';
+    case 'Filter':
+      return 'Soft Block';  // Filter displays as Soft Block (yellow color)
+    default:
+      return status;
+  }
+};
+
+const getStatusDescription = (status: DialogueEntry['status']): string => {
+  // Descriptive text for detail panel
+  switch (status) {
+    case 'Allowed':
+    case 'Toggled Off':
+    case 'Skyrim':
+      return 'Allowed';
+    case 'Soft Block':
+      return 'Soft blocked by blacklist';
+    case 'Hard Block':
+      return 'Hard blocked by blacklist';
+    case 'SkyrimNet Block':
+      return 'SkyrimNet blocked';
+    case 'Filter':
+      return 'Soft blocked by filter';
+    case 'Whitelist':
+      return 'Whitelisted';
+    default:
+      return status;
   }
 };
 
@@ -54,7 +92,7 @@ const HistoryItem = memo(({
     <div className="flex items-center justify-between mb-1">
       <span className="text-base text-gray-400">{formatTimestamp(entry.timestamp)}</span>
       <span className={`text-base font-bold ${getStatusColor(entry.status)}`}>
-        {entry.status}
+        {getStatusDisplay(entry.status)}
       </span>
     </div>
     <div className="text-lg mb-1">
@@ -73,9 +111,31 @@ export const History = () => {
   const [lastClickedIndex, setLastClickedIndex] = useState<number>(-1);
   const [displayCount, setDisplayCount] = useState(100); // Increased initial load
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [showResponsesModal, setShowResponsesModal] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalResponses, setModalResponses] = useState<string[]>([]);
   
   // For single-item detail panel (first selected item)
   const selectedEntry = selectedEntries.length > 0 ? selectedEntries[0] : null;
+
+  // Update selectedEntries when entries change (e.g., after toggle)
+  useEffect(() => {
+    if (selectedEntries.length > 0) {
+      const selectedIds = selectedEntries.map(e => e.id);
+      const updatedSelected = entries.filter(e => selectedIds.includes(e.id));
+      
+      // Only update if entries actually changed (not just selection changed)
+      const hasChanges = updatedSelected.some((updated, idx) => {
+        const current = selectedEntries[idx];
+        return current && (updated.status !== current.status || updated.topicSubtype !== current.topicSubtype);
+      });
+      
+      if (hasChanges && updatedSelected.length > 0) {
+        setSelectedEntries(updatedSelected);
+      }
+    }
+  }, [entries]);
 
   const filteredEntries = useMemo(() => {
     if (!searchQuery) return entries;
@@ -125,15 +185,30 @@ export const History = () => {
   }, [selectedEntries]);
   
   const handleAddToBlacklist = useCallback((blockType: 'Soft' | 'Hard' | 'SkyrimNet') => {
-    if (selectedEntries.length === 0) return;
+    log(`[History] handleAddToBlacklist called with blockType: ${blockType}`);
+    // Use selected entries array if available, otherwise use single selected entry
+    const entriesToAdd = selectedEntries.length > 0 ? selectedEntries : (selectedEntry ? [selectedEntry] : []);
+    if (entriesToAdd.length > 0) {
+      log(`[History] Adding to blacklist, ${entriesToAdd.length} entries:`);
+      entriesToAdd.forEach((e, idx) => {
+        log(`  Entry ${idx}: topicEditorID=${e.topicEditorID}, topicFormID=${e.topicFormID}, questEditorID=${e.questEditorID}, questName=${e.questName}, sceneEditorID=${e.sceneEditorID}, isScene=${e.isScene}`);
+      });
+    }
+    if (entriesToAdd.length === 0) {
+      log(`[History] No entries to add, returning`);
+      return;
+    }
     
     // Call SKSE API to add entries to blacklist
-    SKSE_API.addToBlacklist(selectedEntries, blockType);
+    // The C++ backend will update the database and send back refreshed history data
+    log(`[History] Calling SKSE_API.addToBlacklist...`);
+    SKSE_API.addToBlacklist(entriesToAdd, blockType);
+    log(`[History] SKSE_API.addToBlacklist call completed`);
     
     // Clear selection after adding
     setSelectedEntries([]);
     setLastClickedIndex(-1);
-  }, [selectedEntries]);
+  }, [selectedEntries, selectedEntry]);
   
   const handleAddToWhitelist = useCallback(() => {
     if (selectedEntries.length === 0) return;
@@ -145,6 +220,52 @@ export const History = () => {
     setSelectedEntries([]);
     setLastClickedIndex(-1);
   }, [selectedEntries]);
+  
+  const handleRemoveFromBlacklist = useCallback(() => {
+    const entryToRemove = selectedEntries.length > 0 ? selectedEntries[0] : selectedEntry;
+    if (!entryToRemove) return;
+    
+    log(`[History] Removing from blacklist, entry: topicEditorID=${entryToRemove.topicEditorID}, topicFormID=${entryToRemove.topicFormID}, sceneEditorID=${entryToRemove.sceneEditorID}, isScene=${entryToRemove.isScene}, questEditorID=${entryToRemove.questEditorID}`);
+    SKSE_API.removeFromBlacklist(entryToRemove);
+    
+    // Request immediate refresh to show updated status
+    setTimeout(() => {
+      log('[History] Requesting refresh after remove from blacklist');
+      SKSE_API.requestHistoryRefresh();
+    }, 100);
+    
+    // Clear selection
+    setSelectedEntries([]);
+    setLastClickedIndex(-1);
+  }, [selectedEntries, selectedEntry]);
+  
+  const handleShowAllResponses = useCallback(() => {
+    if (!selectedEntry) return;
+    
+    const responses = selectedEntry.allResponses && selectedEntry.allResponses.length > 0
+      ? selectedEntry.allResponses
+      : selectedEntry.text
+      ? [selectedEntry.text]
+      : [];
+    
+    const identifier = selectedEntry.topicEditorID || selectedEntry.topicFormID || 'Unknown';
+    setModalTitle(`All Responses: ${identifier}`);
+    setModalResponses(responses);
+    setShowResponsesModal(true);
+  }, [selectedEntry]);
+  
+  const handleToggleSubtypeFilter = useCallback(() => {
+    if (!selectedEntry || selectedEntry.topicSubtype === 0) return;
+    
+    log(`[History] Toggling subtype filter for subtype: ${selectedEntry.topicSubtype}`);
+    SKSE_API.toggleSubtypeFilter(selectedEntry.topicSubtype);
+    
+    // Request immediate refresh to show updated status
+    setTimeout(() => {
+      log('[History] Requesting refresh after toggle');
+      SKSE_API.requestHistoryRefresh();
+    }, 100);
+  }, [selectedEntry]);
   
   // Handle multi-selection click
   const handleItemClick = useCallback((entry: DialogueEntry, index: number, event?: React.MouseEvent) => {
@@ -173,24 +294,45 @@ export const History = () => {
       setSelectedEntries([entry]);
       setLastClickedIndex(index);
     }
+    
+    // Focus the container so DEL key works immediately
+    log('[History] Item clicked, focusing container');
+    setTimeout(() => {
+      containerRef.current?.focus();
+      const activeEl = document.activeElement;
+      log(`[History] Container focus attempted, activeElement: ${activeEl?.className || 'unknown'}`);
+    }, 10);
   }, [lastClickedIndex, filteredEntries]);
   
-  // Keyboard support for DEL key
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Delete' && selectedEntries.length > 0) {
-        e.preventDefault();
-        // Clear selection
-        setSelectedEntries([]);
-      }
-    };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedEntries]);
+  // Keyboard support for DEL key - handle directly on the history container
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    log(`[History DEL] Key pressed: ${e.key}, selectedEntries: ${selectedEntries.length}`);
+    if (e.key === 'Delete' && selectedEntries.length > 0) {
+      log(`[History DEL] Handling delete, entry IDs: ${selectedEntries.map(e => e.id).join(', ')}`);
+      e.preventDefault();
+      e.stopPropagation();
+      // Delete entries from dialogue_log table
+      const entryIds = selectedEntries.map(entry => entry.id);
+      log(`[History DEL] Calling deleteHistoryEntries with: ${JSON.stringify(entryIds)}`);
+      SKSE_API.deleteHistoryEntries(entryIds);
+      setSelectedEntries([]);
+      setLastClickedIndex(-1);
+      log('[History DEL] Delete complete, selection cleared');
+    } else {
+      log('[History DEL] Not handling - either not Delete key or no selection');
+    }
+  };
 
   return (
-    <div className="flex flex-col h-full">
+    <div 
+      ref={containerRef}
+      className="flex flex-col h-full" 
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      onFocus={() => log('[History] Container gained focus')}
+      onBlur={() => log('[History] Container lost focus')}
+      style={{ outline: 'none' }}
+    >
       <div className="mb-4">
         <h1 className="text-2xl font-bold mb-2">Dialogue History</h1>
         <input
@@ -260,20 +402,20 @@ export const History = () => {
                       onClick={() => handleAddToBlacklist('Soft')}
                       className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Add as Soft Block
+                      Soft Block
                     </button>
                     <button
                       onClick={() => handleAddToBlacklist('Hard')}
                       className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Add as Hard Block
+                      Hard Block
                     </button>
                     {allSelectedAreSkyrimNetBlockable && (
                       <button
                         onClick={() => handleAddToBlacklist('SkyrimNet')}
                         className="w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        Add as SkyrimNet Block
+                        SkyrimNet Block
                       </button>
                     )}
                     {allSelectedAreSkyrimNetBlockable && (
@@ -282,6 +424,27 @@ export const History = () => {
                       </div>
                     )}
                   </div>
+                  
+                  {/* Remove from Blacklist for multi-selection - show if any entry is blacklisted */}
+                  {selectedEntries.some(e => e.status === 'Soft Block' || e.status === 'Hard Block' || e.status === 'SkyrimNet Block') && (
+                    <div className="space-y-2 border-t border-gray-700 pt-4 mt-4">
+                      <div className="text-base text-gray-400 font-medium mb-2">Remove from Blacklist</div>
+                      <button
+                        onClick={() => {
+                          selectedEntries.forEach(entry => {
+                            if (entry.status === 'Soft Block' || entry.status === 'Hard Block' || entry.status === 'SkyrimNet Block') {
+                              SKSE_API.removeFromBlacklist(entry);
+                            }
+                          });
+                          setSelectedEntries([]);
+                          setLastClickedIndex(-1);
+                        }}
+                        className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                      >
+                        Remove Selected from Blacklist
+                      </button>
+                    </div>
+                  )}
                   
                   {/* Whitelist controls (placeholder) */}
                   <div className="space-y-2 border-t border-gray-700 pt-4 mt-4">
@@ -299,7 +462,7 @@ export const History = () => {
                   </div>
                   
                   <div className="text-sm text-gray-400 text-center pt-2 border-t border-gray-700 mt-2">
-                    Hint: Press DEL key to clear selection
+                    Hint: Press DEL key to delete selected entries
                   </div>
                 </>
               ) : (
@@ -307,18 +470,8 @@ export const History = () => {
               <div>
                 <label className="text-sm text-gray-400 font-medium">Status</label>
                 <div className={`text-base font-bold ${getStatusColor(selectedEntry.status)}`}>
-                  {selectedEntry.status}
+                  {getStatusDescription(selectedEntry.status)}
                 </div>
-              </div>
-
-              <div>
-                <label className="text-sm text-gray-400 font-medium">Speaker</label>
-                <div className="text-base text-green-300">{selectedEntry.speaker}</div>
-              </div>
-
-              <div>
-                <label className="text-sm text-gray-400 font-medium">Text</label>
-                <div className="text-base text-white break-words">{selectedEntry.text}</div>
               </div>
 
               <div>
@@ -342,21 +495,97 @@ export const History = () => {
                 <label className="text-sm text-gray-400 font-medium">Subtype</label>
                 <div className="text-base text-blue-400">{selectedEntry.subtypeName}</div>
               </div>
-
-              <div>
-                <label className="text-sm text-gray-400 font-medium">Response Count</label>
-                <div className="text-base text-white">{selectedEntry.responseCount}</div>
+              
+              {/* Show All Responses button */}
+              {selectedEntry.responseCount > 0 && (
+                <div className="border-t border-gray-700 pt-4 mt-4">
+                  <button
+                    onClick={handleShowAllResponses}
+                    className="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg transition-colors"
+                  >
+                    Show All Responses ({selectedEntry.responseCount})
+                  </button>
+                </div>
+              )}
+              
+              {/* Blacklist controls for single selection - Always show block type buttons */}
+              <div className="space-y-2 border-t border-gray-700 pt-4 mt-4">
+                <div className="text-base text-gray-400 font-medium mb-2">
+                  {selectedEntry.status === 'Soft Block' || selectedEntry.status === 'Hard Block' || selectedEntry.status === 'SkyrimNet Block' 
+                    ? 'Change Block Type' 
+                    : 'Add to Blacklist'}
+                </div>
+                <button
+                  onClick={() => handleAddToBlacklist('Soft')}
+                  className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Soft Block
+                </button>
+                <button
+                  onClick={() => handleAddToBlacklist('Hard')}
+                  className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Hard Block
+                </button>
+                {selectedEntry.skyrimNetBlockable && (
+                  <button
+                    onClick={() => handleAddToBlacklist('SkyrimNet')}
+                    className="w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    SkyrimNet Block
+                  </button>
+                )}
               </div>
-
-              <div>
-                <label className="text-sm text-gray-400 font-medium">Timestamp</label>
-                <div className="text-base text-gray-300">{formatTimestamp(selectedEntry.timestamp)}</div>
+              
+              {/* Remove from blacklist button - only show when already blacklisted */}
+              {(selectedEntry.status === 'Soft Block' || selectedEntry.status === 'Hard Block' || selectedEntry.status === 'SkyrimNet Block') && (
+                <div className="space-y-2 border-t border-gray-700 pt-4 mt-4">
+                  <div className="text-base text-gray-400 font-medium mb-2">Remove from Blacklist</div>
+                  <button
+                    onClick={handleRemoveFromBlacklist}
+                    className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                  >
+                    Remove from Blacklist
+                  </button>
+                </div>
+              )}
+              
+              {/* Whitelist controls (placeholder) */}
+              <div className="space-y-2 border-t border-gray-700 pt-4 mt-4">
+                <div className="text-base text-gray-400 font-medium mb-2">Add to Whitelist</div>
+                <button
+                  onClick={handleAddToWhitelist}
+                  className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors opacity-50 cursor-not-allowed"
+                  disabled
+                >
+                  Add to Whitelist
+                </button>
+                <div className="text-xs text-gray-500 italic">
+                  Whitelist functionality coming soon
+                </div>
               </div>
-
-              {selectedEntry.skyrimNetBlockable && (
-                <div className="mt-2 p-2 bg-purple-900 bg-opacity-30 border border-purple-700 rounded">
-                  <div className="text-sm text-purple-300">
-                    ✓ SkyrimNet compatible (Menu dialogue)
+              
+              {/* Subtype Filter Toggle - only show for entries filtered by MCM or toggled off */}
+              {(selectedEntry.status === 'Filter' || selectedEntry.status === 'Toggled Off') && (
+                <div className="space-y-2 border-t border-gray-700 pt-4 mt-4">
+                  <div className="text-base text-gray-400 font-medium mb-2">
+                    Subtype Filter
+                    <span className="text-xs ml-2">
+                      ({selectedEntry.subtypeName})
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleToggleSubtypeFilter}
+                    className={`w-full px-4 py-2 text-white rounded-lg transition-colors ${
+                      selectedEntry.status === 'Toggled Off' 
+                        ? 'bg-cyan-600 hover:bg-cyan-700' 
+                        : 'bg-yellow-600 hover:bg-yellow-700'
+                    }`}
+                  >
+                    Toggle {selectedEntry.subtypeName} Filter
+                  </button>
+                  <div className="text-xs text-gray-500 italic">
+                    Quick toggle for MCM subtype filter setting
                   </div>
                 </div>
               )}
@@ -370,8 +599,16 @@ export const History = () => {
       </div>
 
       <div className="mt-4 text-base text-gray-500">
-        Showing {displayedEntries.length} of {filteredEntries.length} filtered entries ({entries.length} total)
+        Showing {displayedEntries.length} of {filteredEntries.length} entries ({entries.length} total)
       </div>
+      
+      {/* Responses Modal */}
+      <ResponsesModal
+        isOpen={showResponsesModal}
+        onClose={() => setShowResponsesModal(false)}
+        title={modalTitle}
+        responses={modalResponses}
+      />
     </div>
   );
 };

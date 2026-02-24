@@ -1314,7 +1314,7 @@ namespace DialogueDB
                     const char* updateSql = R"(
                         UPDATE blacklist 
                         SET block_type = ?, added_timestamp = ?, notes = ?, response_text = ?, subtype = ?, subtype_name = ?,
-                            filter_category = ?, block_skyrimnet = ?, source_plugin = ?
+                            filter_category = ?, block_skyrimnet = ?, source_plugin = ?, quest_editorid = ?
                         WHERE id = ?;
                     )";
                     sqlite3_stmt* updateStmt = nullptr;
@@ -1329,7 +1329,8 @@ namespace DialogueDB
                         sqlite3_bind_text(updateStmt, 7, enrichedEntry.filterCategory.c_str(), -1, SQLITE_TRANSIENT);
                         sqlite3_bind_int(updateStmt, 8, enrichedEntry.blockSkyrimNet ? 1 : 0);
                         sqlite3_bind_text(updateStmt, 9, enrichedEntry.sourcePlugin.c_str(), -1, SQLITE_TRANSIENT);
-                        sqlite3_bind_int64(updateStmt, 10, existingId);
+                        sqlite3_bind_text(updateStmt, 10, enrichedEntry.questEditorID.c_str(), -1, SQLITE_TRANSIENT);
+                        sqlite3_bind_int64(updateStmt, 11, existingId);
                         
                         success = (sqlite3_step(updateStmt) == SQLITE_DONE);
                         sqlite3_finalize(updateStmt);
@@ -1365,6 +1366,7 @@ namespace DialogueDB
                     sqlite3_bind_text(insertBlacklistStmt_, 10, enrichedEntry.filterCategory.c_str(), -1, SQLITE_TRANSIENT);
                     sqlite3_bind_int(insertBlacklistStmt_, 11, enrichedEntry.blockSkyrimNet ? 1 : 0);
                     sqlite3_bind_text(insertBlacklistStmt_, 12, enrichedEntry.sourcePlugin.c_str(), -1, SQLITE_TRANSIENT);
+                    sqlite3_bind_text(insertBlacklistStmt_, 13, enrichedEntry.questEditorID.c_str(), -1, SQLITE_TRANSIENT);
                     
                     success = (sqlite3_step(insertBlacklistStmt_) == SQLITE_DONE);
                     

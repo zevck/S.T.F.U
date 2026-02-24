@@ -5100,6 +5100,30 @@ void STFUMenu::ReimportHardcodedScenes()
     
     spdlog::info("[STFU Menu] Scene re-import complete!");
 }
+
+void STFUMenu::OpenManualEntry(bool isWhitelist)
+{
+    // Open the ImGui menu if it's not already open
+    if (window_ && !window_->IsOpen.load()) {
+        window_->IsOpen.store(true);  // Open the menu
+        needsHistoryRefresh_ = true;
+        needsBlacklistRefresh_ = true;
+        needsWhitelistRefresh_ = true;
+    }
+    
+    // Set manual entry modal state
+    showManualEntryModal_ = true;
+    isManualEntryForWhitelist_ = isWhitelist;
+    
+    // Clear the form
+    std::memset(manualEntryIdentifier_, 0, sizeof(manualEntryIdentifier_));
+    std::memset(manualEntryNotes_, 0, sizeof(manualEntryNotes_));
+    manualEntryBlockType_ = 0;  // Default to Soft
+    manualEntryFilterCategoryIndex_ = 0;
+    
+    spdlog::info("[STFU Menu] Opened manual entry modal (isWhitelist={})", isWhitelist);
+}
+
 void STFUMenu::RenderManualEntryModal()
 {
     using namespace ImGuiMCP;

@@ -96,14 +96,52 @@ export const SKSE_API = {
   },
   
   addToBlacklist: (entries: any[], blockType: 'Soft' | 'Hard' | 'SkyrimNet') => {
-    log(`[SKSE_API] Adding ${entries.length} entries to blacklist as ${blockType} Block`);
+    log(`[SKSE_API] addToBlacklist called with ${entries.length} entries, blockType: ${blockType}`);
+    log(`[SKSE_API] Entries: ${JSON.stringify(entries)}`);
     const jsonData = JSON.stringify({ entries, blockType });
+    log(`[SKSE_API] JSON data: ${jsonData}`);
+    log(`[SKSE_API] Calling sendToSKSE('addToBlacklist', jsonData)...`);
     SKSE_API.sendToSKSE('addToBlacklist', jsonData);
+    log(`[SKSE_API] sendToSKSE call completed`);
   },
   
   addToWhitelist: (entries: any[]) => {
     log(`[SKSE_API] Adding ${entries.length} entries to whitelist (placeholder)`);
     const jsonData = JSON.stringify({ entries });
     SKSE_API.sendToSKSE('addToWhitelist', jsonData);
+  },
+  
+  removeFromBlacklist: (entry: any) => {
+    log(`[SKSE_API] removeFromBlacklist called - topicEditorID=${entry.topicEditorID}, topicFormID=${entry.topicFormID}, sceneEditorID=${entry.sceneEditorID}, isScene=${entry.isScene}`);
+    const jsonData = JSON.stringify({
+      topicFormID: entry.topicFormID || '',
+      topicEditorID: entry.topicEditorID || '',
+      sceneEditorID: entry.sceneEditorID || '',
+      isScene: entry.isScene || false
+    });
+    log(`[SKSE_API] Sending JSON to C++: ${jsonData}`);
+    SKSE_API.sendToSKSE('removeFromBlacklist', jsonData);
+  },
+
+  toggleSubtypeFilter: (topicSubtype: number) => {
+    const jsonData = JSON.stringify({
+      topicSubtype
+    });
+    SKSE_API.sendToSKSE('toggleSubtypeFilter', jsonData);
+  },
+
+  deleteHistoryEntries: (entryIds: number[]) => {
+    const jsonData = JSON.stringify({
+      entryIds
+    });
+    SKSE_API.sendToSKSE('deleteHistoryEntries', jsonData);
+  },
+
+  requestHistoryRefresh: () => {
+    SKSE_API.sendToSKSE('requestHistory', '');
+  },
+
+  requestBlacklistRefresh: () => {
+    SKSE_API.sendToSKSE('requestBlacklist', '');
   },
 };

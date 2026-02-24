@@ -1,4 +1,5 @@
 #pragma once
+#include "../include/PCH.h"
 #include "PrismaUI_API.h"
 #include "DialogueDatabase.h"
 
@@ -28,6 +29,12 @@ private:
     static void OnUpdateBlacklistEntry(const char* data);
     static void OnAddToBlacklist(const char* data);
     static void OnAddToWhitelist(const char* data);
+    static void OnRemoveFromBlacklist(const char* data);
+    static void OnToggleSubtypeFilter(const char* data);
+    static void OnDeleteHistoryEntries(const char* data);
+    static void OnOpenManualEntry(const char* data);
+    static void OnDetectIdentifierType(const char* data);
+    static void OnCreateManualEntry(const char* data);
     static std::string SerializeHistoryToJSON();
     static std::string SerializeBlacklistToJSON();
 };

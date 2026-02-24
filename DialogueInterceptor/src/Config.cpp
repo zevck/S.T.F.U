@@ -1168,6 +1168,30 @@ overrides:
         return false;
     }
     
+    bool ToggleSubtypeFilter(uint16_t topicSubtype)
+    {
+        // Find the subtype's global variable
+        auto subtypeGlobalIt = g_settings.mcm.subtypeGlobals.find(topicSubtype);
+        if (subtypeGlobalIt == g_settings.mcm.subtypeGlobals.end() || !subtypeGlobalIt->second) {
+            spdlog::warn("[Config::ToggleSubtypeFilter] Subtype {} has no MCM toggle global", topicSubtype);
+            return false;  // No global for this subtype
+        }
+        
+        RE::TESGlobal* global = subtypeGlobalIt->second;
+        
+        // Toggle the value (flip between 0.0 and 1.0)
+        bool wasEnabled = global->value >= 0.5f;
+        global->value = wasEnabled ? 0.0f : 1.0f;
+        
+        spdlog::info("[Config::ToggleSubtypeFilter] Toggled subtype {} filter from {} to {}", 
+            topicSubtype, wasEnabled ? "enabled" : "disabled", !wasEnabled ? "enabled" : "disabled");
+        
+        // Clear the cache so decisions are re-evaluated with the new setting
+        ClearCache();
+        
+        return true;
+    }
+    
     bool IsFilterCategoryEnabled(const std::string& filterCategory)
     {
         // Special case: "Blacklist" uses blacklist toggle

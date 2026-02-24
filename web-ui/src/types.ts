@@ -9,9 +9,14 @@ export interface DialogueEntry {
   topicFormID: string;
   sourcePlugin: string;
   subtypeName: string;
-  status: 'Allowed' | 'Soft Block' | 'Hard Block' | 'Skyrim' | 'Filter' | 'Toggled Off' | 'Whitelist';
+  topicSubtype: number;
+  status: 'Allowed' | 'Soft Block' | 'Hard Block' | 'Skyrim' | 'SkyrimNet Block' | 'Filter' | 'Toggled Off' | 'Whitelist';
   responseCount: number;
   skyrimNetBlockable: boolean;
+  isScene: boolean;
+  isBardSong: boolean;
+  sceneEditorID: string;
+  allResponses?: string[];
 }
 
 export interface BlacklistEntry {
@@ -26,4 +31,6 @@ export interface BlacklistEntry {
   note?: string;
   dateAdded?: number;
   filterCategory?: string;
+  responseText?: string;
+  allResponses?: string[];
 }
