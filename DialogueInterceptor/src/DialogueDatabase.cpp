@@ -941,18 +941,17 @@ namespace DialogueDB
         }
         
         if (existingId > 0) {
-            // Check if block type is changing
+            // Check if block type is changing (for logging purposes)
             bool blockTypeChanged = (existingBlockType != static_cast<int>(enrichedEntry.blockType));
             
-            // If nothing important changed, skip the update
-            if (!blockTypeChanged) {
-                spdlog::debug("[DialogueDB] Entry already exists with same block type (id={}): {}", existingId, enrichedEntry.targetEditorID);
-                return true;  // Success, but no update needed
+            // Update existing entry (always update to catch changes in notes, filterCategory, etc.)
+            if (blockTypeChanged) {
+                spdlog::info("[DialogueDB] Updating existing blacklist entry (id={}): {} (FormID: 0x{:08X}) - block type changing from {} to {}", 
+                    existingId, enrichedEntry.targetEditorID, enrichedEntry.targetFormID, existingBlockType, static_cast<int>(enrichedEntry.blockType));
+            } else {
+                spdlog::info("[DialogueDB] Updating existing blacklist entry (id={}): {} (FormID: 0x{:08X})", 
+                    existingId, enrichedEntry.targetEditorID, enrichedEntry.targetFormID);
             }
-            
-            // Update existing entry
-            spdlog::info("[DialogueDB] Updating existing blacklist entry (id={}): {} (FormID: 0x{:08X}) - block type changing from {} to {}", 
-                existingId, enrichedEntry.targetEditorID, enrichedEntry.targetFormID, existingBlockType, static_cast<int>(enrichedEntry.blockType));
             
             const char* updateSql = R"(
                 UPDATE blacklist 
@@ -2075,6 +2074,10 @@ namespace DialogueDB
             entry.blockSkyrimNet = true;
             entry.sourcePlugin = sourcePlugin;
             
+            // Note: Don't extract responses here - Skyrim uses lazy loading for TopicInfos.
+            // Responses will be populated at runtime when the scene first plays (via EnrichBlacklistEntryAtRuntime).
+            entry.responseText = "[]";
+            
             spdlog::debug("[DialogueDB] Importing scene '{}' with filterCategory: '{}'", editorID, filterCategory);
             
             // Skip enrichment during import (will enrich after kPostLoadGame)
@@ -2165,6 +2168,80 @@ namespace DialogueDB
                 
                 if (sqlite3_step(updateStmt) == SQLITE_DONE) {
                     spdlog::debug("[DialogueDB] Runtime enriched blacklist entry {} - now has {} responses", targetEditorID, responses.size());
+                }
+                sqlite3_finalize(updateStmt);
+            }
+        }
+    }
+
+    void Database::EnrichBlacklistEntryAtRuntime(BlacklistTarget targetType, const std::string& targetEditorID, const std::vector<std::string>& allResponses)
+    {
+        if (targetEditorID.empty() || allResponses.empty()) return;
+        
+        std::lock_guard<std::mutex> lock(dbMutex_);
+        if (!db_) return;
+        
+        // Check if entry exists
+        const char* checkSql = "SELECT id, response_text FROM blacklist WHERE target_type = ? AND target_editorid = ? LIMIT 1;";
+        sqlite3_stmt* checkStmt = nullptr;
+        
+        if (sqlite3_prepare_v2(db_, checkSql, -1, &checkStmt, nullptr) != SQLITE_OK) {
+            return;
+        }
+        
+        sqlite3_bind_int(checkStmt, 1, static_cast<int>(targetType));
+        sqlite3_bind_text(checkStmt, 2, targetEditorID.c_str(), -1, SQLITE_TRANSIENT);
+        
+        int64_t entryId = -1;
+        std::string existingJson;
+        
+        if (sqlite3_step(checkStmt) == SQLITE_ROW) {
+            entryId = sqlite3_column_int64(checkStmt, 0);
+            const char* responseTextCol = reinterpret_cast<const char*>(sqlite3_column_text(checkStmt, 1));
+            existingJson = responseTextCol ? responseTextCol : "";
+        }
+        sqlite3_finalize(checkStmt);
+        
+        if (entryId == -1) {
+            // Entry doesn't exist
+            return;
+        }
+        
+        // Parse existing responses
+        auto responses = JsonToResponses(existingJson);
+        
+        // Add all new responses that aren't duplicates
+        int addedCount = 0;
+        for (const auto& newResponse : allResponses) {
+            if (newResponse.empty()) continue;
+            
+            bool isDuplicate = false;
+            for (const auto& existing : responses) {
+                if (existing == newResponse) {
+                    isDuplicate = true;
+                    break;
+                }
+            }
+            
+            if (!isDuplicate) {
+                responses.push_back(newResponse);
+                addedCount++;
+            }
+        }
+        
+        if (addedCount > 0) {
+            std::string updatedJson = ResponsesToJson(responses);
+            
+            const char* updateSql = "UPDATE blacklist SET response_text = ? WHERE id = ?;";
+            sqlite3_stmt* updateStmt = nullptr;
+            
+            if (sqlite3_prepare_v2(db_, updateSql, -1, &updateStmt, nullptr) == SQLITE_OK) {
+                sqlite3_bind_text(updateStmt, 1, updatedJson.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_int64(updateStmt, 2, entryId);
+                
+                if (sqlite3_step(updateStmt) == SQLITE_DONE) {
+                    spdlog::info("[DialogueDB] Runtime enriched blacklist entry {} - added {} responses (total: {})", 
+                        targetEditorID, addedCount, responses.size());
                 }
                 sqlite3_finalize(updateStmt);
             }

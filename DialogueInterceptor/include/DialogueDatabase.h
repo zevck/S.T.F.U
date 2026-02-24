@@ -196,6 +196,7 @@ namespace DialogueDB
         
         // Runtime enrichment: Update blacklist entry with captured response text
         void EnrichBlacklistEntryAtRuntime(BlacklistTarget targetType, const std::string& targetEditorID, const std::string& responseText);
+        void EnrichBlacklistEntryAtRuntime(BlacklistTarget targetType, const std::string& targetEditorID, const std::vector<std::string>& allResponses);
 
         // Maintenance
         void CleanupOldEntries(int daysToKeep = 30);

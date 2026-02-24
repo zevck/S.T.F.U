@@ -52,6 +52,11 @@ void PrismaUIMenu::Initialize()
     prismaUI_->RegisterJSListener(view_, "openManualEntry", &OnOpenManualEntry);
     prismaUI_->RegisterJSListener(view_, "detectIdentifierType", &OnDetectIdentifierType);
     prismaUI_->RegisterJSListener(view_, "createManualEntry", &OnCreateManualEntry);
+    prismaUI_->RegisterJSListener(view_, "requestWhitelist", &OnRequestWhitelist);
+    prismaUI_->RegisterJSListener(view_, "removeFromWhitelist", &OnRemoveFromWhitelist);
+    prismaUI_->RegisterJSListener(view_, "updateWhitelistEntry", &OnUpdateWhitelistEntry);
+    prismaUI_->RegisterJSListener(view_, "moveToBlacklist", &OnMoveToBlacklist);
+    prismaUI_->RegisterJSListener(view_, "removeWhitelistBatch", &OnRemoveWhitelistBatch);
     
     // Set faster scroll speed (default is usually ~40 pixels)
     prismaUI_->SetScrollingPixelSize(view_, 100);
@@ -69,6 +74,7 @@ void PrismaUIMenu::OnDomReady(PrismaView view)
     // Send initial data when DOM is ready
     SendHistoryData();
     SendBlacklistData();
+    SendWhitelistData();
 }
 
 void PrismaUIMenu::OnRequestHistory(const char* data)
@@ -1283,16 +1289,16 @@ void PrismaUIMenu::OnCreateManualEntry(const char* data)
         DialogueDB::BlacklistEntry entry;
         entry.notes = notes;
         
-        // Detect if identifier is FormID (0x format) or EditorID
-        bool isFormIDInput = (identifier.find("0x") == 0);
+        // Parse identifier using Config helper (supports 0x format, FormKey format, or EditorID)
+        auto [parsedFormID, parsedEditorID] = Config::ParseFormIdentifier(identifier);
+        bool isFormIDInput = (parsedFormID != 0);
         
         if (isFormIDInput) {
             // FormID was entered - parse and look up the form
             try {
-                uint32_t formID = std::stoul(identifier, nullptr, 16);
-                entry.targetFormID = formID;
+                entry.targetFormID = parsedFormID;
                 
-                auto* form = RE::TESForm::LookupByID(formID);
+                auto* form = RE::TESForm::LookupByID(parsedFormID);
                 if (form) {
                     // Get EditorID from form
                     const char* editorID = form->GetFormEditorID();
@@ -1309,6 +1315,37 @@ void PrismaUIMenu::OnCreateManualEntry(const char* data)
                         // Get source plugin
                         auto* file = scene->GetFile(0);
                         entry.sourcePlugin = file ? file->GetFilename() : "";
+                        
+                        // Extract all responses for this scene
+                        auto responses = TopicResponseExtractor::ExtractAllResponsesForScene(entry.targetEditorID);
+                        if (!responses.empty()) {
+                            // Store as JSON array
+                            std::ostringstream responsesJson;
+                            responsesJson << "[";
+                            for (size_t i = 0; i < responses.size(); ++i) {
+                                if (i > 0) responsesJson << ",";
+                                // Basic JSON escaping
+                                std::string escaped = responses[i];
+                                size_t pos = 0;
+                                while ((pos = escaped.find("\\", pos)) != std::string::npos) {
+                                    escaped.replace(pos, 1, "\\\\");
+                                    pos += 2;
+                                }
+                                pos = 0;
+                                while ((pos = escaped.find("\"", pos)) != std::string::npos) {
+                                    escaped.replace(pos, 1, "\\\"");
+                                    pos += 2;
+                                }
+                                pos = 0;
+                                while ((pos = escaped.find("\n", pos)) != std::string::npos) {
+                                    escaped.replace(pos, 1, "\\n");
+                                    pos += 2;
+                                }
+                                responsesJson << "\"" << escaped << "\"";
+                            }
+                            responsesJson << "]";
+                            entry.responseText = responsesJson.str();
+                        }
                         
                         spdlog::info("[PrismaUIMenu::OnCreateManualEntry] FormID is Scene: {} (EditorID: {})", identifier, entry.targetEditorID);
                     } else {
@@ -1334,7 +1371,7 @@ void PrismaUIMenu::OnCreateManualEntry(const char* data)
                             entry.sourcePlugin = file ? file->GetFilename() : "";
                             
                             // Extract all responses
-                            auto responses = TopicResponseExtractor::ExtractAllResponsesForTopic(formID);
+                            auto responses = TopicResponseExtractor::ExtractAllResponsesForTopic(parsedFormID);
                             if (!responses.empty()) {
                                 // Store as JSON array in response_text field
                                 std::ostringstream responsesJson;
@@ -1411,6 +1448,37 @@ void PrismaUIMenu::OnCreateManualEntry(const char* data)
                     // Get source plugin
                     auto* file = scene->GetFile(0);
                     entry.sourcePlugin = file ? file->GetFilename() : "";
+                    
+                    // Extract all responses for this scene
+                    auto responses = TopicResponseExtractor::ExtractAllResponsesForScene(identifier);
+                    if (!responses.empty()) {
+                        // Store as JSON array
+                        std::ostringstream responsesJson;
+                        responsesJson << "[";
+                        for (size_t i = 0; i < responses.size(); ++i) {
+                            if (i > 0) responsesJson << ",";
+                            // Basic JSON escaping
+                            std::string escaped = responses[i];
+                            size_t pos = 0;
+                            while ((pos = escaped.find("\\", pos)) != std::string::npos) {
+                                escaped.replace(pos, 1, "\\\\");
+                                pos += 2;
+                            }
+                            pos = 0;
+                            while ((pos = escaped.find("\"", pos)) != std::string::npos) {
+                                escaped.replace(pos, 1, "\\\"");
+                                pos += 2;
+                            }
+                            pos = 0;
+                            while ((pos = escaped.find("\n", pos)) != std::string::npos) {
+                                escaped.replace(pos, 1, "\\n");
+                                pos += 2;
+                            }
+                            responsesJson << "\"" << escaped << "\"";
+                        }
+                        responsesJson << "]";
+                        entry.responseText = responsesJson.str();
+                    }
                     
                     spdlog::info("[PrismaUIMenu::OnCreateManualEntry] EditorID is Scene: {} (FormID: 0x{:08X})", identifier, entry.targetFormID);
                 } else {

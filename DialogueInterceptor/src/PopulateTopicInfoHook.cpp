@@ -577,6 +577,40 @@ namespace PopulateTopicInfoHook
             // reuse that captured text here
             entry.responseText = fullResponseText;
             
+            // Set isScene flag BEFORE response extraction
+            entry.isScene = (subtype == 14);
+            entry.isBardSong = Config::IsBardSongQuest(quest);
+            entry.isHardcodedScene = Config::IsHardcodedAmbientScene(a_topic);
+            
+            // For scene dialogue, find and capture the parent scene's EditorID BEFORE extraction
+            if (entry.isScene && quest && a_topic) {
+                auto& scenesArray = quest->scenes;
+                
+                for (auto* scene : scenesArray) {
+                    if (!scene) continue;
+                    
+                    // Check if this scene contains our topic
+                    bool sceneContainsTopic = false;
+                    for (auto* action : scene->actions) {
+                        if (!action) continue;
+                        if (action->GetType() == RE::BGSSceneAction::Type::kDialogue) {
+                            auto* dialogueAction = static_cast<RE::BGSSceneActionDialogue*>(action);
+                            if (dialogueAction && dialogueAction->topic == a_topic) {
+                                sceneContainsTopic = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (sceneContainsTopic) {
+                        // Found the scene - capture its EditorID
+                        const char* sceneEditorID = scene->GetFormEditorID();
+                        entry.sceneEditorID = sceneEditorID ? sceneEditorID : "";
+                        break;
+                    }
+                }
+            }
+            
             // Extract all responses for this topic/scene
             if (entry.isScene && !entry.sceneEditorID.empty()) {
                 // Scene dialogue - extract all responses from the scene
@@ -610,9 +644,6 @@ namespace PopulateTopicInfoHook
             
             entry.voiceFilepath = "";
             entry.blockedStatus = blockedStatus;
-            entry.isScene = (subtype == 14);
-            entry.isBardSong = Config::IsBardSongQuest(quest);
-            entry.isHardcodedScene = Config::IsHardcodedAmbientScene(a_topic);
             
             // SkyrimNet blockable: Check if this TopicInfo is in MenuTopicManager's dialogueList
             // Only menu-based dialogue choices can be blocked from SkyrimNet without subtitle issues
@@ -626,35 +657,6 @@ namespace PopulateTopicInfoHook
                         entry.skyrimNetBlockable = true;
                         spdlog::debug("[POPULATE] TopicInfo 0x{:08X} found in MenuTopicManager dialogueList - SkyrimNet blockable",
                             a_topicInfo->GetFormID());
-                        break;
-                    }
-                }
-            }
-            
-            // For scene dialogue, find and capture the parent scene's EditorID
-            if (entry.isScene && quest && a_topic) {
-                auto& scenesArray = quest->scenes;
-                
-                for (auto* scene : scenesArray) {
-                    if (!scene) continue;
-                    
-                    // Check if this scene contains our topic
-                    bool sceneContainsTopic = false;
-                    for (auto* action : scene->actions) {
-                        if (!action) continue;
-                        if (action->GetType() == RE::BGSSceneAction::Type::kDialogue) {
-                            auto* dialogueAction = static_cast<RE::BGSSceneActionDialogue*>(action);
-                            if (dialogueAction && dialogueAction->topic == a_topic) {
-                                sceneContainsTopic = true;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    if (sceneContainsTopic) {
-                        // Found the scene - capture its EditorID
-                        const char* sceneEditorID = scene->GetFormEditorID();
-                        entry.sceneEditorID = sceneEditorID ? sceneEditorID : "";
                         break;
                     }
                 }
@@ -712,12 +714,19 @@ namespace PopulateTopicInfoHook
             
             spdlog::trace("[DATABASE WRITE] LogDialogue() call completed for TopicInfo: 0x{:08X}", topicInfoFormID);
             
-            // Runtime enrichment: Update blacklist entries with captured response text
-            if (entry.isScene && !entry.sceneEditorID.empty() && !entry.responseText.empty()) {
+            // Runtime enrichment: Update blacklist entries with all captured responses
+            if (entry.isScene && !entry.sceneEditorID.empty() && !entry.allResponses.empty()) {
                 DialogueDB::GetDatabase()->EnrichBlacklistEntryAtRuntime(
                     DialogueDB::BlacklistTarget::Scene,
                     entry.sceneEditorID,
-                    entry.responseText
+                    entry.allResponses
+                );
+            } else if (!entry.isScene && !entry.topicEditorID.empty() && !entry.allResponses.empty()) {
+                // Runtime enrichment for individual topics
+                DialogueDB::GetDatabase()->EnrichBlacklistEntryAtRuntime(
+                    DialogueDB::BlacklistTarget::Topic,
+                    entry.topicEditorID,
+                    entry.allResponses
                 );
             }
         }

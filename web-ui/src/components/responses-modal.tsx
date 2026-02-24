@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useEffect } from 'react';
 
 interface ResponsesModalProps {
   isOpen: boolean;
@@ -8,6 +8,21 @@ interface ResponsesModalProps {
 }
 
 export const ResponsesModal = memo(({ isOpen, onClose, title, responses }: ResponsesModalProps) => {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.keyCode === 27 || e.key === 'Escape') {
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleEsc, { capture: true });
+    return () => window.removeEventListener('keydown', handleEsc, { capture: true });
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleBackdropClick = (e: React.MouseEvent) => {
@@ -16,17 +31,10 @@ export const ResponsesModal = memo(({ isOpen, onClose, title, responses }: Respo
     }
   };
 
-  const handleEscKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      onClose();
-    }
-  };
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75"
       onClick={handleBackdropClick}
-      onKeyDown={handleEscKey}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"

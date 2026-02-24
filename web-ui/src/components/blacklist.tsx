@@ -1,7 +1,7 @@
 import { useState, useMemo, memo, useCallback, useRef, useEffect } from 'react';
 import { useBlacklistStore } from '../stores/blacklist';
 import { BlacklistEntry } from '../types';
-import { Search, Trash2, X, RotateCw, Save, Plus } from 'lucide-react';
+import { Search, Trash2, X, Save, Plus } from 'lucide-react';
 import { SKSE_API, log } from '../lib/skse-api';
 import { ResponsesModal } from './responses-modal';
 import { ManualEntryModal } from './manual-entry-modal';
@@ -22,7 +22,7 @@ const BlacklistItem = memo(({
 }) => (
   <div
     onClick={onClick}
-    className={`p-4 rounded-lg cursor-pointer transition-colors ${
+    className={`p-4 rounded-lg cursor-pointer ${
       isSelected
         ? 'bg-blue-900/50 border-l-4 border-blue-500'
         : index % 2 === 0
@@ -133,6 +133,7 @@ export const Blacklist = () => {
           entry.questName?.toLowerCase().includes(query) ||
           entry.questEditorID?.toLowerCase().includes(query) ||
           entry.topicEditorID?.toLowerCase().includes(query) ||
+          entry.topicFormID?.toLowerCase().includes(query) ||
           entry.sourcePlugin?.toLowerCase().includes(query) ||
           entry.note?.toLowerCase().includes(query)
         );
@@ -258,11 +259,6 @@ export const Blacklist = () => {
     setShowTopics(true);
     setShowScenes(true);
   }, [setSearchQuery]);
-  
-  const handleRefresh = useCallback(() => {
-    log('[Blacklist] handleRefresh called');
-    SKSE_API.refreshBlacklist();
-  }, []);
   
   const handleApplyChanges = useCallback(() => {
     if (!selectedEntry || selectedEntries.length !== 1) return;
@@ -497,10 +493,6 @@ export const Blacklist = () => {
             />
             <span className="text-base text-white">Scenes</span>
           </label>
-        </div>
-        
-        {/* Row 3: Action Buttons */}
-        <div className="flex gap-2">
           <button
             onClick={handleResetFilters}
             className="px-4 py-2 text-base bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
@@ -508,15 +500,8 @@ export const Blacklist = () => {
             Reset Filters
           </button>
           <button
-            onClick={handleRefresh}
-            className="px-4 py-2 text-base bg-gray-700 hover:bg-gray-600 text-white rounded-lg flex items-center gap-2 transition-colors"
-          >
-            <RotateCw size={18} />
-            Refresh
-          </button>
-          <button
             onClick={() => setShowManualEntryModal(true)}
-            className="ml-auto px-4 py-2 text-base bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center gap-2 transition-colors"
+            className="px-4 py-2 text-base bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center gap-2 transition-colors ml-auto"
           >
             <Plus size={18} />
             Manual Entry
@@ -652,7 +637,9 @@ export const Blacklist = () => {
               </div>
               
               <div>
-                <div className="text-sm text-gray-400 font-medium">Topic Editor ID</div>
+                <div className="text-sm text-gray-400 font-medium">
+                  {selectedEntry.targetType === 'Scene' ? 'Scene Editor ID' : 'Topic Editor ID'}
+                </div>
                 <div className="text-base text-white font-mono break-all">{selectedEntry.topicEditorID || 'N/A'}</div>
               </div>
               

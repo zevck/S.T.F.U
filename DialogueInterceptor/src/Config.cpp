@@ -1476,7 +1476,7 @@ overrides:
     
     // Helper function to parse form identifier (FormKey, 0x format, or EditorID)
     // Returns pair: {formID, editorID}
-    static std::pair<uint32_t, std::string> ParseFormIdentifier(const std::string& value)
+    static std::pair<uint32_t, std::string> ParseFormIdentifierInternal(const std::string& value)
     {
         // Check for FormKey format: "FormID:PluginName" (e.g., "04C2D2:Skyrim.esm")
         size_t colonPos = value.find(':');
@@ -1513,6 +1513,28 @@ overrides:
                 return {formID, ""};
             } catch (const std::exception& e) {
                 spdlog::error("[Config] Failed to parse hex FormID: {} (error: {})", value, e.what());
+            }
+        }
+        
+        // Check if it's a hex string without "0x" prefix (e.g., "02707A" or "ABC12")
+        // FormIDs are typically 6-8 hex digits, but we'll accept 1-8 for flexibility
+        if (!value.empty() && value.length() <= 8) {
+            bool isAllHex = true;
+            for (char c : value) {
+                if (!std::isxdigit(static_cast<unsigned char>(c))) {
+                    isAllHex = false;
+                    break;
+                }
+            }
+            
+            if (isAllHex) {
+                try {
+                    uint32_t formID = std::stoul(value, nullptr, 16);
+                    spdlog::info("[Config] Parsed bare hex string as FormID: {} -> 0x{:08X}", value, formID);
+                    return {formID, ""};
+                } catch (const std::exception& e) {
+                    spdlog::error("[Config] Failed to parse bare hex FormID: {} (error: {})", value, e.what());
+                }
             }
         }
         
@@ -1561,7 +1583,7 @@ overrides:
                 uint16_t subtypeId = subtypeIt->second;
 
                 // Parse the topic identifier (FormKey or EditorID)
-                auto [formID, editorID] = ParseFormIdentifier(topicIdentifier);
+                auto [formID, editorID] = ParseFormIdentifierInternal(topicIdentifier);
 
                 // Create blacklist entry with the subtype category
                 DialogueDB::BlacklistEntry blacklistEntry;
@@ -1617,7 +1639,7 @@ overrides:
                 for (const auto& entry : config["topics"]) {
                     if (entry.IsScalar()) {
                         std::string value = entry.as<std::string>();
-                        auto [formID, editorID] = ParseFormIdentifier(value);
+                        auto [formID, editorID] = ParseFormIdentifierInternal(value);
 
                         DialogueDB::BlacklistEntry filterEntry;
                         filterEntry.targetType = DialogueDB::BlacklistTarget::Topic;
@@ -1733,7 +1755,7 @@ overrides:
                     for (const auto& entry : config["topics"]) {
                         if (entry.IsScalar()) {
                             std::string value = entry.as<std::string>();
-                            auto [formID, editorID] = ParseFormIdentifier(value);
+                            auto [formID, editorID] = ParseFormIdentifierInternal(value);
                             
                             DialogueDB::BlacklistEntry blacklistEntry;
                             blacklistEntry.targetType = DialogueDB::BlacklistTarget::Topic;
@@ -1859,7 +1881,7 @@ overrides:
                     for (const auto& entry : config["topics"]) {
                         if (entry.IsScalar()) {
                             std::string value = entry.as<std::string>();
-                            auto [formID, editorID] = ParseFormIdentifier(value);
+                            auto [formID, editorID] = ParseFormIdentifierInternal(value);
                             
                             DialogueDB::BlacklistEntry whitelistEntry;
                             whitelistEntry.targetType = DialogueDB::BlacklistTarget::Topic;
@@ -2004,5 +2026,15 @@ overrides:
         spdlog::info("[Config] YAML import complete - Blacklist: {} entries | Whitelist: {} entries",
             blacklistTopics + blacklistScenes + blacklistQuests,
             whitelistTopics + whitelistScenes + whitelistQuests + whitelistPlugins);
+    }
+}
+
+// Public Config functions
+namespace Config
+{
+    // Public wrapper for ParseFormIdentifier
+    std::pair<uint32_t, std::string> ParseFormIdentifier(const std::string& value)
+    {
+        return ParseFormIdentifierInternal(value);
     }
 }

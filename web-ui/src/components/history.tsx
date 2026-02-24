@@ -3,6 +3,7 @@ import { useHistoryStore } from '@/stores/history';
 import { DialogueEntry } from '@/types';
 import { SKSE_API, log } from '@/lib/skse-api';
 import { ResponsesModal } from './responses-modal';
+import { Search } from 'lucide-react';
 
 const getStatusColor = (status: DialogueEntry['status']): string => {
   switch (status) {
@@ -34,7 +35,13 @@ const getStatusDisplay = (status: DialogueEntry['status']): string => {
     case 'Skyrim':
       return 'Allowed';
     case 'Filter':
-      return 'Soft Block';  // Filter displays as Soft Block (yellow color)
+      return 'Soft Blocked';  // Filter displays as Soft Blocked (yellow color)
+    case 'Soft Block':
+      return 'Soft Blocked';
+    case 'Hard Block':
+      return 'Hard Blocked';
+    case 'SkyrimNet Block':
+      return 'SkyrimNet Blocked';
     default:
       return status;
   }
@@ -52,7 +59,7 @@ const getStatusDescription = (status: DialogueEntry['status']): string => {
     case 'Hard Block':
       return 'Hard blocked by blacklist';
     case 'SkyrimNet Block':
-      return 'SkyrimNet blocked';
+      return 'SkyrimNet blocked by blacklist';
     case 'Filter':
       return 'Soft blocked by filter';
     case 'Whitelist':
@@ -63,7 +70,7 @@ const getStatusDescription = (status: DialogueEntry['status']): string => {
 };
 
 const formatTimestamp = (timestamp: number): string => {
-  const date = new Date(timestamp);
+  const date = new Date(timestamp * 1000); // Convert from seconds to milliseconds
   return date.toLocaleTimeString();
 };
 
@@ -81,7 +88,7 @@ const HistoryItem = memo(({
 }) => (
   <div
     onClick={onClick}
-    className={`p-4 border-b border-gray-700 cursor-pointer transition-colors ${
+    className={`p-4 border-b border-gray-700 cursor-pointer ${
       isSelected 
         ? 'bg-blue-900/50 border-l-4 border-blue-500' 
         : index % 2 === 0 
@@ -112,12 +119,33 @@ export const History = () => {
   const [displayCount, setDisplayCount] = useState(100); // Increased initial load
   const sentinelRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const [showResponsesModal, setShowResponsesModal] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
   const [modalResponses, setModalResponses] = useState<string[]>([]);
+  const [statusFilters, setStatusFilters] = useState<Set<string>>(new Set(['Allowed', 'Soft Blocked', 'Hard Blocked', 'SkyrimNet Blocked', 'Whitelisted']));
   
   // For single-item detail panel (first selected item)
   const selectedEntry = selectedEntries.length > 0 ? selectedEntries[0] : null;
+
+  // Toggle status filter
+  const toggleStatusFilter = useCallback((status: string) => {
+    setStatusFilters(prev => {
+      const newFilters = new Set(prev);
+      if (newFilters.has(status)) {
+        newFilters.delete(status);
+      } else {
+        newFilters.add(status);
+      }
+      return newFilters;
+    });
+  }, []);
+
+  // Reset filters
+  const handleResetFilters = useCallback(() => {
+    setSearchQuery('');
+    setStatusFilters(new Set(['Allowed', 'Soft Blocked', 'Hard Blocked', 'SkyrimNet Blocked', 'Whitelisted']));
+  }, [setSearchQuery]);
 
   // Update selectedEntries when entries change (e.g., after toggle)
   useEffect(() => {
@@ -138,17 +166,29 @@ export const History = () => {
   }, [entries]);
 
   const filteredEntries = useMemo(() => {
-    if (!searchQuery) return entries;
-
-    const query = searchQuery.toLowerCase();
-    return entries.filter(
-      (entry) =>
-        entry.text.toLowerCase().includes(query) ||
-        entry.speaker.toLowerCase().includes(query) ||
-        entry.questName.toLowerCase().includes(query) ||
-        entry.topicEditorID.toLowerCase().includes(query)
-    );
-  }, [entries, searchQuery]);
+    let filtered = entries;
+    
+    // Apply search filter
+    if (searchQuery) {
+      filtered = filtered.filter(
+        (entry) =>
+          entry.text.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          entry.speaker.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          entry.questName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          entry.topicEditorID.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    
+    // Apply status filters - show entries whose status is checked
+    filtered = filtered.filter(entry => {
+      // Normalize status for filtering
+      const normalizedStatus = getStatusDisplay(entry.status);
+      return statusFilters.has(normalizedStatus);
+    });
+    
+    // Reverse so oldest entries are at top, newest at bottom (like a chat log)
+    return [...filtered].reverse();
+  }, [entries, searchQuery, statusFilters]);
 
   // Lazy loading with IntersectionObserver
   useEffect(() => {
@@ -178,6 +218,13 @@ export const History = () => {
   const displayedEntries = useMemo(() => {
     return filteredEntries.slice(0, displayCount);
   }, [filteredEntries, displayCount]);
+
+  // Auto-scroll to bottom when entries change (like a chat log)
+  useEffect(() => {
+    if (listRef.current) {
+      listRef.current.scrollTop = listRef.current.scrollHeight;
+    }
+  }, [entries.length]);
   
   // Check if all selected entries are SkyrimNet blockable (menu topics)
   const allSelectedAreSkyrimNetBlockable = useMemo(() => {
@@ -248,7 +295,9 @@ export const History = () => {
       ? [selectedEntry.text]
       : [];
     
-    const identifier = selectedEntry.topicEditorID || selectedEntry.topicFormID || 'Unknown';
+    const identifier = selectedEntry.isScene
+      ? selectedEntry.sceneEditorID || 'Unknown Scene'
+      : selectedEntry.topicEditorID || selectedEntry.topicFormID || 'Unknown';
     setModalTitle(`All Responses: ${identifier}`);
     setModalResponses(responses);
     setShowResponsesModal(true);
@@ -333,20 +382,80 @@ export const History = () => {
       onBlur={() => log('[History] Container lost focus')}
       style={{ outline: 'none' }}
     >
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold mb-2">Dialogue History</h1>
-        <input
-          type="text"
-          placeholder="Search..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full px-4 py-2.5 text-base bg-gray-800 text-white border border-gray-700 rounded focus:outline-none focus:border-blue-500"
-        />
+      {/* Filter Panel */}
+      <div className="bg-gray-800 rounded-lg p-4 mb-4 space-y-3">
+        {/* Row 1: Search Bar */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+          <input
+            type="text"
+            placeholder="Search dialogue history..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 text-base bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
+          />
+        </div>
+        
+        {/* Row 2: Status Filters */}
+        <div className="flex items-center gap-4 flex-wrap">
+          <span className="text-base text-gray-300 font-medium">Status:</span>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={statusFilters.has('Allowed')}
+              onChange={() => toggleStatusFilter('Allowed')}
+              className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 cursor-pointer"
+            />
+            <span className="text-base text-white">Allowed</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={statusFilters.has('Soft Blocked')}
+              onChange={() => toggleStatusFilter('Soft Blocked')}
+              className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 cursor-pointer"
+            />
+            <span className="text-base text-white">Soft Blocked</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={statusFilters.has('Hard Blocked')}
+              onChange={() => toggleStatusFilter('Hard Blocked')}
+              className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 cursor-pointer"
+            />
+            <span className="text-base text-white">Hard Blocked</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={statusFilters.has('SkyrimNet Blocked')}
+              onChange={() => toggleStatusFilter('SkyrimNet Blocked')}
+              className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 cursor-pointer"
+            />
+            <span className="text-base text-white">SkyrimNet Blocked</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={statusFilters.has('Whitelisted')}
+              onChange={() => toggleStatusFilter('Whitelisted')}
+              className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 cursor-pointer"
+            />
+            <span className="text-base text-white">Whitelisted</span>
+          </label>
+          <button
+            onClick={handleResetFilters}
+            className="px-4 py-2 text-base bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+          >
+            Reset Filters
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 flex gap-4 overflow-hidden">
         {/* Entry List */}
-        <div className="flex-1 overflow-y-auto border border-gray-700 rounded bg-gray-800">
+        <div ref={listRef} className="flex-1 overflow-y-auto border border-gray-700 rounded bg-gray-800">
           {filteredEntries.length === 0 ? (
             <div className="p-4 text-lg text-gray-500 text-center">No dialogue entries found</div>
           ) : (
@@ -400,20 +509,20 @@ export const History = () => {
                     <div className="text-base text-gray-400 font-medium mb-2">Add Selected to Blacklist</div>
                     <button
                       onClick={() => handleAddToBlacklist('Soft')}
-                      className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Soft Block
                     </button>
                     <button
                       onClick={() => handleAddToBlacklist('Hard')}
-                      className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full px-4 py-2 bg-red-800 hover:bg-red-900 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Hard Block
                     </button>
                     {allSelectedAreSkyrimNetBlockable && (
                       <button
                         onClick={() => handleAddToBlacklist('SkyrimNet')}
-                        className="w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         SkyrimNet Block
                       </button>
@@ -481,9 +590,13 @@ export const History = () => {
               </div>
 
               <div>
-                <label className="text-sm text-gray-400 font-medium">Topic</label>
-                <div className="text-base text-yellow-400">{selectedEntry.topicEditorID}</div>
-                <div className="text-xs text-gray-500">FormID: {selectedEntry.topicFormID}</div>
+                <label className="text-sm text-gray-400 font-medium">{selectedEntry.isScene ? 'Scene' : 'Topic'}</label>
+                <div className="text-base text-yellow-400">
+                  {selectedEntry.isScene ? selectedEntry.sceneEditorID : selectedEntry.topicEditorID}
+                </div>
+                {!selectedEntry.isScene && (
+                  <div className="text-xs text-gray-500">FormID: {selectedEntry.topicFormID}</div>
+                )}
               </div>
 
               <div>
@@ -517,20 +630,20 @@ export const History = () => {
                 </div>
                 <button
                   onClick={() => handleAddToBlacklist('Soft')}
-                  className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Soft Block
                 </button>
                 <button
                   onClick={() => handleAddToBlacklist('Hard')}
-                  className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-2 bg-red-800 hover:bg-red-900 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Hard Block
                 </button>
                 {selectedEntry.skyrimNetBlockable && (
                   <button
                     onClick={() => handleAddToBlacklist('SkyrimNet')}
-                    className="w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     SkyrimNet Block
                   </button>
@@ -555,7 +668,7 @@ export const History = () => {
                 <div className="text-base text-gray-400 font-medium mb-2">Add to Whitelist</div>
                 <button
                   onClick={handleAddToWhitelist}
-                  className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors opacity-50 cursor-not-allowed"
+                  className="w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg transition-colors opacity-50 cursor-not-allowed"
                   disabled
                 >
                   Add to Whitelist

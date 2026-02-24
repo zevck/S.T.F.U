@@ -75,16 +75,26 @@ export const ManualEntryModal = memo(({ isOpen, onClose }: ManualEntryModalProps
     }
   }, [isOpen]);
 
+  // Handle ESC key to close modal
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.keyCode === 27 || e.key === 'Escape') {
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleEsc, { capture: true });
+    return () => window.removeEventListener('keydown', handleEsc, { capture: true });
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
-      onClose();
-    }
-  };
-
-  const handleEscKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
       onClose();
     }
   };
@@ -113,7 +123,6 @@ export const ManualEntryModal = memo(({ isOpen, onClose }: ManualEntryModalProps
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75"
       onClick={handleBackdropClick}
-      onKeyDown={handleEscKey}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
@@ -146,7 +155,7 @@ export const ManualEntryModal = memo(({ isOpen, onClose }: ManualEntryModalProps
               type="text"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
-              placeholder="EditorID or FormID (e.g., DragonBridgeFarmScene02 or 0x00012345)"
+              placeholder="EditorID or FormID (e.g., DragonBridgeFarmScene02 or 02707A)"
               className="w-full px-4 py-2.5 text-base bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
               autoFocus
             />
@@ -185,7 +194,7 @@ export const ManualEntryModal = memo(({ isOpen, onClose }: ManualEntryModalProps
               </label>
             </div>
             <div className="text-sm text-gray-400 mt-1">
-              Soft blocks can be toggled, hard blocks are permanent
+              Soft blocks mute audio and hide subtitles. Hard blocks prevent dialogue before it plays.
             </div>
           </div>
 

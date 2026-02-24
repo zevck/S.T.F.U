@@ -11,6 +11,7 @@ public:
     static bool IsOpen();
     static void SendHistoryData();
     static void SendBlacklistData();
+    static void SendWhitelistData();
     
 private:
     static PRISMA_UI_API::IVPrismaUI1* prismaUI_;
@@ -35,6 +36,12 @@ private:
     static void OnOpenManualEntry(const char* data);
     static void OnDetectIdentifierType(const char* data);
     static void OnCreateManualEntry(const char* data);
+    static void OnRequestWhitelist(const char* data);
+    static void OnRemoveFromWhitelist(const char* data);
+    static void OnUpdateWhitelistEntry(const char* data);
+    static void OnMoveToBlacklist(const char* data);
+    static void OnRemoveWhitelistBatch(const char* data);
     static std::string SerializeHistoryToJSON();
     static std::string SerializeBlacklistToJSON();
+    static std::string SerializeWhitelistToJSON();
 };

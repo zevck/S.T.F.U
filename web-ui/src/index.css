@@ -3,8 +3,15 @@
 @tailwind utilities;
 
 * {
-  user-select: none;
   font-family: 'Consolas', 'Courier New', monospace;
+}
+
+/* Disable text selection by default, but allow for specific elements */
+body, button, label, h1, h2, h3, h4, h5, h6, nav, .no-select {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 
 body {
@@ -77,4 +84,31 @@ select option:checked {
 
 select option:hover {
   background-color: #4b5563 !important; /* bg-gray-600 - lighter for hover */
+}
+
+/* Allow text selection for specific elements */
+input,
+textarea,
+.text-selectable,
+[role="dialog"],
+[role="dialog"] *,
+pre,
+code,
+.whitespace-pre-wrap,
+[contenteditable="true"],
+p,
+span:not(.no-select),
+div.text-white,
+div.text-gray-400,
+div.text-gray-500,
+div.text-sm,
+div.text-base,
+div.text-lg,
+div:not(.no-select):not(button):not([role="button"]) {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  cursor: text !important;
+  pointer-events: auto !important;
 }

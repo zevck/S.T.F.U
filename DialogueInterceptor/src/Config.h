@@ -149,6 +149,10 @@ namespace Config
     // Import YAML blacklist into database
     void ImportYAMLToDatabase();
     
+    // Parse form identifier (supports 0x format, FormKey format, or EditorID)
+    // Returns pair of (formID, editorID) - formID is 0 if EditorID, editorID is empty if FormID
+    std::pair<uint32_t, std::string> ParseFormIdentifier(const std::string& value);
+    
     // Template helper to safely lookup a form by EditorID
     template <typename T>
     T* SafeLookupForm(const char* editorID)

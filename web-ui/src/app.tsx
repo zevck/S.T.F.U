@@ -5,7 +5,7 @@ import { useHistoryStore } from './stores/history';
 import { useBlacklistStore } from './stores/blacklist';
 import { SKSE_API, log } from './lib/skse-api';
 import { DialogueEntry, BlacklistEntry } from './types';
-import { List, Ban, Maximize2, Minimize2, Move } from 'lucide-react';
+import { List, Ban, Maximize2, Minimize2, Move, X } from 'lucide-react';
 
 type Tab = 'history' | 'blacklist';
 
@@ -177,14 +177,24 @@ export const App = () => {
             <Move size={16} />
             <span className="text-sm font-semibold">STFU - Dialogue Manager</span>
           </div>
-          <button
-            onClick={toggleFullscreen}
-            className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs transition-colors flex items-center gap-1"
-            title="Switch to Fullscreen Mode"
-          >
-            <Maximize2 size={14} />
-            Fullscreen
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleFullscreen}
+              className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs transition-colors flex items-center gap-1"
+              title="Switch to Fullscreen Mode"
+            >
+              <Maximize2 size={14} />
+              Fullscreen
+            </button>
+            <button
+              onClick={() => SKSE_API.sendToSKSE('closeMenu')}
+              className="px-2 py-1 bg-red-600 hover:bg-red-500 rounded text-xs transition-colors flex items-center"
+              title="Close Menu"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <X size={14} />
+            </button>
+          </div>
         </div>
       )}
 
@@ -217,16 +227,25 @@ export const App = () => {
             </button>
           </div>
           
-          {/* Fullscreen Toggle (Fullscreen Mode Only) */}
+          {/* Fullscreen Toggle and Close (Fullscreen Mode Only) */}
           {isFullscreen && (
-            <button
-              onClick={toggleFullscreen}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-gray-400 hover:bg-gray-700 rounded-lg transition-colors"
-              title="Switch to Windowed Mode"
-            >
-              <Minimize2 size={18} />
-              Windowed
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleFullscreen}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-gray-400 hover:bg-gray-700 rounded-lg transition-colors"
+                title="Switch to Windowed Mode"
+              >
+                <Minimize2 size={18} />
+                Windowed
+              </button>
+              <button
+                onClick={() => SKSE_API.sendToSKSE('closeMenu')}
+                className="flex items-center px-3 py-2 bg-red-600 text-white hover:bg-red-500 rounded-lg transition-colors"
+                title="Close Menu"
+              >
+                <X size={18} />
+              </button>
+            </div>
           )}
         </div>
 
