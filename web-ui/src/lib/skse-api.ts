@@ -95,20 +95,24 @@ export const SKSE_API = {
     SKSE_API.sendToSKSE('updateBlacklistEntry', jsonData);
   },
   
-  addToBlacklist: (entries: any[], blockType: 'Soft' | 'Hard' | 'SkyrimNet') => {
+  addToBlacklist: (entries: any[], blockType: 'Soft' | 'Hard' | 'SkyrimNet', filterCategory?: string, notes?: string) => {
     log(`[SKSE_API] addToBlacklist called with ${entries.length} entries, blockType: ${blockType}`);
     log(`[SKSE_API] Entries: ${JSON.stringify(entries)}`);
-    const jsonData = JSON.stringify({ entries, blockType });
+    const jsonData = JSON.stringify({ entries, blockType, filterCategory: filterCategory || '', notes: notes || '' });
     log(`[SKSE_API] JSON data: ${jsonData}`);
     log(`[SKSE_API] Calling sendToSKSE('addToBlacklist', jsonData)...`);
     SKSE_API.sendToSKSE('addToBlacklist', jsonData);
     log(`[SKSE_API] sendToSKSE call completed`);
   },
   
-  addToWhitelist: (entries: any[]) => {
-    log(`[SKSE_API] Adding ${entries.length} entries to whitelist (placeholder)`);
-    const jsonData = JSON.stringify({ entries });
+  addToWhitelist: (entries: any[], notes?: string) => {
+    log(`[SKSE_API] addToWhitelist called with ${entries.length} entries`);
+    log(`[SKSE_API] Entries: ${JSON.stringify(entries)}`);
+    const jsonData = JSON.stringify({ entries, notes: notes || '' });
+    log(`[SKSE_API] JSON data: ${jsonData}`);
+    log(`[SKSE_API] Calling sendToSKSE('addToWhitelist', jsonData)...`);
     SKSE_API.sendToSKSE('addToWhitelist', jsonData);
+    log(`[SKSE_API] sendToSKSE call completed`);
   },
   
   removeFromBlacklist: (entry: any) => {
@@ -143,5 +147,89 @@ export const SKSE_API = {
 
   requestBlacklistRefresh: () => {
     SKSE_API.sendToSKSE('requestBlacklist', '');
+  },
+
+  // Whitelist management methods
+  requestWhitelistRefresh: () => {
+    log('[SKSE_API] Requesting whitelist refresh');
+    SKSE_API.sendToSKSE('requestWhitelist', '');
+  },
+
+  removeFromWhitelist: (id: number) => {
+    log(`[SKSE_API] Removing whitelist entry: ${id}`);
+    const jsonData = JSON.stringify({ id });
+    SKSE_API.sendToSKSE('removeFromWhitelist', jsonData);
+  },
+
+  updateWhitelistEntry: (updates: { id: number; filterCategory: string; note: string }) => {
+    log(`[SKSE_API] Updating whitelist entry ${updates.id}`);
+    const escapedNote = updates.note.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+    const jsonData = `{"id":${updates.id},"filterCategory":"${updates.filterCategory}","note":"${escapedNote}"}`;
+    SKSE_API.sendToSKSE('updateWhitelistEntry', jsonData);
+  },
+
+  moveToBlacklist: (id: number) => {
+    log(`[SKSE_API] Moving whitelist entry ${id} to blacklist`);
+    const jsonData = JSON.stringify({ id });
+    SKSE_API.sendToSKSE('moveToBlacklist', jsonData);
+  },
+
+  moveToWhitelist: (id: number) => {
+    log(`[SKSE_API] Moving blacklist entry ${id} to whitelist`);
+    const jsonData = JSON.stringify({ id });
+    SKSE_API.sendToSKSE('moveToWhitelist', jsonData);
+  },
+
+  removeWhitelistBatch: (ids: number[]) => {
+    log(`[SKSE_API] Removing ${ids.length} whitelist entries`);
+    const jsonData = JSON.stringify({ ids });
+    SKSE_API.sendToSKSE('removeWhitelistBatch', jsonData);
+  },
+
+  // Settings methods
+  importScenes: () => {
+    log('[SKSE_API] Importing hardcoded scenes');
+    SKSE_API.sendToSKSE('importScenes', '');
+  },
+
+  importYAML: () => {
+    log('[SKSE_API] Importing from YAML files');
+    SKSE_API.sendToSKSE('importYAML', '');
+  },
+
+  setCombatGruntsBlocked: (blocked: boolean) => {
+    log(`[SKSE_API] Setting combat grunts blocked: ${blocked}`);
+    const jsonData = JSON.stringify({ blocked });
+    SKSE_API.sendToSKSE('setCombatGruntsBlocked', jsonData);
+  },
+
+  setFollowerCommentaryEnabled: (enabled: boolean) => {
+    log(`[SKSE_API] Setting follower commentary enabled: ${enabled}`);
+    const jsonData = JSON.stringify({ enabled });
+    SKSE_API.sendToSKSE('setFollowerCommentaryEnabled', jsonData);
+  },
+
+  setBlacklistEnabled: (enabled: boolean) => {
+    log(`[SKSE_API] Setting blacklist enabled: ${enabled}`);
+    const jsonData = JSON.stringify({ enabled });
+    SKSE_API.sendToSKSE('setBlacklistEnabled', jsonData);
+  },
+
+  setSkyrimNetEnabled: (enabled: boolean) => {
+    log(`[SKSE_API] Setting SkyrimNet enabled: ${enabled}`);
+    const jsonData = JSON.stringify({ enabled });
+    SKSE_API.sendToSKSE('setSkyrimNetEnabled', jsonData);
+  },
+
+  setScenesEnabled: (enabled: boolean) => {
+    log(`[SKSE_API] Setting scenes enabled: ${enabled}`);
+    const jsonData = JSON.stringify({ enabled });
+    SKSE_API.sendToSKSE('setScenesEnabled', jsonData);
+  },
+
+  setBardSongsEnabled: (enabled: boolean) => {
+    log(`[SKSE_API] Setting bard songs enabled: ${enabled}`);
+    const jsonData = JSON.stringify({ enabled });
+    SKSE_API.sendToSKSE('setBardSongsEnabled', jsonData);
   },
 };

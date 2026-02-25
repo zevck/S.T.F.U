@@ -17,7 +17,8 @@ namespace DialogueDB
         HardBlock = 2,    // Scene stopped entirely
         SkyrimNetBlock = 3,  // Blocked from SkyrimNet logging only
         FilteredByConfig = 4,  // Blocked by MCM subtype filter
-        ToggledOff = 5    // In blacklist but toggle disabled (allowed)
+        ToggledOff = 5,   // In blacklist but toggle disabled (allowed)
+        Whitelisted = 6   // In whitelist (always allowed)
     };
 
     enum class BlacklistTarget : uint8_t

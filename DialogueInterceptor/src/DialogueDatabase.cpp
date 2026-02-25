@@ -275,6 +275,7 @@ namespace DialogueDB
                 filter_category TEXT DEFAULT 'Whitelist',
                 block_skyrimnet INTEGER DEFAULT 1,
                 source_plugin TEXT,
+                quest_editorid TEXT,
                 UNIQUE(target_type, target_formid, target_editorid)
             );
         )";
@@ -395,6 +396,17 @@ namespace DialogueDB
             }
         }
         
+        // Add missing columns to whitelist
+        if (!columnExists("whitelist", "quest_editorid")) {
+            spdlog::info("[DialogueDB] Adding quest_editorid column to whitelist");
+            int rc = sqlite3_exec(db_, "ALTER TABLE whitelist ADD COLUMN quest_editorid TEXT;", nullptr, nullptr, &errMsg);
+            if (rc != SQLITE_OK) {
+                spdlog::error("[DialogueDB] Failed to add quest_editorid column to whitelist: {}", errMsg);
+                sqlite3_free(errMsg);
+                return false;
+            }
+        }
+        
         spdlog::info("[DialogueDB] Schema update complete");
         return true;
     }
@@ -449,8 +461,8 @@ namespace DialogueDB
             INSERT INTO whitelist (
                 target_type, target_formid, target_editorid,
                 block_type, added_timestamp, notes, response_text, subtype, subtype_name,
-                filter_category, block_skyrimnet, source_plugin
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                filter_category, block_skyrimnet, source_plugin, quest_editorid
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         )";
 
         if (sqlite3_prepare_v2(db_, insertDialogueSQL, -1, &insertDialogueStmt_, nullptr) != SQLITE_OK) {
@@ -1703,7 +1715,7 @@ namespace DialogueDB
             const char* updateSql = R"(
                 UPDATE whitelist 
                 SET block_type = ?, added_timestamp = ?, notes = ?, response_text = ?, subtype = ?, subtype_name = ?,
-                    filter_category = ?, block_skyrimnet = ?, source_plugin = ?
+                    filter_category = ?, block_skyrimnet = ?, source_plugin = ?, quest_editorid = ?
                 WHERE id = ?;
             )";
             sqlite3_stmt* updateStmt = nullptr;
@@ -1722,7 +1734,8 @@ namespace DialogueDB
             sqlite3_bind_text(updateStmt, 7, enrichedEntry.filterCategory.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_int(updateStmt, 8, enrichedEntry.blockSkyrimNet ? 1 : 0);
             sqlite3_bind_text(updateStmt, 9, enrichedEntry.sourcePlugin.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_int64(updateStmt, 10, existingId);
+            sqlite3_bind_text(updateStmt, 10, enrichedEntry.questEditorID.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_int64(updateStmt, 11, existingId);
             
             bool success = sqlite3_step(updateStmt) == SQLITE_DONE;
             if (!success) {
@@ -1754,6 +1767,7 @@ namespace DialogueDB
             sqlite3_bind_text(insertWhitelistStmt_, 10, enrichedEntry.filterCategory.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_int(insertWhitelistStmt_, 11, enrichedEntry.blockSkyrimNet ? 1 : 0);
             sqlite3_bind_text(insertWhitelistStmt_, 12, enrichedEntry.sourcePlugin.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(insertWhitelistStmt_, 13, enrichedEntry.questEditorID.c_str(), -1, SQLITE_TRANSIENT);
 
             if (sqlite3_step(insertWhitelistStmt_) != SQLITE_DONE) {
                 spdlog::error("[DialogueDB] Failed to add whitelist entry: {}", sqlite3_errmsg(db_));
@@ -1931,6 +1945,10 @@ namespace DialogueDB
             // Column 12: source_plugin
             const char* sourcePlugin = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 12));
             entry.sourcePlugin = sourcePlugin ? sourcePlugin : "";
+            
+            // Column 13: quest_editorid
+            const char* questEditorID = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 13));
+            entry.questEditorID = questEditorID ? questEditorID : "";
             
             // Derive blockAudio and blockSubtitles from blockType (not stored in DB)
             // SkyrimNet-only blocks never block audio/subtitles

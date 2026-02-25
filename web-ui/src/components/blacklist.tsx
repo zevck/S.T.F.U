@@ -1,7 +1,7 @@
 import { useState, useMemo, memo, useCallback, useRef, useEffect } from 'react';
 import { useBlacklistStore } from '../stores/blacklist';
 import { BlacklistEntry } from '../types';
-import { Search, Trash2, X, Save, Plus } from 'lucide-react';
+import { Search, Trash2, X, Save, Plus, ArrowRight } from 'lucide-react';
 import { SKSE_API, log } from '../lib/skse-api';
 import { ResponsesModal } from './responses-modal';
 import { ManualEntryModal } from './manual-entry-modal';
@@ -99,9 +99,10 @@ export const Blacklist = () => {
     showTopics,
     setShowTopics,
     showScenes,
-    setShowScenes
+    setShowScenes,
+    selectedEntries,
+    setSelectedEntries
   } = useBlacklistStore();
-  const [selectedEntries, setSelectedEntries] = useState<BlacklistEntry[]>([]);
   const [lastClickedIndex, setLastClickedIndex] = useState<number>(-1);
   const [displayCount, setDisplayCount] = useState(100); // Increased initial load
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -194,8 +195,8 @@ export const Blacklist = () => {
     log(`[Blacklist] handleDelete called for entry ${entry.id}: ${entry.topicEditorID}`);
     SKSE_API.deleteBlacklistEntry(entry.id);
     // Remove from selection if it was selected
-    setSelectedEntries(prev => prev.filter(e => e.id !== entry.id));
-  }, []);
+    setSelectedEntries(selectedEntries.filter(e => e.id !== entry.id));
+  }, [selectedEntries, setSelectedEntries]);
   
   const handleDeleteSelected = useCallback(() => {
     if (selectedEntries.length === 0) return;
@@ -249,6 +250,12 @@ export const Blacklist = () => {
       SKSE_API.refreshBlacklist();
     }, 100);
   }, [selectedEntries]);
+  
+  const handleMoveToWhitelist = useCallback(() => {
+    if (!selectedEntry) return;
+    SKSE_API.moveToWhitelist(selectedEntry.id);
+    setSelectedEntries([]);
+  }, [selectedEntry, setSelectedEntries]);
   
   const handleResetFilters = useCallback(() => {
     setSearchQuery('');
@@ -315,21 +322,19 @@ export const Blacklist = () => {
       setSelectedEntries(rangeEntries);
     } else if (isCtrlClick) {
       // Ctrl-click: toggle selection
-      setSelectedEntries(prev => {
-        const isSelected = prev.some(e => e.id === entry.id);
-        if (isSelected) {
-          return prev.filter(e => e.id !== entry.id);
-        } else {
-          return [...prev, entry];
-        }
-      });
+      const isSelected = selectedEntries.some(e => e.id === entry.id);
+      if (isSelected) {
+        setSelectedEntries(selectedEntries.filter(e => e.id !== entry.id));
+      } else {
+        setSelectedEntries([...selectedEntries, entry]);
+      }
       setLastClickedIndex(index);
     } else {
       // Normal click: single selection
       setSelectedEntries([entry]);
       setLastClickedIndex(index);
     }
-  }, [lastClickedIndex, filteredEntries]);
+  }, [lastClickedIndex, filteredEntries, selectedEntries, setSelectedEntries]);
   
   // Keyboard support for DEL key
   useEffect(() => {
@@ -638,9 +643,13 @@ export const Blacklist = () => {
               
               <div>
                 <div className="text-sm text-gray-400 font-medium">
-                  {selectedEntry.targetType === 'Scene' ? 'Scene Editor ID' : 'Topic Editor ID'}
+                  {selectedEntry.targetType === 'Scene' ? 'Scene' : 'Topic'}
                 </div>
-                <div className="text-base text-white font-mono break-all">{selectedEntry.topicEditorID || 'N/A'}</div>
+                {selectedEntry.topicEditorID ? (
+                  <div className="text-base text-yellow-400 font-mono break-all">{selectedEntry.topicEditorID}</div>
+                ) : (
+                  <div className="text-base text-gray-400 font-mono break-all">FormID: {selectedEntry.topicFormID || 'N/A'}</div>
+                )}
               </div>
               
               {selectedEntry.questName && (
@@ -797,6 +806,14 @@ export const Blacklist = () => {
                 >
                   <Save size={18} />
                   Apply Changes
+                </button>
+                
+                <button
+                  onClick={handleMoveToWhitelist}
+                  className="w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
+                >
+                  Move to Whitelist
+                  <ArrowRight size={18} />
                 </button>
                 
                 <button

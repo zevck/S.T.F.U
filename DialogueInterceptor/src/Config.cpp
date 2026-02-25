@@ -1,5 +1,7 @@
 #include "Config.h"
+#include "SettingsPersistence.h"
 #include "DialogueDatabase.h"
+#include <spdlog/spdlog.h>
 #include <yaml-cpp/yaml.h>
 #include <filesystem>
 #include <fstream>
@@ -1185,6 +1187,9 @@ overrides:
         
         spdlog::info("[Config::ToggleSubtypeFilter] Toggled subtype {} filter from {} to {}", 
             topicSubtype, wasEnabled ? "enabled" : "disabled", !wasEnabled ? "enabled" : "disabled");
+        
+        // Save to INI so setting persists
+        SettingsPersistence::SaveSettings();
         
         // Clear the cache so decisions are re-evaluated with the new setting
         ClearCache();

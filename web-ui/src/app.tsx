@@ -1,13 +1,18 @@
 import { useEffect, useState, useRef } from 'react';
 import { History } from './components/history';
 import { Blacklist } from './components/blacklist';
+import { Whitelist } from './components/whitelist';
+import { Settings } from './components/settings';
+import { Toast } from './components/toast';
 import { useHistoryStore } from './stores/history';
 import { useBlacklistStore } from './stores/blacklist';
+import { useWhitelistStore } from './stores/whitelist';
+import { useSettingsStore } from './stores/settings';
 import { SKSE_API, log } from './lib/skse-api';
 import { DialogueEntry, BlacklistEntry } from './types';
-import { List, Ban, Maximize2, Minimize2, Move, X } from 'lucide-react';
+import { List, Ban, CheckCircle, Settings as SettingsIcon, Maximize2, Minimize2, Move, X } from 'lucide-react';
 
-type Tab = 'history' | 'blacklist';
+type Tab = 'history' | 'blacklist' | 'whitelist' | 'settings';
 
 export const App = () => {
   const [activeTab, setActiveTab] = useState<Tab>('history');
@@ -116,6 +121,30 @@ export const App = () => {
       }
     });
 
+    // Subscribe to whitelist updates from SKSE
+    SKSE_API.subscribe('updateWhitelist', (jsonData: string) => {
+      log('[App] updateWhitelist received');
+      try {
+        const entries = JSON.parse(jsonData) as BlacklistEntry[];
+        useWhitelistStore.getState().setEntries(entries);
+        log(`[App] Parsed ${entries.length} whitelist entries`);
+      } catch (error) {
+        log(`[App] ERROR parsing whitelist data: ${error}`);
+      }
+    });
+
+    // Subscribe to settings updates from SKSE
+    SKSE_API.subscribe('updateSettings', (jsonData: string) => {
+      log('[App] updateSettings received');
+      try {
+        const data = JSON.parse(jsonData);
+        useSettingsStore.getState().setSettings(data);
+        log('[App] Updated settings from C++');
+      } catch (error) {
+        log(`[App] ERROR parsing settings data: ${error}`);
+      }
+    });
+
     // Check if JS listeners are registered
     log(`[App] Checking registered JS listeners...`);
     log(`[App] requestHistory exists: ${typeof (window as any).requestHistory === 'function'}`);
@@ -129,6 +158,12 @@ export const App = () => {
     // Request initial data
     SKSE_API.sendToSKSE('requestHistory');
     SKSE_API.sendToSKSE('requestBlacklist');
+    SKSE_API.sendToSKSE('requestSettings', '');
+    
+    // Poll for settings updates every second (to catch MCM changes)
+    const settingsInterval = setInterval(() => {
+      SKSE_API.sendToSKSE('requestSettings', '');
+    }, 1000);
 
     // ESC key handler to close menu
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -145,6 +180,9 @@ export const App = () => {
     return () => {
       SKSE_API.unsubscribe('updateHistory');
       SKSE_API.unsubscribe('updateBlacklist');
+      SKSE_API.unsubscribe('updateWhitelist');
+      SKSE_API.unsubscribe('updateSettings');
+      clearInterval(settingsInterval);
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
@@ -164,6 +202,7 @@ export const App = () => {
   }, [activeTab]);
 
   return (
+    <>
     <div className="w-full h-full bg-gray-900 text-white flex flex-col">
       {/* Draggable Header (Windowed Mode Only) */}
       {!isFullscreen && (
@@ -225,6 +264,28 @@ export const App = () => {
               <Ban size={18} />
               Blacklist
             </button>
+            <button
+              onClick={() => setActiveTab('whitelist')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                activeTab === 'whitelist'
+                  ? 'bg-green-600 text-white'
+                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+              }`}
+            >
+              <CheckCircle size={18} />
+              Whitelist
+            </button>
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                activeTab === 'settings'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+              }`}
+            >
+              <SettingsIcon size={18} />
+              Settings
+            </button>
           </div>
           
           {/* Fullscreen Toggle and Close (Fullscreen Mode Only) */}
@@ -253,8 +314,12 @@ export const App = () => {
       <div className="flex-1 overflow-hidden">
         {activeTab === 'history' && <History />}
         {activeTab === 'blacklist' && <Blacklist />}
+        {activeTab === 'whitelist' && <Whitelist />}
+        {activeTab === 'settings' && <Settings />}
       </div>
       </div>
     </div>
+    <Toast />
+    </>
   );
 };

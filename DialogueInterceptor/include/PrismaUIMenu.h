@@ -12,6 +12,7 @@ public:
     static void SendHistoryData();
     static void SendBlacklistData();
     static void SendWhitelistData();
+    static void SendSettingsData();
     
 private:
     static PRISMA_UI_API::IVPrismaUI1* prismaUI_;
@@ -40,7 +41,17 @@ private:
     static void OnRemoveFromWhitelist(const char* data);
     static void OnUpdateWhitelistEntry(const char* data);
     static void OnMoveToBlacklist(const char* data);
+    static void OnMoveToWhitelist(const char* data);
     static void OnRemoveWhitelistBatch(const char* data);
+    static void OnImportScenes(const char* data);
+    static void OnImportYAML(const char* data);
+    static void OnSetCombatGruntsBlocked(const char* data);
+    static void OnSetFollowerCommentaryEnabled(const char* data);
+    static void OnRequestSettings(const char* data);
+    static void OnSetBlacklistEnabled(const char* data);
+    static void OnSetSkyrimNetEnabled(const char* data);
+    static void OnSetScenesEnabled(const char* data);
+    static void OnSetBardSongsEnabled(const char* data);
     static std::string SerializeHistoryToJSON();
     static std::string SerializeBlacklistToJSON();
     static std::string SerializeWhitelistToJSON();

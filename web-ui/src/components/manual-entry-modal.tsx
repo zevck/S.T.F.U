@@ -4,6 +4,7 @@ import { SKSE_API, log } from '../lib/skse-api';
 interface ManualEntryModalProps {
   isOpen: boolean;
   onClose: () => void;
+  isWhitelist?: boolean;
 }
 
 interface DetectionResult {
@@ -11,7 +12,7 @@ interface DetectionResult {
   categories: string[];
 }
 
-export const ManualEntryModal = memo(({ isOpen, onClose }: ManualEntryModalProps) => {
+export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: ManualEntryModalProps) => {
   const [identifier, setIdentifier] = useState('');
   const [blockType, setBlockType] = useState<'Soft' | 'Hard'>('Soft');
   const [notes, setNotes] = useState('');
@@ -105,14 +106,15 @@ export const ManualEntryModal = memo(({ isOpen, onClose }: ManualEntryModalProps
       return;
     }
 
-    log(`[ManualEntry] Creating entry: identifier=${identifier}, blockType=${blockType}, category=${selectedCategory}`);
+    log(`[ManualEntry] Creating entry: identifier=${identifier}, blockType=${blockType}, category=${isWhitelist ? 'Whitelist' : selectedCategory}, isWhitelist=${isWhitelist}`);
 
     // Call new createManualEntry handler
     SKSE_API.sendToSKSE('createManualEntry', JSON.stringify({
       identifier,
       blockType,
-      category: selectedCategory,
-      notes
+      category: isWhitelist ? 'Whitelist' : selectedCategory,
+      notes,
+      isWhitelist
     }));
 
     // Close modal
@@ -131,7 +133,7 @@ export const ManualEntryModal = memo(({ isOpen, onClose }: ManualEntryModalProps
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-700">
           <h2 id="modal-title" className="text-xl font-bold text-white">
-            Create Blacklist Entry
+            {isWhitelist ? 'Create Whitelist Entry' : 'Create Blacklist Entry'}
           </h2>
           <button
             onClick={onClose}
@@ -155,7 +157,7 @@ export const ManualEntryModal = memo(({ isOpen, onClose }: ManualEntryModalProps
               type="text"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
-              placeholder="EditorID or FormID (e.g., DragonBridgeFarmScene02 or 02707A)"
+              placeholder={isWhitelist ? "EditorID, FormID, or Plugin.esp" : "EditorID or FormID (e.g., DragonBridgeFarmScene02 or 02707A)"}
               className="w-full px-4 py-2.5 text-base bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
               autoFocus
             />
@@ -166,7 +168,8 @@ export const ManualEntryModal = memo(({ isOpen, onClose }: ManualEntryModalProps
             </div>
           </div>
 
-          {/* Block Type */}
+          {/* Block Type - only for blacklist */}
+          {!isWhitelist && (
           <div>
             <label className="block text-base font-medium text-gray-300 mb-2">
               Block Type
@@ -197,8 +200,10 @@ export const ManualEntryModal = memo(({ isOpen, onClose }: ManualEntryModalProps
               Soft blocks mute audio and hide subtitles. Hard blocks prevent dialogue before it plays.
             </div>
           </div>
+          )}
 
-          {/* Filter Category */}
+          {/* Filter Category - only for blacklist */}
+          {!isWhitelist && (
           <div>
             <label className="block text-base font-medium text-gray-300 mb-2">
               Filter Category
@@ -218,6 +223,7 @@ export const ManualEntryModal = memo(({ isOpen, onClose }: ManualEntryModalProps
               Categories change based on detected type
             </div>
           </div>
+          )}
 
           {/* Notes */}
           <div>
