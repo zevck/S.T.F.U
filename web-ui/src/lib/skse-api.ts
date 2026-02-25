@@ -95,6 +95,33 @@ export const SKSE_API = {
     SKSE_API.sendToSKSE('updateBlacklistEntry', jsonData);
   },
   
+  updateBlacklistEntryAdvanced: (data: {
+    id: number;
+    blockType: string;
+    filterCategory: string;
+    notes: string;
+    actorFilterNames: string[];
+    actorFilterFormIDs: string[];
+  }) => {
+    log(`[SKSE_API] Updating blacklist entry (advanced) ${data.id}: blockType=${data.blockType}, actors=${data.actorFilterNames.length}`);
+    const jsonData = JSON.stringify(data);
+    SKSE_API.sendToSKSE('updateBlacklistEntryAdvanced', jsonData);
+  },
+  
+  createAdvancedEntry: (data: {
+    identifier: string;
+    blockType: string;
+    category: string;
+    notes: string;
+    isWhitelist: boolean;
+    actorFilterNames: string[];
+    actorFilterFormIDs: string[];
+  }) => {
+    log(`[SKSE_API] Creating advanced entry: identifier=${data.identifier}, actors=${data.actorFilterNames.length}`);
+    const jsonData = JSON.stringify(data);
+    SKSE_API.sendToSKSE('createAdvancedEntry', jsonData);
+  },
+  
   addToBlacklist: (entries: any[], blockType: 'Soft' | 'Hard' | 'SkyrimNet', filterCategory?: string, notes?: string) => {
     log(`[SKSE_API] addToBlacklist called with ${entries.length} entries, blockType: ${blockType}`);
     log(`[SKSE_API] Entries: ${JSON.stringify(entries)}`);
@@ -231,5 +258,10 @@ export const SKSE_API = {
     log(`[SKSE_API] Setting bard songs enabled: ${enabled}`);
     const jsonData = JSON.stringify({ enabled });
     SKSE_API.sendToSKSE('setBardSongsEnabled', jsonData);
+  },
+  
+  requestNearbyActors: () => {
+    log('[SKSE_API] Requesting nearby actors');
+    SKSE_API.sendToSKSE('getNearbyActors', '');
   },
 };

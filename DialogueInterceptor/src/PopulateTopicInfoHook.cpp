@@ -69,7 +69,61 @@ namespace PopulateTopicInfoHook
     static std::unordered_map<TextDialogueKey, int64_t, TextDialogueKeyHash> g_recentlyLoggedByText;
     static std::mutex g_loggedMutex;
     static int64_t g_lastCleanupTime = 0;
-    static constexpr int64_t CLEANUP_INTERVAL_MS = 30000; // Clean up every 30 seconds    
+    static constexpr int64_t CLEANUP_INTERVAL_MS = 30000; // Clean up every 30 seconds
+    
+    // Speaker context storage for actor-specific filtering
+    // Stores current speaker info so ConstructResponseHook can access it
+    struct SpeakerContext {
+        uint32_t actorFormID;
+        std::string actorName;
+        uint32_t topicInfoFormID;  // To verify we're checking the right dialogue
+        int64_t timestamp;
+    };
+    
+    static std::optional<SpeakerContext> g_currentSpeaker;
+    static std::mutex g_speakerMutex;
+    
+    // Store speaker context (called from PopulateTopicInfo which has speaker Actor)
+    void StoreSpeakerContext(RE::Actor* speaker, RE::TESTopicInfo* topicInfo)
+    {
+        if (!speaker || !topicInfo) return;
+        
+        std::lock_guard<std::mutex> lock(g_speakerMutex);
+        
+        auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        
+        g_currentSpeaker = SpeakerContext{
+            speaker->GetFormID(),
+            speaker->GetName() ? std::string(speaker->GetName()) : "",
+            topicInfo->GetFormID(),
+            now
+        };
+    }
+    
+    // Get speaker context (called from ConstructResponseHook)
+    // Returns nullopt if no valid context or topicInfo doesn't match
+    std::optional<std::pair<uint32_t, std::string>> GetSpeakerContext(RE::TESTopicInfo* topicInfo)
+    {
+        std::lock_guard<std::mutex> lock(g_speakerMutex);
+        
+        if (!g_currentSpeaker.has_value()) {
+            return std::nullopt;
+        }
+        
+        auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        
+        // Validate: topicInfo must match and context must be recent (< 1 second old)
+        if (topicInfo && 
+            g_currentSpeaker->topicInfoFormID == topicInfo->GetFormID() &&
+            (now - g_currentSpeaker->timestamp) < 1000) {
+            return std::make_pair(g_currentSpeaker->actorFormID, g_currentSpeaker->actorName);
+        }
+        
+        return std::nullopt;
+    }
+    
     // Check if this speaker+text was recently logged (for external deduplication)
     bool WasRecentlyLogged(uint32_t speakerFormID, const std::string& responseText, int64_t withinMs = 5000)
     {
@@ -108,6 +162,9 @@ namespace PopulateTopicInfoHook
         RE::Character* a_speaker,
         RE::TESTopicInfo::ResponseData* a_responseData)
     {
+        // Store speaker context for actor-specific filtering (used by ConstructResponseHook)
+        StoreSpeakerContext(a_speaker, a_topicInfo);
+        
         const char* speakerName = a_speaker ? a_speaker->GetName() : nullptr;
         
         // Extract response text from topicInfo DIRECTLY - it's a static record, always available
@@ -327,8 +384,9 @@ namespace PopulateTopicInfoHook
         // Note: Topic fullName (player's dialogue choice) is cleared in DialogueItem::Ctor hook
         if (a_topic && a_responseData && !fullResponseText.empty()) {
             RE::TESQuest* quest = a_topic->ownerQuest;
-            bool shouldBlockAudio = Config::ShouldBlockAudio(quest, a_topic, speakerName, responseText);
-            bool shouldBlockSubtitles = Config::ShouldBlockSubtitles(quest, a_topic, speakerName, responseText);
+            uint32_t speakerFormID = a_speaker ? a_speaker->GetFormID() : 0;
+            bool shouldBlockAudio = Config::ShouldBlockAudio(quest, a_topic, speakerName, responseText, speakerFormID);
+            bool shouldBlockSubtitles = Config::ShouldBlockSubtitles(quest, a_topic, speakerName, responseText, speakerFormID);
             bool shouldBlockSkyrimNet = false;
             if (STFUMenu::IsSkyrimNetLoaded()) {
                 shouldBlockSkyrimNet = Config::ShouldBlockSkyrimNet(quest, a_topic, speakerName);
@@ -499,9 +557,9 @@ namespace PopulateTopicInfoHook
             // Determine blocking status with granular control
             DialogueDB::BlockedStatus blockedStatus = DialogueDB::BlockedStatus::Normal;
             
-            // Check granular blocking flags
-            bool shouldBlockAudio = Config::ShouldBlockAudio(quest, a_topic, speakerName, responseText);
-            bool shouldBlockSubtitles = Config::ShouldBlockSubtitles(quest, a_topic, speakerName, responseText);
+            // Check granular blocking flags (speakerFormID already defined at line 441)
+            bool shouldBlockAudio = Config::ShouldBlockAudio(quest, a_topic, speakerName, responseText, speakerFormID);
+            bool shouldBlockSubtitles = Config::ShouldBlockSubtitles(quest, a_topic, speakerName, responseText, speakerFormID);
             bool shouldBlockSkyrimNet = false;
             if (STFUMenu::IsSkyrimNetLoaded()) {
                 shouldBlockSkyrimNet = Config::ShouldBlockSkyrimNet(quest, a_topic, speakerName);
@@ -825,8 +883,9 @@ namespace PopulateTopicInfoHook
             }
 
             // Check granular blocking for logging (ConstructResponse will actually apply the blocks)
-            bool shouldBlockAudio = Config::ShouldBlockAudio(quest, a_topic, speakerName, responseText);
-            bool shouldBlockSubtitles = Config::ShouldBlockSubtitles(quest, a_topic, speakerName, responseText);
+            uint32_t speakerFormID = a_speaker ? a_speaker->GetFormID() : 0;
+            bool shouldBlockAudio = Config::ShouldBlockAudio(quest, a_topic, speakerName, responseText, speakerFormID);
+            bool shouldBlockSubtitles = Config::ShouldBlockSubtitles(quest, a_topic, speakerName, responseText, speakerFormID);
             
             // Set the flag early so SetSubtitle hook can block the first call (even before ConstructResponse runs)
             ConstructResponseHook::SetShouldBlockSubtitles(shouldBlockSubtitles);

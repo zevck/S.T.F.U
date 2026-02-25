@@ -1,6 +1,7 @@
 #include "Config.h"
 #include "SettingsPersistence.h"
 #include "DialogueDatabase.h"
+#include "PopulateTopicInfoHook.h"
 #include <spdlog/spdlog.h>
 #include <yaml-cpp/yaml.h>
 #include <filesystem>
@@ -13,11 +14,7 @@ namespace Config
 {
     static Settings g_settings;
     
-    // Performance cache for blocking decisions
-    static std::unordered_map<uint32_t, BlockingDecision> g_blockingCache;
-    static std::mutex g_cacheMutex;
-    static constexpr int64_t CACHE_TTL_MS = 60000;  // Cache entries valid for 60 seconds
-    static constexpr size_t MAX_CACHE_SIZE = 500;   // Limit cache size to prevent memory growth
+    // No cache - database lookups are fast enough and avoid cache invalidation issues
     
     // Auto-generated vanilla Skyrim subtype corrections
     // Subtype corrections map - cleared for testing
@@ -836,9 +833,8 @@ overrides:
     
     void ClearCache()
     {
-        std::lock_guard<std::mutex> lock(g_cacheMutex);
-        g_blockingCache.clear();
-        spdlog::debug("[Config] Blocking decision cache cleared");
+        // Cache removed - database queries are fast enough
+        spdlog::debug("[Config] Cache removal complete - using direct database queries");
     }
 
     const Settings& GetSettings()
@@ -953,41 +949,13 @@ overrides:
         return false;  // Not blocked
     }
     
-    bool ShouldBlockAudio(RE::TESQuest* quest, RE::TESTopic* topic, const char* speakerName, const char* responseText)
+    bool ShouldBlockAudio(RE::TESQuest* quest, RE::TESTopic* topic, const char* speakerName, const char* responseText, uint32_t speakerFormID)
     {
         if (!topic) {
             return false;
         }
 
         uint32_t topicFormID = topic->GetFormID();
-        
-        // Check cache first
-        auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()
-        ).count();
-        
-        {
-            std::lock_guard<std::mutex> lock(g_cacheMutex);
-            auto it = g_blockingCache.find(topicFormID);
-            if (it != g_blockingCache.end() && (now - it->second.cacheTime) < CACHE_TTL_MS) {
-                // Cache hit - return cached value
-                spdlog::trace("[Config Cache] Hit for topic 0x{:08X}: blockAudio={}", topicFormID, it->second.blockAudio);
-                return it->second.blockAudio;
-            }
-            
-            // Periodic cleanup: remove expired entries if cache is getting large
-            if (g_blockingCache.size() > MAX_CACHE_SIZE) {
-                for (auto iter = g_blockingCache.begin(); iter != g_blockingCache.end();) {
-                    if (now - iter->second.cacheTime > CACHE_TTL_MS) {
-                        iter = g_blockingCache.erase(iter);
-                    } else {
-                        ++iter;
-                    }
-                }
-            }
-        }
-        
-        // Cache miss - compute the blocking decision
         const char* topicEditorID = topic->GetFormEditorID();
         std::string editorIDStr = topicEditorID ? topicEditorID : "";
         
@@ -1003,8 +971,6 @@ overrides:
                 std::string pluginName = file->fileName;
                 if (db->IsPluginWhitelisted(pluginName)) {
                     // Plugin is whitelisted - never block anything from this plugin
-                    std::lock_guard<std::mutex> lock(g_cacheMutex);
-                    g_blockingCache[topicFormID] = {false, false, false, now};
                     return false;
                 }
             }
@@ -1014,9 +980,6 @@ overrides:
         if (db) {
             // Check if topic is whitelisted
             if (db->IsWhitelisted(DialogueDB::BlacklistTarget::Topic, topicFormID, editorIDStr)) {
-                // Cache the "never block" result
-                std::lock_guard<std::mutex> lock(g_cacheMutex);
-                g_blockingCache[topicFormID] = {false, false, false, now};
                 return false;
             }
             // Check if quest is whitelisted
@@ -1025,9 +988,6 @@ overrides:
                 const char* questEditorID = quest->GetFormEditorID();
                 std::string questEditorIDStr = questEditorID ? questEditorID : "";
                 if (db->IsWhitelisted(DialogueDB::BlacklistTarget::Quest, questFormID, questEditorIDStr)) {
-                    // Cache the "never block" result
-                    std::lock_guard<std::mutex> lock(g_cacheMutex);
-                    g_blockingCache[topicFormID] = {false, false, false, now};
                     return false;
                 }
             }
@@ -1038,9 +998,10 @@ overrides:
         if (db) {
             blacklistId = db->GetBlacklistEntryId(topicFormID, editorIDStr);
             if (blacklistId > 0) {
-                // Entry is in blacklist - use granular flags
-                blockAudio = db->ShouldBlockAudio(topicFormID, editorIDStr);
-                blockSubtitles = db->ShouldBlockSubtitles(topicFormID, editorIDStr);
+                // Entry is in blacklist - use granular flags with actor filtering
+                std::string actorNameStr = speakerName ? speakerName : "";
+                blockAudio = db->ShouldBlockAudio(topicFormID, editorIDStr, speakerFormID, actorNameStr);
+                blockSubtitles = db->ShouldBlockSubtitles(topicFormID, editorIDStr, speakerFormID, actorNameStr);
                 blockSkyrimNet = db->ShouldBlockSkyrimNet(topicFormID, editorIDStr);
             }
         }
@@ -1095,18 +1056,10 @@ overrides:
         // The YAML file (STFU_SkyrimNetFilter.yaml) is imported into the database at startup
         // No runtime YAML checking here - database is the single source of truth
         
-        // Store in cache
-        {
-            std::lock_guard<std::mutex> lock(g_cacheMutex);
-            g_blockingCache[topicFormID] = {blockAudio, blockSubtitles, blockSkyrimNet, now};
-            spdlog::trace("[Config Cache] Stored for topic 0x{:08X}: audio={}, sub={}, net={}", 
-                topicFormID, blockAudio, blockSubtitles, blockSkyrimNet);
-        }
-        
         return blockAudio;
     }
     
-    bool ShouldBlockSubtitles(RE::TESQuest* quest, RE::TESTopic* topic, const char* speakerName, const char* responseText)
+    bool ShouldBlockSubtitles(RE::TESQuest* quest, RE::TESTopic* topic, const char* speakerName, const char* responseText, uint32_t speakerFormID)
     {
         if (!topic) {
             return false;
@@ -1114,34 +1067,20 @@ overrides:
 
         uint32_t topicFormID = topic->GetFormID();
         
-        // Check cache first
-        auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()
-        ).count();
+        // ShouldBlockAudio computes both blockAudio and blockSubtitles
+        // Just call it and return blockSubtitles from the computation
+        ShouldBlockAudio(quest, topic, speakerName, responseText, speakerFormID);
         
-        {
-            std::lock_guard<std::mutex> lock(g_cacheMutex);
-            auto it = g_blockingCache.find(topicFormID);
-            if (it != g_blockingCache.end() && (now - it->second.cacheTime) < CACHE_TTL_MS) {
-                // Cache hit - return cached value
-                return it->second.blockSubtitles;
-            }
-        }
+        // Re-query the database for subtitles decision
+        // This is fast because the database lookup is indexed
+        auto db = DialogueDB::GetDatabase();
+        if (!db) return false;
         
-        // Cache miss - the full decision was computed in ShouldBlockAudio
-        // Just call it to populate cache, then check cache again
-        ShouldBlockAudio(quest, topic, speakerName, responseText);
+        const char* topicEditorID = topic->GetFormEditorID();
+        std::string editorIDStr = topicEditorID ? topicEditorID : "";
+        std::string actorNameStr = speakerName ? speakerName : "";
         
-        {
-            std::lock_guard<std::mutex> lock(g_cacheMutex);
-            auto it = g_blockingCache.find(topicFormID);
-            if (it != g_blockingCache.end()) {
-                return it->second.blockSubtitles;
-            }
-        }
-        
-        // Fallback (shouldn't reach here)
-        return false;
+        return db->ShouldBlockSubtitles(topicFormID, editorIDStr, speakerFormID, actorNameStr);
     }
     
     bool IsFilteredByMCM(uint32_t topicFormID, uint16_t topicSubtype)
@@ -1256,44 +1195,22 @@ overrides:
 
         uint32_t topicFormID = topic->GetFormID();
         
-        // Check cache first
-        auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()
-        ).count();
-        
-        {
-            std::lock_guard<std::mutex> lock(g_cacheMutex);
-            auto it = g_blockingCache.find(topicFormID);
-            if (it != g_blockingCache.end() && (now - it->second.cacheTime) < CACHE_TTL_MS) {
-                // Cache hit - return cached value
-                return it->second.blockSkyrimNet;
-            }
-        }
-        
-        // Cache miss - the full decision was computed in ShouldBlockAudio
-        // Just call it to populate cache, then check cache again
+        // Call ShouldBlockAudio to compute all blocking flags, then re-query database for SkyrimNet flag
         ShouldBlockAudio(quest, topic, speakerName, nullptr);
         
-        {
-            std::lock_guard<std::mutex> lock(g_cacheMutex);
-            auto it = g_blockingCache.find(topicFormID);
-            if (it != g_blockingCache.end()) {
-                return it->second.blockSkyrimNet;
-            }
-        }
+        auto db = DialogueDB::GetDatabase();
+        if (!db) return false;
         
-        // Fallback (shouldn't reach here)
-        return false;
+        const char* topicEditorID = topic->GetFormEditorID();
+        std::string editorIDStr = topicEditorID ? topicEditorID : "";
+        
+        return db->ShouldBlockSkyrimNet(topicFormID, editorIDStr);
     }
     
     void InvalidateTopicCache(uint32_t topicFormID)
     {
-        std::lock_guard<std::mutex> lock(g_cacheMutex);
-        auto it = g_blockingCache.find(topicFormID);
-        if (it != g_blockingCache.end()) {
-            g_blockingCache.erase(it);
-            spdlog::debug("[Config] Invalidated cache for topic FormID: 0x{:08X}", topicFormID);
-        }
+        // Cache removed - no invalidation needed
+        spdlog::debug("[Config] Cache invalidation called for topic FormID: 0x{:08X} (no-op)", topicFormID);
     }
     
     bool ShouldBlockScenes()
@@ -1409,8 +1326,11 @@ overrides:
                     auto* dialogueAction = static_cast<RE::BGSSceneActionDialogue*>(action);
                     if (dialogueAction && dialogueAction->topic == topic) {
                         const char* sceneEditorID = scene->GetFormEditorID();
-                        if (sceneEditorID && DialogueDB::GetDatabase()->ShouldBlockAudio(0, sceneEditorID)) {
-                            return true;
+                        if (sceneEditorID) {
+                            // Actor filtering not available at this level (no TESTopicInfo)
+                            if (DialogueDB::GetDatabase()->ShouldBlockAudio(0, sceneEditorID)) {
+                                return true;
+                            }
                         }
                         break;
                     }
@@ -1441,6 +1361,7 @@ overrides:
         }
         
         // Check unified blacklist (scenes have target_type=4)
+        // Note: Actor filtering not applicable for scene-level checks
         if (DialogueDB::GetDatabase()->ShouldBlockAudio(0, sceneEditorID)) {
             return true;
         }

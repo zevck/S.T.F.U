@@ -5,6 +5,7 @@ import { Search, Trash2, X, Save, Plus, ArrowRight } from 'lucide-react';
 import { SKSE_API, log } from '../lib/skse-api';
 import { ResponsesModal } from './responses-modal';
 import { ManualEntryModal } from './manual-entry-modal';
+import { AdvancedEditModal } from './advanced-edit-modal';
 
 // Memoized list item component for better performance
 const BlacklistItem = memo(({ 
@@ -108,6 +109,8 @@ export const Blacklist = () => {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [showResponsesModal, setShowResponsesModal] = useState(false);
   const [showManualEntryModal, setShowManualEntryModal] = useState(false);
+  const [showAdvancedEditModal, setShowAdvancedEditModal] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<BlacklistEntry | null>(null);
   const [modalTitle, setModalTitle] = useState('');
   const [modalResponses, setModalResponses] = useState<string[]>([]);
   
@@ -801,6 +804,17 @@ export const Blacklist = () => {
               {/* Action Buttons */}
               <div className="space-y-2 border-t border-gray-700 pt-4">
                 <button
+                  onClick={() => {
+                    setEditingEntry(selectedEntry);
+                    setShowAdvancedEditModal(true);
+                  }}
+                  className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
+                >
+                  <Plus size={18} />
+                  Edit (Advanced)
+                </button>
+                
+                <button
                   onClick={handleApplyChanges}
                   className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
                 >
@@ -847,6 +861,16 @@ export const Blacklist = () => {
       <ManualEntryModal
         isOpen={showManualEntryModal}
         onClose={() => setShowManualEntryModal(false)}
+      />
+      
+      {/* Advanced Edit Modal */}
+      <AdvancedEditModal
+        isOpen={showAdvancedEditModal}
+        onClose={() => {
+          setShowAdvancedEditModal(false);
+          setEditingEntry(null);
+        }}
+        entry={editingEntry}
       />
     </div>
   );

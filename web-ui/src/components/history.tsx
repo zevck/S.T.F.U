@@ -3,6 +3,7 @@ import { useHistoryStore } from '@/stores/history';
 import { DialogueEntry } from '@/types';
 import { SKSE_API, log } from '@/lib/skse-api';
 import { ResponsesModal } from './responses-modal';
+import { AdvancedEntryModal } from './advanced-entry-modal';
 import { Search, Trash2, Save } from 'lucide-react';
 
 const getStatusColor = (status: DialogueEntry['status']): string => {
@@ -124,6 +125,7 @@ export const History = () => {
   const [modalTitle, setModalTitle] = useState('');
   const [modalResponses, setModalResponses] = useState<string[]>([]);
   const [statusFilters, setStatusFilters] = useState<Set<string>>(new Set(['Allowed', 'Soft Blocked', 'Hard Blocked', 'SkyrimNet Blocked', 'Whitelisted']));
+  const [showAdvancedEntryModal, setShowAdvancedEntryModal] = useState(false);
   
   // For single-item detail panel (first selected item)
   const selectedEntry = selectedEntries.length > 0 ? selectedEntries[0] : null;
@@ -154,30 +156,6 @@ export const History = () => {
     setSearchQuery('');
     setStatusFilters(new Set(['Allowed', 'Soft Blocked', 'Hard Blocked', 'SkyrimNet Blocked', 'Whitelisted']));
   }, [setSearchQuery]);
-  
-  // Filter categories based on selected entry type
-  const filterCategories = useMemo(() => {
-    const isScene = selectedEntry?.isScene;
-    if (isScene) {
-      return ['Blacklist', 'Scene', 'BardSongs', 'FollowerCommentary'];
-    } else {
-      return [
-        'Blacklist',
-        'AcceptYield', 'ActorCollideWithActor', 'Agree', 'AlertIdle', 'AlertToCombat', 'AlertToNormal',
-        'AllyKilled', 'Assault', 'AssaultNC', 'Attack', 'AvoidThreat', 'BarterExit', 'Bash',
-        'Bleedout', 'Block', 'CombatToLost', 'CombatToNormal', 'Death', 'DestroyObject',
-        'DetectFriendDie', 'ExitFavorState', 'Flee', 'Goodbye', 'Hello', 'Hit', 'Idle',
-        'KnockOverObject', 'LockedObject', 'LostIdle', 'LostToCombat', 'LostToNormal',
-        'MoralRefusal', 'Murder', 'MurderNC', 'NormalToAlert', 'NormalToCombat', 'NoticeCorpse',
-        'ObserveCombat', 'PickpocketCombat', 'PickpocketNC', 'PickpocketTopic',
-        'PlayerCastProjectileSpell', 'PlayerCastSelfSpell', 'PlayerInIronSights', 'PlayerShout',
-        'PowerAttack', 'PursueIdleTopic', 'Refuse', 'ShootBow', 'Show', 'StandOnFurniture', 'Steal',
-        'StealFromNC', 'SwingMeleeWeapon', 'Taunt', 'TimeToGo', 'TrainingExit', 'Trespass',
-        'TrespassAgainstNC', 'VoicePowerEndLong', 'VoicePowerEndShort', 'VoicePowerStartLong',
-        'VoicePowerStartShort', 'WerewolfTransformCrime', 'Yield', 'ZKeyObject'
-      ];
-    }
-  }, [selectedEntry]);
   
   // Initialize edit state when selected entry changes
   useEffect(() => {
@@ -814,24 +792,6 @@ export const History = () => {
                   </div>
                 </div>
                 
-                {/* Filter Category - only show when not whitelisting */}
-                {!editWhitelist && (
-                <div className="mb-4">
-                  <div className="text-base text-gray-400 font-medium mb-2">Filter Category</div>
-                  <select
-                    value={editFilterCategory}
-                    onChange={(e) => setEditFilterCategory(e.target.value)}
-                    className="w-full px-3 py-2 text-base bg-gray-700 text-white rounded border border-gray-600 focus:outline-none focus:border-blue-500"
-                    disabled={editSkyrimNetBlock}
-                  >
-                    {filterCategories.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                  <div className="text-sm text-gray-400 mt-1">Which setting toggles blocking for this entry</div>
-                </div>
-                )}
-                
                 {/* Notes */}
                 <div className="mb-4">
                   <div className="text-base text-gray-400 font-medium mb-2">Notes (Optional)</div>
@@ -865,6 +825,14 @@ export const History = () => {
                     Remove from Blacklist
                   </button>
                 )}
+                
+                {/* Advanced Entry button */}
+                <button
+                  onClick={() => setShowAdvancedEntryModal(true)}
+                  className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
+                >
+                  Advanced Entry
+                </button>
               </div>
               
               {/* Subtype Filter Toggle - only show for entries filtered by MCM or toggled off */}
@@ -910,6 +878,14 @@ export const History = () => {
         onClose={() => setShowResponsesModal(false)}
         title={modalTitle}
         responses={modalResponses}
+      />
+      
+      {/* Advanced Entry Modal */}
+      <AdvancedEntryModal
+        isOpen={showAdvancedEntryModal}
+        onClose={() => setShowAdvancedEntryModal(false)}
+        prefillEntry={selectedEntry}
+        isWhitelist={false}
       />
     </div>
   );

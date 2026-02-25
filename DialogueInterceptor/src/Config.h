@@ -96,8 +96,8 @@ namespace Config
     bool ShouldBlockDialogue(RE::TESQuest* quest, RE::TESTopic* topic, const char* speakerName, const char* responseText);
     
     // Check individual blocking options (checks database granular flags + YAML + MCM)
-    bool ShouldBlockAudio(RE::TESQuest* quest, RE::TESTopic* topic, const char* speakerName, const char* responseText);
-    bool ShouldBlockSubtitles(RE::TESQuest* quest, RE::TESTopic* topic, const char* speakerName, const char* responseText);
+    bool ShouldBlockAudio(RE::TESQuest* quest, RE::TESTopic* topic, const char* speakerName, const char* responseText, uint32_t speakerFormID = 0);
+    bool ShouldBlockSubtitles(RE::TESQuest* quest, RE::TESTopic* topic, const char* speakerName, const char* responseText, uint32_t speakerFormID = 0);
     
     // Check if dialogue should be filtered from SkyrimNet logging (STFU_SkyrimNetFilter.yaml)
     bool ShouldBlockSkyrimNet(RE::TESQuest* quest, RE::TESTopic* topic, const char* speakerName);

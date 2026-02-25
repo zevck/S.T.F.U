@@ -106,6 +106,10 @@ namespace DialogueDB
         bool blockAudio = true;
         bool blockSubtitles = true;
         bool blockSkyrimNet = true;
+        
+        // Actor filtering: empty vectors = affects all actors
+        std::vector<uint32_t> actorFilterFormIDs;  // Actor FormIDs
+        std::vector<std::string> actorFilterNames;  // Actor names (ESL-safe matching with FormID)
     };
 
     // SceneBlacklistEntry removed - scenes now use BlacklistEntry with targetType=Scene
@@ -182,9 +186,10 @@ namespace DialogueDB
         int ClearWhitelist();  // Remove all whitelist entries, returns count removed
         
         // Query granular blocking flags (works for both topics and scenes)
-        bool ShouldBlockAudio(uint32_t formID, const std::string& editorID);
-        bool ShouldBlockSubtitles(uint32_t formID, const std::string& editorID);
-        bool ShouldBlockSkyrimNet(uint32_t formID, const std::string& editorID);
+        // Optional actor parameters for actor-specific filtering (0 / "" = ignore actor filter)
+        bool ShouldBlockAudio(uint32_t formID, const std::string& editorID, uint32_t actorFormID = 0, const std::string& actorName = "");
+        bool ShouldBlockSubtitles(uint32_t formID, const std::string& editorID, uint32_t actorFormID = 0, const std::string& actorName = "");
+        bool ShouldBlockSkyrimNet(uint32_t formID, const std::string& editorID, uint32_t actorFormID = 0, const std::string& actorName = "");
         
         // Mark topics as SkyrimNet blockable (retroactive update for menu detection)
         void MarkTopicsAsSkyrimNetBlockable(const std::vector<uint32_t>& topicInfoFormIDs);
@@ -212,7 +217,7 @@ namespace DialogueDB
         
         // Performance tuning constants
         static constexpr size_t BATCH_SIZE = 200;  // Increased from 50 for better batching
-        static constexpr int64_t FLUSH_INTERVAL_MS = 5000;  // Flush every 5 seconds
+        static constexpr int64_t FLUSH_INTERVAL_MS = 1000;  // Flush every 1 second for responsive UI
         
         bool CreateTables();
         bool UpdateSchema();

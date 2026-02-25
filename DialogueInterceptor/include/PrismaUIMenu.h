@@ -37,6 +37,7 @@ private:
     static void OnOpenManualEntry(const char* data);
     static void OnDetectIdentifierType(const char* data);
     static void OnCreateManualEntry(const char* data);
+    static void OnCreateAdvancedEntry(const char* data);
     static void OnRequestWhitelist(const char* data);
     static void OnRemoveFromWhitelist(const char* data);
     static void OnUpdateWhitelistEntry(const char* data);
@@ -52,6 +53,7 @@ private:
     static void OnSetSkyrimNetEnabled(const char* data);
     static void OnSetScenesEnabled(const char* data);
     static void OnSetBardSongsEnabled(const char* data);
+    static void OnGetNearbyActors(const char* data);
     static std::string SerializeHistoryToJSON();
     static std::string SerializeBlacklistToJSON();
     static std::string SerializeWhitelistToJSON();

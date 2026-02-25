@@ -1,6 +1,14 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
+#include <string>
+#include <utility>
+
+// Forward declaration
+namespace RE {
+    class TESTopicInfo;
+}
 
 namespace PopulateTopicInfoHook
 {
@@ -15,4 +23,8 @@ namespace PopulateTopicInfoHook
     
     // Check if a topic is in the menu cache (for database read fallback)
     bool IsTopicInMenuCache(uint32_t topicInfoFormID);
+    
+    // Get current speaker context for actor-specific filtering
+    // Returns pair of (ActorFormID, ActorName) if valid context exists for this topicInfo
+    std::optional<std::pair<uint32_t, std::string>> GetSpeakerContext(RE::TESTopicInfo* topicInfo);
 }

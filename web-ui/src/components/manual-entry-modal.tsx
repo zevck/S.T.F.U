@@ -1,5 +1,6 @@
 import { memo, useState, useEffect, useRef } from 'react';
 import { SKSE_API, log } from '../lib/skse-api';
+import { useHistoryStore } from '../stores/history';
 
 interface ManualEntryModalProps {
   isOpen: boolean;
@@ -12,6 +13,12 @@ interface DetectionResult {
   categories: string[];
 }
 
+interface Actor {
+  name: string;
+  formID: string;
+  lastSeen: number;
+}
+
 export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: ManualEntryModalProps) => {
   const [identifier, setIdentifier] = useState('');
   const [blockType, setBlockType] = useState<'Soft' | 'Hard'>('Soft');
@@ -19,7 +26,60 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
   const [detectedType, setDetectedType] = useState<'topic' | 'scene' | 'plugin'>('topic');
   const [categories, setCategories] = useState<string[]>(['Blacklist']);
   const [selectedCategory, setSelectedCategory] = useState('Blacklist');
+  const [actorFilterNames, setActorFilterNames] = useState<string[]>([]);
+  const [actorFilterFormIDs, setActorFilterFormIDs] = useState<string[]>([]);
+  const [newActorName, setNewActorName] = useState('');
+  const [showActorDropdown, setShowActorDropdown] = useState(false);
   const detectionTimeoutRef = useRef<number | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  
+  const historyEntries = useHistoryStore(state => state.entries);
+  
+  // Get unique actors from recent history (last 30 minutes)
+  const recentActors = (): Actor[] => {
+    const now = Date.now();
+    const thirtyMinutesAgo = now - (30 * 60 * 1000);
+    
+    const actorMap = new Map<string, Actor>();
+    
+    // Iterate through history entries
+    historyEntries.forEach(entry => {
+      // Convert timestamp from seconds to milliseconds
+      if (entry.timestamp * 1000 > thirtyMinutesAgo && entry.speaker) {
+        const formID = entry.speakerFormID || '';
+        const key = entry.speaker.toLowerCase();
+        
+        if (!actorMap.has(key)) {
+          actorMap.set(key, {
+            name: entry.speaker,
+            formID: formID,
+            lastSeen: entry.timestamp * 1000
+          });
+        } else {
+          // Update if this entry is more recent
+          const existing = actorMap.get(key)!;
+          if (entry.timestamp * 1000 > existing.lastSeen) {
+            actorMap.set(key, {
+              name: entry.speaker,
+              formID: formID,
+              lastSeen: entry.timestamp * 1000
+            });
+          }
+        }
+      }
+    });
+    
+    // Convert to array and sort by most recent
+    return Array.from(actorMap.values()).sort((a, b) => b.lastSeen - a.lastSeen);
+  };
+  
+  const actors = recentActors();
+  
+  // Filter actors based on search input
+  const filteredActors = actors.filter(actor => 
+    actor.name.toLowerCase().includes(newActorName.toLowerCase()) &&
+    !actorFilterNames.includes(actor.name)
+  );
 
   // Set up global handler for detection results
   useEffect(() => {
@@ -73,6 +133,10 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
       setDetectedType('topic');
       setCategories(['Blacklist']);
       setSelectedCategory('Blacklist');
+      setActorFilterNames([]);
+      setActorFilterFormIDs([]);
+      setNewActorName('');
+      setShowActorDropdown(false);
     }
   }, [isOpen]);
 
@@ -91,6 +155,20 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
     window.addEventListener('keydown', handleEsc, { capture: true });
     return () => window.removeEventListener('keydown', handleEsc, { capture: true });
   }, [isOpen, onClose]);
+  
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!showActorDropdown) return;
+    
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowActorDropdown(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showActorDropdown]);
 
   if (!isOpen) return null;
 
@@ -99,6 +177,32 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
       onClose();
     }
   };
+  
+  const addActor = (actor: Actor) => {
+    if (!actorFilterNames.includes(actor.name)) {
+      setActorFilterNames([...actorFilterNames, actor.name]);
+      // Always add FormID (empty string if not available) to maintain array sync
+      setActorFilterFormIDs([...actorFilterFormIDs, actor.formID || '']);
+    }
+    setNewActorName('');
+    setShowActorDropdown(false);
+  };
+  
+  const addActorManually = () => {
+    const name = newActorName.trim();
+    if (name && !actorFilterNames.includes(name)) {
+      setActorFilterNames([...actorFilterNames, name]);
+      // FormID will be empty for manually entered actors
+      setActorFilterFormIDs([...actorFilterFormIDs, '']);
+    }
+    setNewActorName('');
+    setShowActorDropdown(false);
+  };
+  
+  const removeActor = (index: number) => {
+    setActorFilterNames(actorFilterNames.filter((_, i) => i !== index));
+    setActorFilterFormIDs(actorFilterFormIDs.filter((_, i) => i !== index));
+  };
 
   const handleCreate = () => {
     if (!identifier.trim()) {
@@ -106,15 +210,23 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
       return;
     }
 
-    log(`[ManualEntry] Creating entry: identifier=${identifier}, blockType=${blockType}, category=${isWhitelist ? 'Whitelist' : selectedCategory}, isWhitelist=${isWhitelist}`);
+    // Validate array synchronization
+    if (actorFilterNames.length !== actorFilterFormIDs.length) {
+      log(`[ManualEntry] ERROR: Array desync! Names: ${actorFilterNames.length}, FormIDs: ${actorFilterFormIDs.length}`);
+      return;
+    }
 
-    // Call new createManualEntry handler
-    SKSE_API.sendToSKSE('createManualEntry', JSON.stringify({
+    log(`[ManualEntry] Creating entry: identifier=${identifier}, blockType=${blockType}, category=${isWhitelist ? 'Whitelist' : selectedCategory}, isWhitelist=${isWhitelist}, actors=${actorFilterNames.length}`);
+
+    // Call createAdvancedEntry handler (supports actor filters)
+    SKSE_API.sendToSKSE('createAdvancedEntry', JSON.stringify({
       identifier,
       blockType,
       category: isWhitelist ? 'Whitelist' : selectedCategory,
       notes,
-      isWhitelist
+      isWhitelist,
+      actorFilterNames,
+      actorFilterFormIDs
     }));
 
     // Close modal
@@ -221,6 +333,81 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
             </select>
             <div className="text-sm text-gray-400 mt-1">
               Categories change based on detected type
+            </div>
+          </div>
+          )}
+
+          {/* Actor Filtering - only for blacklist */}
+          {!isWhitelist && (
+          <div>
+            <label className="block text-base font-medium text-gray-300 mb-2">
+              Actor Filter (Optional)
+            </label>
+            <div className="text-sm text-gray-400 mb-2">
+              Leave empty to affect all actors. Add specific actors to only block their dialogue.
+            </div>
+            
+            {/* Selected actors as chips */}
+            {actorFilterNames.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {actorFilterNames.map((name, index) => (
+                  <div key={index} className="bg-blue-600 text-white px-3 py-1 rounded-full flex items-center gap-2 text-sm">
+                    <span>{name}</span>
+                    <button
+                      onClick={() => removeActor(index)}
+                      className="hover:text-red-300 transition-colors"
+                      aria-label={`Remove ${name}`}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            {/* Actor input with dropdown */}
+            <div className="relative" ref={dropdownRef}>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newActorName}
+                  onChange={(e) => {
+                    setNewActorName(e.target.value);
+                    setShowActorDropdown(true);
+                  }}
+                  onFocus={() => setShowActorDropdown(true)}
+                  placeholder="Type actor name or select from recent..."
+                  className="flex-1 px-4 py-2 text-base bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
+                />
+                <button
+                  onClick={addActorManually}
+                  disabled={!newActorName.trim()}
+                  className="px-4 py-2 text-base bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+                >
+                  Add
+                </button>
+              </div>
+              
+              {/* Dropdown for recent actors */}
+              {showActorDropdown && filteredActors.length > 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                  <div className="p-2 text-xs text-gray-400 border-b border-gray-600">
+                    Recent actors (last 30 minutes)
+                  </div>
+                  {filteredActors.map((actor, index) => (
+                    <button
+                      key={index}
+                      onClick={() => addActor(actor)}
+                      className="w-full px-4 py-2 text-left hover:bg-gray-600 transition-colors flex justify-between items-center"
+                    >
+                      <span className="text-white">{actor.name}</span>
+                      <span className="text-xs text-gray-400">
+                        {new Date(actor.lastSeen).toLocaleTimeString()}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
           )}

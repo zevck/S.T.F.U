@@ -2,6 +2,7 @@ export interface DialogueEntry {
   id: number;
   timestamp: number;
   speaker: string;
+  speakerFormID?: string;
   text: string;
   questName: string;
   questEditorID: string;
@@ -33,4 +34,6 @@ export interface BlacklistEntry {
   filterCategory?: string;
   responseText?: string;
   allResponses?: string[];
+  actorFilterFormIDs?: string[];  // Hex FormIDs like ["0x0001A68C"]
+  actorFilterNames?: string[];     // Actor names like ["Lydia", "Guard"]
 }

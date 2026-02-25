@@ -137,17 +137,37 @@ namespace ConstructResponseHook
                         shouldBlockSubtitles = false;
                         spdlog::trace("[ConstructResponse] Scene dialogue whitelisted - never block");
                     } else {
-                        shouldBlockAudio = db->ShouldBlockAudio(0, editorIDStr);
-                        shouldBlockSubtitles = db->ShouldBlockSubtitles(0, editorIDStr);
+                        // Retrieve speaker context if available
+                        uint32_t actorFormID = 0;
+                        std::string actorName = "";
+                        auto speakerContext = PopulateTopicInfoHook::GetSpeakerContext(a_topicInfo);
+                        if (speakerContext.has_value()) {
+                            actorFormID = speakerContext->first;
+                            actorName = speakerContext->second;
+                            spdlog::trace("[ConstructResponse] Retrieved speaker context: {} (FormID: 0x{:08X})", 
+                                actorName, actorFormID);
+                        }
+                        
+                        shouldBlockAudio = db->ShouldBlockAudio(0, editorIDStr, actorFormID, actorName);
+                        shouldBlockSubtitles = db->ShouldBlockSubtitles(0, editorIDStr, actorFormID, actorName);
                         spdlog::trace("[ConstructResponse] Scene dialogue: audio={}, subtitles={}", shouldBlockAudio, shouldBlockSubtitles);
                     }
                 }
             } else {
-                // Regular dialogue - use Config wrapper functions
-                shouldBlockAudio = Config::ShouldBlockAudio(quest, a_topic, nullptr, nullptr);
-                shouldBlockSubtitles = Config::ShouldBlockSubtitles(quest, a_topic, nullptr, nullptr);
+                // Regular dialogue - retrieve speaker context and pass to Config functions
+                uint32_t actorFormID = 0;
+                std::string actorName = "";
+                auto speakerContext = PopulateTopicInfoHook::GetSpeakerContext(a_topicInfo);
+                if (speakerContext.has_value()) {
+                    actorFormID = speakerContext->first;
+                    actorName = speakerContext->second;
+                }
+                
+                const char* speakerNamePtr = !actorName.empty() ? actorName.c_str() : nullptr;
+                shouldBlockAudio = Config::ShouldBlockAudio(quest, a_topic, speakerNamePtr, nullptr, actorFormID);
+                shouldBlockSubtitles = Config::ShouldBlockSubtitles(quest, a_topic, speakerNamePtr, nullptr, actorFormID);
                 if (STFUMenu::IsSkyrimNetLoaded()) {
-                    shouldBlockSkyrimNet = Config::ShouldBlockSkyrimNet(quest, a_topic, nullptr);
+                    shouldBlockSkyrimNet = Config::ShouldBlockSkyrimNet(quest, a_topic, speakerNamePtr);
                 }
                 spdlog::trace("[ConstructResponse] Regular dialogue: audio={}, subtitles={}, skyrimNet={}", 
                     shouldBlockAudio, shouldBlockSubtitles, shouldBlockSkyrimNet);
