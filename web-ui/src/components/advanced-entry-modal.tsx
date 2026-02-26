@@ -7,7 +7,6 @@ interface AdvancedEntryModalProps {
   isOpen: boolean;
   onClose: () => void;
   prefillEntry?: DialogueEntry | null;
-  isWhitelist?: boolean;
 }
 
 interface DetectionResult {
@@ -21,8 +20,9 @@ interface Actor {
   lastSeen: number;
 }
 
-export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null, isWhitelist = false }: AdvancedEntryModalProps) => {
+export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null }: AdvancedEntryModalProps) => {
   const [identifier, setIdentifier] = useState('');
+  const [isWhitelist, setIsWhitelist] = useState(false);
   const [blockType, setBlockType] = useState<'Soft' | 'Hard' | 'SkyrimNet'>('Soft');
   const [notes, setNotes] = useState('');
   const [detectedType, setDetectedType] = useState<'topic' | 'scene' | 'plugin'>('topic');
@@ -39,7 +39,7 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null, 
   const historyEntries = useHistoryStore(state => state.entries);
   
   // Get unique actors from recent history (last 30 minutes)
-  const recentActors = (): Actor[] => {
+  const actors = useMemo(() => {
     const now = Date.now();
     const thirtyMinutesAgo = now - (30 * 60 * 1000);
     
@@ -74,9 +74,7 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null, 
     
     // Convert to array and sort by most recent
     return Array.from(actorMap.values()).sort((a, b) => b.lastSeen - a.lastSeen);
-  };
-  
-  const actors = recentActors();
+  }, [historyEntries]);
   
   // Combine nearby and recent actors, remove duplicates by FormID
   const allActors = useMemo(() => {
@@ -127,7 +125,6 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null, 
     (window as any).handleNearbyActors = (data: { actors: Actor[] }) => {
       log(`[AdvancedEntry] Received ${data.actors.length} nearby actors`);
       setNearbyActors(data.actors);
-      setShowActorDropdown(true);
     };
 
     return () => {
@@ -191,6 +188,7 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null, 
   useEffect(() => {
     if (!isOpen) {
       setIdentifier('');
+      setIsWhitelist(false);
       setNotes('');
       setBlockType('Soft');
       setDetectedType('topic');
@@ -385,6 +383,99 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null, 
             </div>
           </div>
 
+          {/* Actions */}
+          <div>
+            <label className="block text-base font-medium text-gray-300 mb-2">
+              Actions <span className="text-red-400">*</span>
+            </label>
+            <div className="flex flex-wrap gap-4">
+              {/* Block Type Radio Buttons */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="actionType"
+                  checked={!isWhitelist && blockType === 'Soft'}
+                  onChange={() => {
+                    setIsWhitelist(false);
+                    setBlockType('Soft');
+                  }}
+                  className="w-5 h-5 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+                <span className="text-base text-white">Soft Block</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="actionType"
+                  checked={!isWhitelist && blockType === 'Hard'}
+                  onChange={() => {
+                    setIsWhitelist(false);
+                    setBlockType('Hard');
+                  }}
+                  className="w-5 h-5 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+                <span className="text-base text-white">Hard Block</span>
+              </label>
+              {/* Only show SkyrimNet option if prefill entry is SkyrimNet blockable */}
+              {prefillEntry?.skyrimNetBlockable && (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="actionType"
+                    checked={!isWhitelist && blockType === 'SkyrimNet'}
+                    onChange={() => {
+                      setIsWhitelist(false);
+                      setBlockType('SkyrimNet');
+                    }}
+                    className="w-5 h-5 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  />
+                  <span className="text-base text-white">SkyrimNet Only</span>
+                </label>
+              )}
+              
+              {/* Whitelist Radio Button */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="actionType"
+                  checked={isWhitelist}
+                  onChange={() => setIsWhitelist(true)}
+                  className="w-5 h-5 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+                <span className="text-base text-white">Whitelist</span>
+              </label>
+            </div>
+            <div className="text-sm text-gray-400 mt-1">
+              {isWhitelist 
+                ? 'Whitelist entries allow dialogue to play regardless of other filters'
+                : `Soft blocks mute audio/subtitles. Hard blocks prevent dialogue.${prefillEntry?.skyrimNetBlockable ? ' SkyrimNet blocks only from AI.' : ''}`
+              }
+            </div>
+          </div>
+
+          {/* Filter Category - only for blacklist */}
+          {!isWhitelist && (
+          <div>
+            <label className="block text-base font-medium text-gray-300 mb-2">
+              Filter Category <span className="text-red-400">*</span>
+            </label>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="w-full px-4 py-2.5 text-base bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
+            >
+              {categories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+            <div className="text-sm text-gray-400 mt-1">
+              Categories change based on detected type
+            </div>
+          </div>
+          )}
+
           {/* Actor Filters */}
           <div>
             <label className="block text-base font-medium text-gray-300 mb-2">
@@ -422,7 +513,7 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null, 
                   setNewActorFormID(e.target.value);
                   setShowActorDropdown(true);
                 }}
-                onFocus={() => setShowActorDropdown(true)}
+                onClick={() => setShowActorDropdown(true)}
                 placeholder="Enter FormID (e.g., 0x00013478) or select..."
                 className="flex-1 px-4 py-2 text-base bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
               />
@@ -478,76 +569,6 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null, 
               }
             </div>
           </div>
-
-          {/* Block Type - only for blacklist */}
-          {!isWhitelist && (
-          <div>
-            <label className="block text-base font-medium text-gray-300 mb-2">
-              Block Type <span className="text-red-400">*</span>
-            </label>
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="blockType"
-                  checked={blockType === 'Soft'}
-                  onChange={() => setBlockType('Soft')}
-                  className="w-5 h-5 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                />
-                <span className="text-base text-white">Soft Block</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="blockType"
-                  checked={blockType === 'Hard'}
-                  onChange={() => setBlockType('Hard')}
-                  className="w-5 h-5 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                />
-                <span className="text-base text-white">Hard Block</span>
-              </label>
-              {/* Only show SkyrimNet option if prefill entry is SkyrimNet blockable */}
-              {prefillEntry?.skyrimNetBlockable && (
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="blockType"
-                  checked={blockType === 'SkyrimNet'}
-                  onChange={() => setBlockType('SkyrimNet')}
-                  className="w-5 h-5 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                />
-                <span className="text-base text-white">SkyrimNet Only</span>
-              </label>
-              )}
-            </div>
-            <div className="text-sm text-gray-400 mt-1">
-              Soft blocks mute audio/subtitles. Hard blocks prevent dialogue.{prefillEntry?.skyrimNetBlockable && ' SkyrimNet blocks only from AI.'}
-            </div>
-          </div>
-          )}
-
-          {/* Filter Category - only for blacklist */}
-          {!isWhitelist && (
-          <div>
-            <label className="block text-base font-medium text-gray-300 mb-2">
-              Filter Category <span className="text-red-400">*</span>
-            </label>
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full px-4 py-2.5 text-base bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
-            >
-              {categories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
-            <div className="text-sm text-gray-400 mt-1">
-              Categories change based on detected type
-            </div>
-          </div>
-          )}
 
           {/* Notes */}
           <div>

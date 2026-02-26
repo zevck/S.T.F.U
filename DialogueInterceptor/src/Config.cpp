@@ -978,8 +978,10 @@ overrides:
         
         // SECOND PRIORITY: Check database whitelist - whitelisted entries are NEVER blocked
         if (db) {
+            std::string speakerNameStr = speakerName ? speakerName : "";
+            
             // Check if topic is whitelisted
-            if (db->IsWhitelisted(DialogueDB::BlacklistTarget::Topic, topicFormID, editorIDStr)) {
+            if (db->IsWhitelisted(DialogueDB::BlacklistTarget::Topic, topicFormID, editorIDStr, speakerFormID, speakerNameStr)) {
                 return false;
             }
             // Check if quest is whitelisted
@@ -987,7 +989,7 @@ overrides:
                 uint32_t questFormID = quest->GetFormID();
                 const char* questEditorID = quest->GetFormEditorID();
                 std::string questEditorIDStr = questEditorID ? questEditorID : "";
-                if (db->IsWhitelisted(DialogueDB::BlacklistTarget::Quest, questFormID, questEditorIDStr)) {
+                if (db->IsWhitelisted(DialogueDB::BlacklistTarget::Quest, questFormID, questEditorIDStr, speakerFormID, speakerNameStr)) {
                     return false;
                 }
             }

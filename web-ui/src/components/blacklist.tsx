@@ -1,7 +1,7 @@
 import { useState, useMemo, memo, useCallback, useRef, useEffect } from 'react';
 import { useBlacklistStore } from '../stores/blacklist';
 import { BlacklistEntry } from '../types';
-import { Search, Trash2, X, Save, Plus, ArrowRight } from 'lucide-react';
+import { Search, Trash2, X, Save, Plus } from 'lucide-react';
 import { SKSE_API, log } from '../lib/skse-api';
 import { ResponsesModal } from './responses-modal';
 import { ManualEntryModal } from './manual-entry-modal';
@@ -253,12 +253,6 @@ export const Blacklist = () => {
       SKSE_API.refreshBlacklist();
     }, 100);
   }, [selectedEntries]);
-  
-  const handleMoveToWhitelist = useCallback(() => {
-    if (!selectedEntry) return;
-    SKSE_API.moveToWhitelist(selectedEntry.id);
-    setSelectedEntries([]);
-  }, [selectedEntry, setSelectedEntries]);
   
   const handleResetFilters = useCallback(() => {
     setSearchQuery('');
@@ -820,14 +814,6 @@ export const Blacklist = () => {
                 >
                   <Save size={18} />
                   Apply Changes
-                </button>
-                
-                <button
-                  onClick={handleMoveToWhitelist}
-                  className="w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
-                >
-                  Move to Whitelist
-                  <ArrowRight size={18} />
                 </button>
                 
                 <button

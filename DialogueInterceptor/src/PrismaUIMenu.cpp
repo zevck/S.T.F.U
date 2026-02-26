@@ -448,11 +448,35 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
                     }
                 }
             } else {
-                // Regular dialogue entry - check topic whitelist
-                int64_t whitelistId = db->GetWhitelistEntryId(entry.topicFormID, entry.topicEditorID);
-                if (whitelistId > 0) {
-                    entry.blockedStatus = DialogueDB::BlockedStatus::Whitelisted; // Whitelisted status
-                    foundInWhitelist = true;
+                // Regular dialogue entry - check topic whitelist with actor filtering
+                for (const auto& wlEntry : whitelist) {
+                    if (wlEntry.targetType == DialogueDB::BlacklistTarget::Topic &&
+                        ((wlEntry.targetFormID == entry.topicFormID && wlEntry.targetFormID != 0) ||
+                         (!wlEntry.targetEditorID.empty() && wlEntry.targetEditorID == entry.topicEditorID))) {
+                        
+                        // Whitelist entry found - check actor filter
+                        bool actorMatches = true;
+                        if (!wlEntry.actorFilterFormIDs.empty()) {
+                            actorMatches = false;
+                            // Check if speaker FormID matches any actor filter
+                            for (const auto& filterFormID : wlEntry.actorFilterFormIDs) {
+                                if (entry.speakerFormID == filterFormID) {
+                                    actorMatches = true;
+                                    break;
+                                }
+                            }
+                        } else if (!wlEntry.actorFilterNames.empty()) {
+                            // Broken state: has names but no FormIDs
+                            // Can't verify actor identity without FormIDs, so don't whitelist anyone
+                            actorMatches = false;
+                        }
+                        
+                        if (actorMatches) {
+                            entry.blockedStatus = DialogueDB::BlockedStatus::Whitelisted;
+                            foundInWhitelist = true;
+                            break;  // Only break if actor matches and we set Whitelisted status
+                        }
+                    }
                 }
             }
             
@@ -1042,30 +1066,6 @@ void PrismaUIMenu::OnAddToBlacklist(const char* data)
         }
         
         spdlog::info("[PrismaUIMenu::OnAddToBlacklist] Parsed {} entries from JSON", entriesToAdd.size());
-        
-        // Remove entries from whitelist if they exist there
-        for (const auto& entry : entriesToAdd) {
-            if (entry.targetType == DialogueDB::BlacklistTarget::Scene && !entry.targetEditorID.empty()) {
-                // Scene entry - find by scene EditorID
-                auto whitelist = db->GetWhitelist();
-                for (const auto& wlEntry : whitelist) {
-                    if (wlEntry.targetType == DialogueDB::BlacklistTarget::Scene &&
-                        wlEntry.targetEditorID == entry.targetEditorID) {
-                        spdlog::info("[PrismaUIMenu::OnAddToBlacklist] Removing scene '{}' from whitelist", entry.targetEditorID);
-                        db->RemoveFromWhitelist(wlEntry.id);
-                        break;
-                    }
-                }
-            } else if (entry.targetType == DialogueDB::BlacklistTarget::Topic) {
-                // Topic entry - find by FormID or EditorID
-                int64_t whitelistId = db->GetWhitelistEntryId(entry.targetFormID, entry.targetEditorID);
-                if (whitelistId > 0) {
-                    spdlog::info("[PrismaUIMenu::OnAddToBlacklist] Removing topic FormID=0x{:08X} EditorID='{}' from whitelist", 
-                        entry.targetFormID, entry.targetEditorID);
-                    db->RemoveFromWhitelist(whitelistId);
-                }
-            }
-        }
         
         // Use batch add for efficiency (same as STFUMenu)
         int addedCount = db->AddToBlacklistBatch(entriesToAdd, false);

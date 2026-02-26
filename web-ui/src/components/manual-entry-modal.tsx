@@ -1,4 +1,4 @@
-import { memo, useState, useEffect, useRef } from 'react';
+import { memo, useState, useEffect, useRef, useMemo } from 'react';
 import { SKSE_API, log } from '../lib/skse-api';
 import { useHistoryStore } from '../stores/history';
 
@@ -30,13 +30,14 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
   const [actorFilterFormIDs, setActorFilterFormIDs] = useState<string[]>([]);
   const [newActorName, setNewActorName] = useState('');
   const [showActorDropdown, setShowActorDropdown] = useState(false);
+  const [nearbyActors, setNearbyActors] = useState<Actor[]>([]);
   const detectionTimeoutRef = useRef<number | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   
   const historyEntries = useHistoryStore(state => state.entries);
   
   // Get unique actors from recent history (last 30 minutes)
-  const recentActors = (): Actor[] => {
+  const actors = useMemo(() => {
     const now = Date.now();
     const thirtyMinutesAgo = now - (30 * 60 * 1000);
     
@@ -71,17 +72,43 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
     
     // Convert to array and sort by most recent
     return Array.from(actorMap.values()).sort((a, b) => b.lastSeen - a.lastSeen);
-  };
+  }, [historyEntries]);
   
-  const actors = recentActors();
+  // Combine nearby and recent actors, remove duplicates by FormID
+  const allActors = useMemo(() => {
+    const actorMap = new Map<string, Actor>();
+    
+    // Add nearby actors first (higher priority)
+    nearbyActors.forEach(actor => {
+      if (actor.formID && actor.formID !== '0x0') {
+        actorMap.set(actor.formID.toUpperCase(), actor);
+      }
+    });
+    
+    // Add recent actors (won't overwrite if FormID already exists)
+    actors.forEach(actor => {
+      if (actor.formID && actor.formID !== '0x0' && !actorMap.has(actor.formID.toUpperCase())) {
+        actorMap.set(actor.formID.toUpperCase(), actor);
+      }
+    });
+    
+    return Array.from(actorMap.values());
+  }, [nearbyActors, actors]);
   
-  // Filter actors based on search input
-  const filteredActors = actors.filter(actor => 
-    actor.name.toLowerCase().includes(newActorName.toLowerCase()) &&
-    !actorFilterNames.includes(actor.name)
-  );
+  // Filter actors based on search input (search both name and FormID)
+  const filteredActors = useMemo(() => {
+    const search = newActorName.trim().toLowerCase();
+    if (!search) return allActors.filter(actor => !actorFilterNames.includes(actor.name));
+    
+    return allActors.filter(actor => {
+      const matchesName = actor.name.toLowerCase().includes(search);
+      const matchesFormID = actor.formID.toLowerCase().replace('0x', '').includes(search.replace('0x', ''));
+      const notSelected = !actorFilterNames.includes(actor.name);
+      return (matchesName || matchesFormID) && notSelected;
+    });
+  }, [allActors, newActorName, actorFilterNames]);
 
-  // Set up global handler for detection results
+  // Set up global handlers for detection results and nearby actors
   useEffect(() => {
     (window as any).handleIdentifierDetection = (result: DetectionResult) => {
       log(`[ManualEntry] Detection result: type=${result.type}, categories=${result.categories.length}`);
@@ -93,9 +120,16 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
         setSelectedCategory('Blacklist');
       }
     };
+    
+    // Set up handler for nearby actors
+    (window as any).handleNearbyActors = (data: { actors: Actor[] }) => {
+      log(`[ManualEntry] Received ${data.actors.length} nearby actors`);
+      setNearbyActors(data.actors);
+    };
 
     return () => {
       delete (window as any).handleIdentifierDetection;
+      delete (window as any).handleNearbyActors;
     };
   }, [selectedCategory]);
 
@@ -124,6 +158,14 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
     };
   }, [identifier]);
 
+  // Auto-load nearby actors when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      log('[ManualEntry] Modal opened, requesting nearby actors');
+      SKSE_API.requestNearbyActors();
+    }
+  }, [isOpen]);
+  
   // Reset form when modal opens/closes
   useEffect(() => {
     if (!isOpen) {
@@ -137,6 +179,7 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
       setActorFilterFormIDs([]);
       setNewActorName('');
       setShowActorDropdown(false);
+      setNearbyActors([]);
     }
   }, [isOpen]);
 
@@ -337,14 +380,16 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
           </div>
           )}
 
-          {/* Actor Filtering - only for blacklist */}
-          {!isWhitelist && (
+          {/* Actor Filtering */}
           <div>
             <label className="block text-base font-medium text-gray-300 mb-2">
               Actor Filter (Optional)
             </label>
             <div className="text-sm text-gray-400 mb-2">
-              Leave empty to affect all actors. Add specific actors to only block their dialogue.
+              {isWhitelist 
+                ? 'Leave empty to whitelist for all actors. Add specific actors to only allow their dialogue.'
+                : 'Leave empty to affect all actors. Add specific actors to only block their dialogue.'
+              }
             </div>
             
             {/* Selected actors as chips */}
@@ -375,7 +420,7 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
                     setNewActorName(e.target.value);
                     setShowActorDropdown(true);
                   }}
-                  onFocus={() => setShowActorDropdown(true)}
+                  onClick={() => setShowActorDropdown(true)}
                   placeholder="Type actor name or select from recent..."
                   className="flex-1 px-4 py-2 text-base bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
                 />
@@ -388,29 +433,40 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
                 </button>
               </div>
               
-              {/* Dropdown for recent actors */}
+              {/* Dropdown for nearby and recent actors */}
               {showActorDropdown && filteredActors.length > 0 && (
                 <div className="absolute z-10 w-full mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                  <div className="p-2 text-xs text-gray-400 border-b border-gray-600">
-                    Recent actors (last 30 minutes)
+                  <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-600 sticky top-0 bg-gray-700">
+                    {nearbyActors.length > 0 ? 'Nearby & Recent Actors' : 'Recent Actors (Last 30 min)'}
                   </div>
-                  {filteredActors.map((actor, index) => (
-                    <button
-                      key={index}
-                      onClick={() => addActor(actor)}
-                      className="w-full px-4 py-2 text-left hover:bg-gray-600 transition-colors flex justify-between items-center"
-                    >
-                      <span className="text-white">{actor.name}</span>
-                      <span className="text-xs text-gray-400">
-                        {new Date(actor.lastSeen).toLocaleTimeString()}
-                      </span>
-                    </button>
-                  ))}
+                  {filteredActors.map((actor, index) => {
+                    const isNearby = nearbyActors.some(na => na.formID.toUpperCase() === actor.formID.toUpperCase());
+                    return (
+                      <button
+                        key={index}
+                        onClick={() => addActor(actor)}
+                        className="w-full px-4 py-2 text-left hover:bg-gray-600 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="text-white font-medium">{actor.name}</div>
+                            <div className="text-xs text-blue-300">{actor.formID}</div>
+                          </div>
+                          <div className="text-xs text-gray-400 ml-2">
+                            {isNearby ? (
+                              <span className="text-green-400">● Nearby</span>
+                            ) : (
+                              new Date(actor.lastSeen).toLocaleTimeString()
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
           </div>
-          )}
 
           {/* Notes */}
           <div>

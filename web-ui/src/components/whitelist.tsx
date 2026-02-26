@@ -1,10 +1,11 @@
 import { useState, useMemo, memo, useCallback, useRef, useEffect } from 'react';
 import { useWhitelistStore } from '../stores/whitelist';
 import { BlacklistEntry } from '../types';
-import { Search, X, Save, Plus, ArrowLeft, Trash2 } from 'lucide-react';
+import { Search, X, Save, Plus, Trash2 } from 'lucide-react';
 import { SKSE_API, log } from '../lib/skse-api';
 import { ResponsesModal } from './responses-modal';
 import { ManualEntryModal } from './manual-entry-modal';
+import { AdvancedEditModal } from './advanced-edit-modal';
 
 // Memoized list item component for better performance
 const WhitelistItem = memo(({ 
@@ -98,6 +99,8 @@ export const Whitelist = () => {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [showResponsesModal, setShowResponsesModal] = useState(false);
   const [showManualEntryModal, setShowManualEntryModal] = useState(false);
+  const [showAdvancedEditModal, setShowAdvancedEditModal] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<BlacklistEntry | null>(null);
   const [modalTitle, setModalTitle] = useState('');
   const [modalResponses, setModalResponses] = useState<string[]>([]);
   
@@ -205,12 +208,6 @@ export const Whitelist = () => {
     
     SKSE_API.updateWhitelistEntry(updates);
   }, [selectedEntry, editNotes]);
-
-  const handleMoveToBlacklist = useCallback(() => {
-    if (!selectedEntry) return;
-    SKSE_API.moveToBlacklist(selectedEntry.id);
-    setSelectedEntries([]);
-  }, [selectedEntry]);
 
   const handleRemoveMultiple = useCallback(() => {
     const ids = selectedEntries.map(e => e.id);
@@ -458,19 +455,22 @@ export const Whitelist = () => {
               {/* Action Buttons */}
               <div className="space-y-2 border-t border-gray-700 pt-4">
                 <button
+                  onClick={() => {
+                    setEditingEntry(selectedEntry);
+                    setShowAdvancedEditModal(true);
+                  }}
+                  className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
+                >
+                  <Plus size={18} />
+                  Edit (Advanced)
+                </button>
+                
+                <button
                   onClick={handleUpdateEntry}
                   className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
                 >
                   <Save size={18} />
                   Apply Changes
-                </button>
-                
-                <button
-                  onClick={handleMoveToBlacklist}
-                  className="w-full px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
-                >
-                  <ArrowLeft size={18} />
-                  Move to Blacklist
                 </button>
                 
                 <button
@@ -505,6 +505,16 @@ export const Whitelist = () => {
           isWhitelist={true}
         />
       )}
+      
+      {/* Advanced Edit Modal */}
+      <AdvancedEditModal
+        isOpen={showAdvancedEditModal}
+        onClose={() => {
+          setShowAdvancedEditModal(false);
+          setEditingEntry(null);
+        }}
+        entry={editingEntry}
+      />
     </div>
   );
 };

@@ -131,23 +131,23 @@ namespace ConstructResponseHook
                 if (db && topicEditorID) {
                     std::string editorIDStr = topicEditorID;
                     
+                    // Retrieve speaker context for actor-specific whitelist/blacklist checking
+                    uint32_t actorFormID = 0;
+                    std::string actorName = "";
+                    auto speakerContext = PopulateTopicInfoHook::GetSpeakerContext(a_topicInfo);
+                    if (speakerContext.has_value()) {
+                        actorFormID = speakerContext->first;
+                        actorName = speakerContext->second;
+                        spdlog::trace("[ConstructResponse] Retrieved speaker context: {} (FormID: 0x{:08X})", 
+                            actorName, actorFormID);
+                    }
+                    
                     // HIGHEST PRIORITY: Check whitelist - never block whitelisted scenes
-                    if (db->IsWhitelisted(DialogueDB::BlacklistTarget::Scene, 0, editorIDStr)) {
+                    if (db->IsWhitelisted(DialogueDB::BlacklistTarget::Scene, 0, editorIDStr, actorFormID, actorName)) {
                         shouldBlockAudio = false;
                         shouldBlockSubtitles = false;
                         spdlog::trace("[ConstructResponse] Scene dialogue whitelisted - never block");
                     } else {
-                        // Retrieve speaker context if available
-                        uint32_t actorFormID = 0;
-                        std::string actorName = "";
-                        auto speakerContext = PopulateTopicInfoHook::GetSpeakerContext(a_topicInfo);
-                        if (speakerContext.has_value()) {
-                            actorFormID = speakerContext->first;
-                            actorName = speakerContext->second;
-                            spdlog::trace("[ConstructResponse] Retrieved speaker context: {} (FormID: 0x{:08X})", 
-                                actorName, actorFormID);
-                        }
-                        
                         shouldBlockAudio = db->ShouldBlockAudio(0, editorIDStr, actorFormID, actorName);
                         shouldBlockSubtitles = db->ShouldBlockSubtitles(0, editorIDStr, actorFormID, actorName);
                         spdlog::trace("[ConstructResponse] Scene dialogue: audio={}, subtitles={}", shouldBlockAudio, shouldBlockSubtitles);

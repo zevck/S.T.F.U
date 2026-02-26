@@ -3462,20 +3462,6 @@ void STFUMenu::ApplyBlockSettings()
         DialogueDB::BlacklistEntry entry;
         
         if ((selectedEntry_.isScene || selectedEntry_.isBardSong) && !selectedEntry_.sceneEditorID.empty()) {
-            // First, remove from whitelist if present (for scenes, use EditorID lookup)
-            try {
-                int64_t whitelistId = db->GetWhitelistEntryId(0, selectedEntry_.sceneEditorID);
-                if (whitelistId > 0) {
-                    if (db->RemoveFromWhitelist(whitelistId)) {
-                        spdlog::info("[STFUMenu] Removed scene from whitelist before blocking: {}", selectedEntry_.sceneEditorID);
-                    } else {
-                        spdlog::error("[STFUMenu] Failed to remove scene from whitelist: {}", selectedEntry_.sceneEditorID);
-                    }
-                }
-            } catch (const std::exception& e) {
-                spdlog::error("[STFUMenu] Exception checking/removing scene whitelist entry: {}", e.what());
-            }
-            
             // All scenes (including bard songs) - add to unified blacklist with target_type=Scene
             entry.targetType = DialogueDB::BlacklistTarget::Scene;
             entry.targetFormID = 0;  // Scenes identified by EditorID
@@ -3574,20 +3560,6 @@ void STFUMenu::ApplyBlockSettings()
         return;
     } else if (hardBlock_ || softBlockEnabled_ || skyrimNetOnly_) {
         // BLOCK: Add/update blacklist entry
-        // First, remove from whitelist if present
-        try {
-            int64_t whitelistId = db->GetWhitelistEntryId(selectedEntry_.topicFormID, selectedEntry_.topicEditorID);
-            if (whitelistId > 0) {
-                if (db->RemoveFromWhitelist(whitelistId)) {
-                    spdlog::info("[STFUMenu] Removed from whitelist before blocking: {}", selectedEntry_.topicEditorID);
-                } else {
-                    spdlog::error("[STFUMenu] Failed to remove from whitelist: {}", selectedEntry_.topicEditorID);
-                }
-            }
-        } catch (const std::exception& e) {
-            spdlog::error("[STFUMenu] Exception checking/removing whitelist entry: {}", e.what());
-        }
-        
         // Determine block type based on which option is checked
         DialogueDB::BlockType blockType;
         if (hardBlock_) {
@@ -3654,26 +3626,6 @@ void STFUMenu::ApplyBlockSettings()
         // WHITELIST: Add entry to whitelist
         try {
             auto db = DialogueDB::GetDatabase();
-            
-            // First, remove from blacklist if present
-            int64_t blacklistId = -1;
-            if ((selectedEntry_.isScene || selectedEntry_.isBardSong) && !selectedEntry_.sceneEditorID.empty()) {
-                // For scenes, lookup by EditorID
-                blacklistId = db->GetBlacklistEntryId(0, selectedEntry_.sceneEditorID);
-            } else {
-                // For regular dialogue, lookup by FormID and EditorID
-                blacklistId = db->GetBlacklistEntryId(selectedEntry_.topicFormID, selectedEntry_.topicEditorID);
-            }
-            
-            if (blacklistId > 0) {
-                if (db->RemoveFromBlacklist(blacklistId)) {
-                    spdlog::info("[STFUMenu] Removed from blacklist before whitelisting: {}", 
-                        selectedEntry_.isScene ? selectedEntry_.sceneEditorID : selectedEntry_.topicEditorID);
-                } else {
-                    spdlog::error("[STFUMenu] Failed to remove from blacklist: {}", 
-                        selectedEntry_.isScene ? selectedEntry_.sceneEditorID : selectedEntry_.topicEditorID);
-                }
-            }
             
             // Create whitelist entry
             DialogueDB::BlacklistEntry entry;

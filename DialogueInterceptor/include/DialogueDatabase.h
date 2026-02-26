@@ -181,7 +181,7 @@ namespace DialogueDB
         int RemoveFromWhitelistBatch(const std::vector<int64_t>& ids);
         int64_t GetWhitelistEntryId(uint32_t formID, const std::string& editorID);
         std::vector<BlacklistEntry> GetWhitelist();
-        bool IsWhitelisted(BlacklistTarget targetType, uint32_t formID, const std::string& editorID);
+        bool IsWhitelisted(BlacklistTarget targetType, uint32_t formID, const std::string& editorID, uint32_t actorFormID = 0, const std::string& actorName = "");
         bool IsPluginWhitelisted(const std::string& pluginName);
         int ClearWhitelist();  // Remove all whitelist entries, returns count removed
         

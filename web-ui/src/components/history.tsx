@@ -1,10 +1,13 @@
 import { useMemo, useState, memo, useRef, useEffect, useCallback } from 'react';
 import { useHistoryStore } from '@/stores/history';
+import { useBlacklistStore } from '@/stores/blacklist';
+import { useWhitelistStore } from '@/stores/whitelist';
 import { DialogueEntry } from '@/types';
 import { SKSE_API, log } from '@/lib/skse-api';
 import { ResponsesModal } from './responses-modal';
 import { AdvancedEntryModal } from './advanced-entry-modal';
-import { Search, Trash2, Save } from 'lucide-react';
+import { AdvancedEditModal } from './advanced-edit-modal';
+import { Search, Trash2, Save, Plus, Settings } from 'lucide-react';
 
 const getStatusColor = (status: DialogueEntry['status']): string => {
   switch (status) {
@@ -106,6 +109,7 @@ const HistoryItem = memo(({
     </div>
     <div className="text-lg mb-1">
       <span className="text-green-300">{entry.speaker}</span>
+      {entry.isScene && <span className="ml-2 text-cyan-400">[Scene]</span>}
       {entry.skyrimNetBlockable && <span className="ml-2 text-purple-400">[Menu]</span>}
     </div>
     <div className="text-lg text-gray-300 truncate">{entry.text}</div>
@@ -116,6 +120,8 @@ HistoryItem.displayName = 'HistoryItem';
 
 export const History = () => {
   const { entries, searchQuery, setSearchQuery, selectedEntries, setSelectedEntries } = useHistoryStore();
+  const { entries: blacklistEntries } = useBlacklistStore();
+  const { entries: whitelistEntries } = useWhitelistStore();
   const [lastClickedIndex, setLastClickedIndex] = useState<number>(-1);
   const [displayCount, setDisplayCount] = useState(100); // Increased initial load
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -126,6 +132,10 @@ export const History = () => {
   const [modalResponses, setModalResponses] = useState<string[]>([]);
   const [statusFilters, setStatusFilters] = useState<Set<string>>(new Set(['Allowed', 'Soft Blocked', 'Hard Blocked', 'SkyrimNet Blocked', 'Whitelisted']));
   const [showAdvancedEntryModal, setShowAdvancedEntryModal] = useState(false);
+  const [showBlacklistEditModal, setShowBlacklistEditModal] = useState(false);
+  const [showWhitelistEditModal, setShowWhitelistEditModal] = useState(false);
+  const [editingBlacklistEntry, setEditingBlacklistEntry] = useState<any>(null);
+  const [editingWhitelistEntry, setEditingWhitelistEntry] = useState<any>(null);
   
   // For single-item detail panel (first selected item)
   const selectedEntry = selectedEntries.length > 0 ? selectedEntries[0] : null;
@@ -137,6 +147,23 @@ export const History = () => {
   const [editWhitelist, setEditWhitelist] = useState<boolean>(false);
   const [editFilterCategory, setEditFilterCategory] = useState<string>('Blacklist');
   const [editNotes, setEditNotes] = useState<string>('');
+
+  // Find corresponding blacklist/whitelist entries for selected history entry
+  const blacklistEntry = useMemo(() => {
+    if (!selectedEntry) return null;
+    return blacklistEntries.find(bl => 
+      (bl.topicFormID === selectedEntry.topicFormID && bl.topicFormID !== '' && bl.topicFormID !== undefined) ||
+      (bl.topicEditorID === selectedEntry.topicEditorID && bl.topicEditorID !== '' && bl.topicEditorID !== undefined)
+    );
+  }, [selectedEntry, blacklistEntries]);
+
+  const whitelistEntry = useMemo(() => {
+    if (!selectedEntry) return null;
+    return whitelistEntries.find(wl => 
+      (wl.topicFormID === selectedEntry.topicFormID && wl.topicFormID !== '' && wl.topicFormID !== undefined) ||
+      (wl.topicEditorID === selectedEntry.topicEditorID && wl.topicEditorID !== '' && wl.topicEditorID !== undefined)
+    );
+  }, [selectedEntry, whitelistEntries]);
 
   // Toggle status filter
   const toggleStatusFilter = useCallback((status: string) => {
@@ -806,6 +833,45 @@ export const History = () => {
               
               {/* Action Buttons */}
               <div className="space-y-2 border-t border-gray-700 pt-4">
+                {/* Edit Blacklist button - only show if blacklist entry exists */}
+                {blacklistEntry && (
+                  <button
+                    onClick={() => {
+                      setEditingBlacklistEntry(blacklistEntry);
+                      setShowBlacklistEditModal(true);
+                    }}
+                    className="w-full px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
+                  >
+                    <Settings size={18} />
+                    Edit Blacklist Entry
+                  </button>
+                )}
+                
+                {/* Edit Whitelist button - only show if whitelist entry exists */}
+                {whitelistEntry && (
+                  <button
+                    onClick={() => {
+                      setEditingWhitelistEntry(whitelistEntry);
+                      setShowWhitelistEditModal(true);
+                    }}
+                    className="w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
+                  >
+                    <Settings size={18} />
+                    Edit Whitelist Entry
+                  </button>
+                )}
+                
+                {/* Advanced Entry button - only show if not both blacklist and whitelist entries exist */}
+                {!(blacklistEntry && whitelistEntry) && (
+                  <button
+                    onClick={() => setShowAdvancedEntryModal(true)}
+                    className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
+                  >
+                    <Plus size={18} />
+                    Advanced Entry
+                  </button>
+                )}
+
                 <button
                   onClick={handleApplyChanges}
                   disabled={!editSoftBlock && !editHardBlock && !editSkyrimNetBlock && !editWhitelist}
@@ -825,14 +891,6 @@ export const History = () => {
                     Remove from Blacklist
                   </button>
                 )}
-                
-                {/* Advanced Entry button */}
-                <button
-                  onClick={() => setShowAdvancedEntryModal(true)}
-                  className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
-                >
-                  Advanced Entry
-                </button>
               </div>
               
               {/* Subtype Filter Toggle - only show for entries filtered by MCM or toggled off */}
@@ -885,7 +943,26 @@ export const History = () => {
         isOpen={showAdvancedEntryModal}
         onClose={() => setShowAdvancedEntryModal(false)}
         prefillEntry={selectedEntry}
-        isWhitelist={false}
+      />
+      
+      {/* Advanced Edit Modal for Blacklist */}
+      <AdvancedEditModal
+        isOpen={showBlacklistEditModal}
+        onClose={() => {
+          setShowBlacklistEditModal(false);
+          setEditingBlacklistEntry(null);
+        }}
+        entry={editingBlacklistEntry}
+      />
+      
+      {/* Advanced Edit Modal for Whitelist */}
+      <AdvancedEditModal
+        isOpen={showWhitelistEditModal}
+        onClose={() => {
+          setShowWhitelistEditModal(false);
+          setEditingWhitelistEntry(null);
+        }}
+        entry={editingWhitelistEntry}
       />
     </div>
   );
