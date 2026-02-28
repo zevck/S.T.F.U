@@ -942,147 +942,11 @@ overrides:
         // NOTE: MCM subtype globals are NOT checked here!
         // This function is used for HARD BLOCKING (preventing dialogue from happening)
         // MCM subtype toggles should only SOFT BLOCK (silence audio/subtitles)
-        // See ShouldBlockAudio/ShouldBlockSubtitles for soft blocking with MCM globals
+        // See ShouldSoftBlock for soft blocking with MCM globals
 
         // All blocking now comes from database - no YAML runtime checks
         // Database entries are populated via "Import from YAML" button
         return false;  // Not blocked
-    }
-    
-    bool ShouldBlockAudio(RE::TESQuest* quest, RE::TESTopic* topic, const char* speakerName, const char* responseText, uint32_t speakerFormID)
-    {
-        if (!topic) {
-            return false;
-        }
-
-        uint32_t topicFormID = topic->GetFormID();
-        const char* topicEditorID = topic->GetFormEditorID();
-        std::string editorIDStr = topicEditorID ? topicEditorID : "";
-        
-        bool blockAudio = false;
-        bool blockSubtitles = false;
-        bool blockSkyrimNet = false;
-        
-        // HIGHEST PRIORITY: Check plugin whitelist - if plugin is whitelisted, allow ALL dialogue from it
-        auto db = DialogueDB::GetDatabase();
-        if (db && topic) {
-            auto* file = topic->GetFile(0);
-            if (file && file->fileName) {
-                std::string pluginName = file->fileName;
-                if (db->IsPluginWhitelisted(pluginName)) {
-                    // Plugin is whitelisted - never block anything from this plugin
-                    return false;
-                }
-            }
-        }
-        
-        // SECOND PRIORITY: Check database whitelist - whitelisted entries are NEVER blocked
-        if (db) {
-            std::string speakerNameStr = speakerName ? speakerName : "";
-            
-            // Check if topic is whitelisted
-            if (db->IsWhitelisted(DialogueDB::BlacklistTarget::Topic, topicFormID, editorIDStr, speakerFormID, speakerNameStr)) {
-                return false;
-            }
-            // Check if quest is whitelisted
-            if (quest) {
-                uint32_t questFormID = quest->GetFormID();
-                const char* questEditorID = quest->GetFormEditorID();
-                std::string questEditorIDStr = questEditorID ? questEditorID : "";
-                if (db->IsWhitelisted(DialogueDB::BlacklistTarget::Quest, questFormID, questEditorIDStr, speakerFormID, speakerNameStr)) {
-                    return false;
-                }
-            }
-        }
-        
-        // Check database for granular blocking flags (topic-specific entries)
-        int64_t blacklistId = -1;
-        if (db) {
-            blacklistId = db->GetBlacklistEntryId(topicFormID, editorIDStr);
-            if (blacklistId > 0) {
-                // Entry is in blacklist - use granular flags with actor filtering
-                std::string actorNameStr = speakerName ? speakerName : "";
-                blockAudio = db->ShouldBlockAudio(topicFormID, editorIDStr, speakerFormID, actorNameStr);
-                blockSubtitles = db->ShouldBlockSubtitles(topicFormID, editorIDStr, speakerFormID, actorNameStr);
-                blockSkyrimNet = db->ShouldBlockSkyrimNet(topicFormID, editorIDStr);
-            }
-        }
-        
-        // Check MCM subtype global (soft block only - doesn't hard block dialogue)
-        if (!blockAudio || !blockSubtitles) {
-            uint16_t subtype = GetAccurateSubtype(topic);
-            auto subtypeGlobalIt = g_settings.mcm.subtypeGlobals.find(subtype);
-            if (subtypeGlobalIt != g_settings.mcm.subtypeGlobals.end() && subtypeGlobalIt->second) {
-                // MCM global exists - 1.0 = soft block, 0.0 = allow
-                if (subtypeGlobalIt->second->value >= 0.5f) {
-                    blockAudio = true;
-                    blockSubtitles = true;
-                    blockSkyrimNet = true;  // Soft-blocked dialogue has no meaningful content for SkyrimNet
-                }
-            }
-        }
-        
-        // Check database for subtype-level SkyrimNet blocking (from STFU_SkyrimNetFilter.yaml)
-        if (!blockSkyrimNet && db) {
-            uint16_t subtype = GetAccurateSubtype(topic);
-            std::string subtypeName = GetSubtypeName(subtype);
-            
-            spdlog::debug("[SKYRIMNET CHECK] Checking subtype {} ({}) for topic 0x{:08X}", 
-                subtype, subtypeName, topicFormID);
-            
-            // Query database for subtype entries with BlockType::SkyrimNet
-            int64_t subtypeBlacklistId = db->GetBlacklistEntryId(subtype, subtypeName);
-            spdlog::debug("[SKYRIMNET CHECK] GetBlacklistEntryId returned: {}", subtypeBlacklistId);
-            
-            if (subtypeBlacklistId > 0) {
-                blockSkyrimNet = db->ShouldBlockSkyrimNet(subtype, subtypeName);
-                spdlog::debug("[SKYRIMNET CHECK] ShouldBlockSkyrimNet returned: {}", blockSkyrimNet);
-            }
-        }
-        
-        // Fall back to standard blocking logic (YAML blacklist - can be hard or soft)
-        if (!blockAudio) {
-            blockAudio = ShouldBlockDialogue(quest, topic, speakerName, responseText);
-        }
-        if (!blockSubtitles) {
-            blockSubtitles = ShouldBlockDialogue(quest, topic, speakerName, responseText);
-        }
-        
-        // If dialogue is soft-blocked (audio AND subtitles removed), also block from SkyrimNet
-        // There's no meaningful content for SkyrimNet to log if audio/subtitles are empty
-        if (!blockSkyrimNet && blockAudio && blockSubtitles) {
-            blockSkyrimNet = true;
-        }
-        
-        // Note: SkyrimNet blocking is ONLY determined by database entries with BlockType::SkyrimNet
-        // The YAML file (STFU_SkyrimNetFilter.yaml) is imported into the database at startup
-        // No runtime YAML checking here - database is the single source of truth
-        
-        return blockAudio;
-    }
-    
-    bool ShouldBlockSubtitles(RE::TESQuest* quest, RE::TESTopic* topic, const char* speakerName, const char* responseText, uint32_t speakerFormID)
-    {
-        if (!topic) {
-            return false;
-        }
-
-        uint32_t topicFormID = topic->GetFormID();
-        
-        // ShouldBlockAudio computes both blockAudio and blockSubtitles
-        // Just call it and return blockSubtitles from the computation
-        ShouldBlockAudio(quest, topic, speakerName, responseText, speakerFormID);
-        
-        // Re-query the database for subtitles decision
-        // This is fast because the database lookup is indexed
-        auto db = DialogueDB::GetDatabase();
-        if (!db) return false;
-        
-        const char* topicEditorID = topic->GetFormEditorID();
-        std::string editorIDStr = topicEditorID ? topicEditorID : "";
-        std::string actorNameStr = speakerName ? speakerName : "";
-        
-        return db->ShouldBlockSubtitles(topicFormID, editorIDStr, speakerFormID, actorNameStr);
     }
     
     bool IsFilteredByMCM(uint32_t topicFormID, uint16_t topicSubtype)
@@ -1197,8 +1061,8 @@ overrides:
 
         uint32_t topicFormID = topic->GetFormID();
         
-        // Call ShouldBlockAudio to compute all blocking flags, then re-query database for SkyrimNet flag
-        ShouldBlockAudio(quest, topic, speakerName, nullptr);
+        // Call ShouldSoftBlock to compute blocking status, then re-query database for SkyrimNet flag
+        ShouldSoftBlock(quest, topic, speakerName, nullptr);
         
         auto db = DialogueDB::GetDatabase();
         if (!db) return false;
@@ -1330,7 +1194,7 @@ overrides:
                         const char* sceneEditorID = scene->GetFormEditorID();
                         if (sceneEditorID) {
                             // Actor filtering not available at this level (no TESTopicInfo)
-                            if (DialogueDB::GetDatabase()->ShouldBlockAudio(0, sceneEditorID)) {
+                            if (DialogueDB::GetDatabase()->ShouldSoftBlock(0, sceneEditorID)) {
                                 return true;
                             }
                         }
@@ -1364,7 +1228,7 @@ overrides:
         
         // Check unified blacklist (scenes have target_type=4)
         // Note: Actor filtering not applicable for scene-level checks
-        if (DialogueDB::GetDatabase()->ShouldBlockAudio(0, sceneEditorID)) {
+        if (DialogueDB::GetDatabase()->ShouldSoftBlock(0, sceneEditorID)) {
             return true;
         }
         
@@ -1965,4 +1829,57 @@ namespace Config
     {
         return ParseFormIdentifierInternal(value);
     }
-}
+    
+    // Check if dialogue should be soft-blocked (audio + subtitles together)
+    // Checks: Database blacklist + YAML + MCM subtype filters
+    bool ShouldSoftBlock(RE::TESQuest* quest, RE::TESTopic* topic, const char* speakerName, const char* responseText, uint32_t speakerFormID)
+    {
+        if (!topic) return false;
+        
+        // Get topic identifiers
+        uint32_t topicFormID = topic->GetFormID();
+        const char* topicEditorID = topic->GetFormEditorID();
+        std::string editorIDStr = topicEditorID ? topicEditorID : "";
+        
+        // Check database for blacklist entry
+        auto* db = DialogueDB::GetDatabase();
+        if (db) {
+            if (db->ShouldSoftBlock(topicFormID, editorIDStr, speakerFormID, speakerName ? speakerName : "")) {
+                return true;
+            }
+        }
+        
+        // Check MCM subtype filter
+        uint16_t subtype = GetAccurateSubtype(topic);
+        auto it = g_settings.mcm.subtypeGlobals.find(subtype);
+        if (it != g_settings.mcm.subtypeGlobals.end() && it->second) {
+            float value = it->second->value;
+            if (value > 0.0f) {
+                return true;  // Subtype is filtered
+            }
+        }
+        
+        // Check YAML blacklist (quest/topic based)
+        if (quest) {
+            uint32_t questFormID = quest->GetFormID();
+            const char* questEditorID = quest->GetFormEditorID();
+            
+            // Check quest blacklist
+            if (questFormID != 0 && g_settings.blacklist.questFormIDs.count(questFormID)) {
+                return true;
+            }
+            if (questEditorID && g_settings.blacklist.questEditorIDs.count(questEditorID)) {
+                return true;
+            }
+        }
+        
+        // Check topic blacklist
+        if (topicFormID != 0 && g_settings.blacklist.topicFormIDs.count(topicFormID)) {
+            return true;
+        }
+        if (!editorIDStr.empty() && g_settings.blacklist.topicEditorIDs.count(editorIDStr)) {
+            return true;
+        }
+        
+        return false;
+    }}  // namespace Config

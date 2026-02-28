@@ -101,13 +101,11 @@ namespace DialogueItemCtorHook
                 
                 // Check block status
                 bool shouldBlockSkyrimNet = Config::ShouldBlockSkyrimNet(a_quest, a_topic, speakerName);
-                bool shouldBlockAudio = Config::ShouldBlockAudio(a_quest, a_topic, speakerName, responseText.c_str());
-                bool shouldBlockSubtitles = Config::ShouldBlockSubtitles(a_quest, a_topic, speakerName, responseText.c_str());
+                bool shouldSoftBlock = Config::ShouldSoftBlock(a_quest, a_topic, speakerName, responseText.c_str());
                 
                 // Return nullptr for SkyrimNet-only blocked menu dialogue (not soft-blocked)
                 // Soft-blocked menu dialogue has responseText cleared in PopulateTopicInfo
-                bool isSoftBlocked = shouldBlockAudio && shouldBlockSubtitles;
-                if (shouldBlockSkyrimNet && !isSoftBlocked) {
+                if (shouldBlockSkyrimNet && !shouldSoftBlock) {
                     auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::system_clock::now().time_since_epoch()).count();
                     
@@ -226,7 +224,7 @@ namespace DialogueItemCtorHook
                     
                     return nullptr;
                 }
-                else if (shouldBlockSkyrimNet && isSoftBlocked) {
+                else if (shouldBlockSkyrimNet && shouldSoftBlock) {
                     // This dialogue is SOFT-BLOCKED - it shouldn't have reached DialogueItem::Ctor at all!
                     // PopulateTopicInfo should have cleared responseText, preventing construction
                     spdlog::warn("[CTOR SOFT-BLOCKED] Soft-blocked dialogue reached Ctor (shouldn't happen): Topic='{}', Speaker='{}', Text='{}'",

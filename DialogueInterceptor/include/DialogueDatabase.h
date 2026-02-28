@@ -185,10 +185,10 @@ namespace DialogueDB
         bool IsPluginWhitelisted(const std::string& pluginName);
         int ClearWhitelist();  // Remove all whitelist entries, returns count removed
         
-        // Query granular blocking flags (works for both topics and scenes)
+        // Query blocking flags (works for both topics and scenes)
         // Optional actor parameters for actor-specific filtering (0 / "" = ignore actor filter)
-        bool ShouldBlockAudio(uint32_t formID, const std::string& editorID, uint32_t actorFormID = 0, const std::string& actorName = "");
-        bool ShouldBlockSubtitles(uint32_t formID, const std::string& editorID, uint32_t actorFormID = 0, const std::string& actorName = "");
+        // ShouldSoftBlock: Returns true if dialogue should be soft-blocked (silences BOTH audio AND subtitles)
+        bool ShouldSoftBlock(uint32_t formID, const std::string& editorID, uint32_t actorFormID = 0, const std::string& actorName = "");
         bool ShouldBlockSkyrimNet(uint32_t formID, const std::string& editorID, uint32_t actorFormID = 0, const std::string& actorName = "");
         
         // Mark topics as SkyrimNet blockable (retroactive update for menu detection)

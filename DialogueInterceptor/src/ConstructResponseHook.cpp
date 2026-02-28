@@ -13,6 +13,11 @@ namespace ConstructResponseHook
     // Track if current dialogue should be blocked (for SetSubtitle hook)
     thread_local static bool g_shouldBlockCurrent = false;
     
+    // Blocking decision cache from PopulateTopicInfo (single evaluation point)
+    thread_local static bool g_shouldSoftBlock = false;
+    thread_local static bool g_shouldBlockSkyrimNet = false;
+    thread_local static bool g_wasEvaluated = false;
+    
     // Track current dialogue to detect duplicates (same TopicInfo + Speaker within 5 seconds)
     thread_local static RE::FormID g_lastTopicInfoFormID = 0;
     thread_local static RE::TESObjectREFR* g_lastSpeaker = nullptr;
@@ -25,9 +30,12 @@ namespace ConstructResponseHook
     // Hook SetSubtitle to remove subtitles for blocked dialogue
     char* Hook_SetSubtitle(RE::DialogueResponse* a_response, char* a_text, int32_t a_unk)
     {
+        spdlog::info("[SetSubtitle] Called with text='{}', g_shouldBlockCurrent={}", 
+            a_text ? a_text : "(null)", g_shouldBlockCurrent);
+        
         if (g_shouldBlockCurrent) {
             // For soft blocking, block subtitles
-            spdlog::trace("[SetSubtitle] Blocking subtitle (soft block)");
+            spdlog::info("[SetSubtitle] BLOCKING subtitle (soft block)");
             static char empty[] = "";
             return _SetSubtitle(a_response, empty, a_unk);
         }
@@ -37,12 +45,37 @@ namespace ConstructResponseHook
     }
 
     // Allow PopulateTopicInfo to set the blocking flag early
-    void SetShouldBlockSubtitles(bool shouldBlock)
+    void SetEarlyBlockFlag(bool shouldBlock)
     {
         g_shouldBlockCurrent = shouldBlock;
         if (shouldBlock) {
-            spdlog::trace("[ConstructResponse] Flag set early by PopulateTopicInfo");
+            spdlog::info("[ConstructResponse] Early flag set by PopulateTopicInfo: g_shouldBlockCurrent=true");
         }
+    }
+    
+    // PopulateTopicInfo sets blocking decision (single evaluation point with full actor context)
+    void SetBlockingDecision(bool shouldSoftBlock, bool shouldBlockSkyrimNet)
+    {
+        g_shouldSoftBlock = shouldSoftBlock;
+        g_shouldBlockSkyrimNet = shouldBlockSkyrimNet;
+        g_wasEvaluated = true;
+        spdlog::info("[ConstructResponse] Blocking decision set by PopulateTopicInfo: soft={}, skyrimNet={}", 
+            shouldSoftBlock, shouldBlockSkyrimNet);
+    }
+    
+    // Clear blocking decision when new dialogue is detected
+    void ClearBlockingDecision()
+    {
+        g_shouldSoftBlock = false;
+        g_shouldBlockSkyrimNet = false;
+        g_wasEvaluated = false;
+        spdlog::info("[ConstructResponse] Blocking decision cleared for new dialogue");
+    }
+    
+    // Get cached soft block decision (for duplicate handling in PopulateTopicInfo)
+    bool GetCachedSoftBlock()
+    {
+        return g_shouldSoftBlock;
     }
     
     // Check if this is a duplicate dialogue (same TopicInfo + Speaker within 5 seconds)
@@ -108,79 +141,52 @@ namespace ConstructResponseHook
             PopulateTopicInfoHook::RecordConstructResponse(a_topicInfo->GetFormID());
         }
         
-        g_shouldBlockCurrent = false;
-        
-        // Pre-check if we should block BEFORE calling original
-        bool shouldBlockAudio = false;
-        bool shouldBlockSubtitles = false;
+        // Pre-check if we should soft block BEFORE calling original
+        bool shouldSoftBlock = false;
         bool shouldBlockSkyrimNet = false;
         
-        if (a_topic) {
+        // Check if PopulateTopicInfo already evaluated blocking (single evaluation point)
+        if (g_wasEvaluated) {
+            // Use cached decision from PopulateTopicInfo (has full actor context)
+            shouldSoftBlock = g_shouldSoftBlock;
+            shouldBlockSkyrimNet = g_shouldBlockSkyrimNet;
+            spdlog::info("[ConstructResponse] Using cached decision from PopulateTopicInfo: soft={}, skyrimNet={}", 
+                shouldSoftBlock, shouldBlockSkyrimNet);
+        } else if (a_topic) {
+            // Fallback: PopulateTopicInfo didn't evaluate (rare - menu evaluation case)
+            // Re-evaluate without actor context
             RE::TESQuest* quest = a_topic->ownerQuest;
             uint16_t subtype = Config::GetAccurateSubtype(a_topic);
             
             const char* topicEditorID = a_topic->GetFormEditorID();
             uint32_t topicFormID = a_topic->GetFormID();
             
-            spdlog::trace("[ConstructResponse] Checking blocking for topic: {} (FormID: 0x{:08X}, subtype: {})", 
+            spdlog::info("[ConstructResponse] No cached decision - evaluating: {} (FormID: 0x{:08X}, subtype: {})", 
                 topicEditorID ? topicEditorID : "(none)", topicFormID, subtype);
             
             if (subtype == 14) {
-                // Scene dialogue - check whitelist first, then unified blacklist
+                // Scene dialogue - check database
                 auto db = DialogueDB::GetDatabase();
                 if (db && topicEditorID) {
                     std::string editorIDStr = topicEditorID;
-                    
-                    // Retrieve speaker context for actor-specific whitelist/blacklist checking
-                    uint32_t actorFormID = 0;
-                    std::string actorName = "";
-                    auto speakerContext = PopulateTopicInfoHook::GetSpeakerContext(a_topicInfo);
-                    if (speakerContext.has_value()) {
-                        actorFormID = speakerContext->first;
-                        actorName = speakerContext->second;
-                        spdlog::trace("[ConstructResponse] Retrieved speaker context: {} (FormID: 0x{:08X})", 
-                            actorName, actorFormID);
-                    }
-                    
-                    // HIGHEST PRIORITY: Check whitelist - never block whitelisted scenes
-                    if (db->IsWhitelisted(DialogueDB::BlacklistTarget::Scene, 0, editorIDStr, actorFormID, actorName)) {
-                        shouldBlockAudio = false;
-                        shouldBlockSubtitles = false;
-                        spdlog::trace("[ConstructResponse] Scene dialogue whitelisted - never block");
-                    } else {
-                        shouldBlockAudio = db->ShouldBlockAudio(0, editorIDStr, actorFormID, actorName);
-                        shouldBlockSubtitles = db->ShouldBlockSubtitles(0, editorIDStr, actorFormID, actorName);
-                        spdlog::trace("[ConstructResponse] Scene dialogue: audio={}, subtitles={}", shouldBlockAudio, shouldBlockSubtitles);
-                    }
+                    shouldSoftBlock = db->ShouldSoftBlock(0, editorIDStr);
                 }
             } else {
-                // Regular dialogue - retrieve speaker context and pass to Config functions
-                uint32_t actorFormID = 0;
-                std::string actorName = "";
-                auto speakerContext = PopulateTopicInfoHook::GetSpeakerContext(a_topicInfo);
-                if (speakerContext.has_value()) {
-                    actorFormID = speakerContext->first;
-                    actorName = speakerContext->second;
-                }
-                
-                const char* speakerNamePtr = !actorName.empty() ? actorName.c_str() : nullptr;
-                shouldBlockAudio = Config::ShouldBlockAudio(quest, a_topic, speakerNamePtr, nullptr, actorFormID);
-                shouldBlockSubtitles = Config::ShouldBlockSubtitles(quest, a_topic, speakerNamePtr, nullptr, actorFormID);
+                // Regular dialogue - use Config wrapper (no actor context available here)
+                shouldSoftBlock = Config::ShouldSoftBlock(quest, a_topic, nullptr, nullptr);
                 if (STFUMenu::IsSkyrimNetLoaded()) {
-                    shouldBlockSkyrimNet = Config::ShouldBlockSkyrimNet(quest, a_topic, speakerNamePtr);
+                    shouldBlockSkyrimNet = Config::ShouldBlockSkyrimNet(quest, a_topic, nullptr);
                 }
-                spdlog::trace("[ConstructResponse] Regular dialogue: audio={}, subtitles={}, skyrimNet={}", 
-                    shouldBlockAudio, shouldBlockSubtitles, shouldBlockSkyrimNet);
             }
-            
-            // Set flag BEFORE calling original so SetSubtitle hook can use it
-            if (shouldBlockSubtitles || shouldBlockAudio) {
-                // Soft blocking: block subtitles in SetSubtitle
-                g_shouldBlockCurrent = true;
-                spdlog::trace("[ConstructResponse] Setting g_shouldBlockCurrent = true (soft block)");
-            } else {
-                g_shouldBlockCurrent = false;
-            }
+            spdlog::info("[ConstructResponse] Fallback evaluation: softBlock={}, skyrimNet={}", 
+                shouldSoftBlock, shouldBlockSkyrimNet);
+        }
+        
+        // Mark response for blocking BEFORE calling original so SetSubtitle hook can use it
+        if (shouldSoftBlock && a_response) {
+            g_shouldBlockCurrent = true;
+        } else {
+            g_shouldBlockCurrent = false;
         }
 
         // Check for scene hard blocking (subtype 14)
@@ -224,8 +230,9 @@ namespace ConstructResponseHook
                     }
                     
                     if (!sceneEditorID.empty()) {
-                        shouldBlockSceneAudio = db->ShouldBlockAudio(0, sceneEditorID);
-                        shouldBlockSceneSubtitles = db->ShouldBlockSubtitles(0, sceneEditorID);
+                        bool shouldSoftBlockScene = db->ShouldSoftBlock(0, sceneEditorID);
+                        shouldBlockSceneAudio = shouldSoftBlockScene;
+                        shouldBlockSceneSubtitles = shouldSoftBlockScene;
                     }
                 }
                 
@@ -293,19 +300,19 @@ namespace ConstructResponseHook
         }
 
         // Apply blocking that was determined before calling original
-        if (a_topic && (shouldBlockAudio || shouldBlockSubtitles || shouldBlockSkyrimNet)) {
+        if (a_topic && (shouldSoftBlock || shouldBlockSkyrimNet)) {
             const char* topicEditorID = a_topic->GetFormEditorID();
             uint16_t subtype = Config::GetAccurateSubtype(a_topic);
             
-            // SOFT BLOCKING: Audio + subtitles
-            if (shouldBlockAudio && shouldBlockSubtitles) {
+            // SOFT BLOCKING: Audio + subtitles (always together)
+            if (shouldSoftBlock) {
                 spdlog::debug("[SOFT BLOCK] Silencing audio + subtitles for topic: {} (subtype: {})", 
                     topicEditorID ? topicEditorID : "(none)", subtype);
                 
                 // Block audio - clear file path
                 *a_filePath = '\0';
                 
-                // Block subtitles - set flag for SetSubtitle hook
+                // Re-set flag after calling original to ensure it stays set for any subsequent calls
                 g_shouldBlockCurrent = true;
                 
                 // Clear ResponseData text and animation fields to prevent jerky turns
@@ -321,39 +328,13 @@ namespace ConstructResponseHook
                 }
             }
             // SKYRIMNET-ONLY BLOCKING: Let everything work naturally, text will be cleared in DialogueItem::Ctor
-            else if (shouldBlockSkyrimNet && !shouldBlockAudio && !shouldBlockSubtitles) {
+            else if (shouldBlockSkyrimNet) {
                 spdlog::info("[SKYRIMNET-ONLY BLOCK] Allowing natural audio/subtitles/animations, will clear text in Ctor for topic: {} (subtype: {})",
                     topicEditorID ? topicEditorID : "(none)", subtype);
                 
                 // DON'T clear anything here - let DialogueResponse objects be created with full text
                 // SetSubtitle will work naturally
                 // DialogueResponse.text will be cleared in DialogueItem::Ctor after subtitles are set
-            }
-            // Audio-only or subtitle-only blocking
-            else {
-                if (shouldBlockAudio) {
-                    spdlog::debug("[SOFT BLOCK] Silencing audio only for topic: {} (subtype: {})", 
-                        topicEditorID ? topicEditorID : "(none)", subtype);
-                    *a_filePath = '\0';
-                }
-                if (shouldBlockSubtitles) {
-                    spdlog::debug("[SOFT BLOCK] Silencing subtitles only for topic: {} (subtype: {})", 
-                        topicEditorID ? topicEditorID : "(none)", subtype);
-                    g_shouldBlockCurrent = true;
-                    if (a_topicInfo) {
-                        a_topicInfo->data.flags.reset(RE::TOPIC_INFO_DATA::TOPIC_INFO_FLAGS::kForceSubtitle);
-                    }
-                    auto* response = a_response;
-                    while (response) {
-                        response->responseText = "";
-                        response->speakerIdle = nullptr;
-                        response->listenerIdle = nullptr;
-                        response->emotionType = RE::TESTopicInfo::ResponseData::EmotionType::kNeutral;
-                        response->emotionValue = 0;
-                        response->flags = RE::TESTopicInfo::ResponseData::Flag::kNone;
-                        response = response->next;
-                    }
-                }
             }
         }
 

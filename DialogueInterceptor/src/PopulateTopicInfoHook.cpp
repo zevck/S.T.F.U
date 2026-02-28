@@ -191,14 +191,25 @@ namespace PopulateTopicInfoHook
         if (isDuplicate) {
             spdlog::debug("[POPULATE] Duplicate detected (FormID: {:#x}, Speaker: {}), skipping all processing", 
                 currentFormID, speakerName ? speakerName : "Unknown");
-            // Call original without any modifications - skip all blocking logic
+            
+            // For duplicates, check cached decision and set early flag if needed
+            bool cachedSoftBlock = ConstructResponseHook::GetCachedSoftBlock();
+            if (cachedSoftBlock && a_responseData && !fullResponseText.empty()) {
+                spdlog::info("[POPULATE] Duplicate is soft-blocked (cached decision) - clearing response text and setting flag");
+                a_responseData->responseText = "";
+                ConstructResponseHook::SetEarlyBlockFlag(true);
+            }
+            
+            // Call original without any modifications - skip all other processing
             return _OriginalPopulateTopicInfo(a_1, a_topic, a_topicInfo, a_speaker, a_responseData);
         }
         
         // New dialogue - clear state and process normally
         spdlog::debug("[POPULATE] New dialogue detected (FormID: {:#x}, Speaker: {}), clearing state", 
             currentFormID, speakerName ? speakerName : "Unknown");
-        ConstructResponseHook::SetShouldBlockSubtitles(false);
+        
+        // Clear blocking decision cache for new dialogue
+        ConstructResponseHook::ClearBlockingDecision();
         
         // Check for HARD BLOCKING first (complete prevention, not just silencing)
         if (a_topic && a_speaker) {
@@ -385,12 +396,14 @@ namespace PopulateTopicInfoHook
         if (a_topic && a_responseData && !fullResponseText.empty()) {
             RE::TESQuest* quest = a_topic->ownerQuest;
             uint32_t speakerFormID = a_speaker ? a_speaker->GetFormID() : 0;
-            bool shouldBlockAudio = Config::ShouldBlockAudio(quest, a_topic, speakerName, responseText, speakerFormID);
-            bool shouldBlockSubtitles = Config::ShouldBlockSubtitles(quest, a_topic, speakerName, responseText, speakerFormID);
+            bool shouldSoftBlock = Config::ShouldSoftBlock(quest, a_topic, speakerName, responseText, speakerFormID);
             bool shouldBlockSkyrimNet = false;
             if (STFUMenu::IsSkyrimNetLoaded()) {
                 shouldBlockSkyrimNet = Config::ShouldBlockSkyrimNet(quest, a_topic, speakerName);
             }
+            
+            // Set blocking decision for ConstructResponse (single evaluation point with full actor context)
+            ConstructResponseHook::SetBlockingDecision(shouldSoftBlock, shouldBlockSkyrimNet);
             
             // Check if this is menu dialogue (not ambient/background dialogue)
             bool isMenuDialogue = false;
@@ -404,12 +417,13 @@ namespace PopulateTopicInfoHook
             }
             
             // SOFT BLOCKING: Block audio + subtitles + SkyrimNet
-            if (shouldBlockAudio && shouldBlockSubtitles) {
+            if (shouldSoftBlock) {
                 spdlog::info("[POPULATE] Clearing NPC response text for SOFT-BLOCKED dialogue: '{}'", 
                     responseText ? responseText : "(none)");
                 // Clear response text - this prevents subtitles AND audio
                 a_responseData->responseText = "";
-                ConstructResponseHook::SetShouldBlockSubtitles(true);
+                // Set flag early - SetSubtitle can be called BEFORE ConstructResponse runs
+                ConstructResponseHook::SetEarlyBlockFlag(true);
             }
             // SKYRIMNET-ONLY BLOCKING: Do nothing here
             // DialogueItem::Ctor will return nullptr to block from SkyrimNet
@@ -558,8 +572,7 @@ namespace PopulateTopicInfoHook
             DialogueDB::BlockedStatus blockedStatus = DialogueDB::BlockedStatus::Normal;
             
             // Check granular blocking flags (speakerFormID already defined at line 441)
-            bool shouldBlockAudio = Config::ShouldBlockAudio(quest, a_topic, speakerName, responseText, speakerFormID);
-            bool shouldBlockSubtitles = Config::ShouldBlockSubtitles(quest, a_topic, speakerName, responseText, speakerFormID);
+            bool shouldSoftBlock = Config::ShouldSoftBlock(quest, a_topic, speakerName, responseText, speakerFormID);
             bool shouldBlockSkyrimNet = false;
             if (STFUMenu::IsSkyrimNetLoaded()) {
                 shouldBlockSkyrimNet = Config::ShouldBlockSkyrimNet(quest, a_topic, speakerName);
@@ -573,15 +586,14 @@ namespace PopulateTopicInfoHook
             
             if (isScene && isHardcodedScene && !scenesEnabled) {
                 // Hardcoded scene with scene blocking disabled - don't mark as blocked
-                shouldBlockAudio = false;
-                shouldBlockSubtitles = false;
+                shouldSoftBlock = false;
             }
             
             // Determine status for logging:
-            // - If audio or subtitles blocked: SoftBlock
+            // - If soft blocked: SoftBlock
             // - Else if SkyrimNet blocked: SkyrimNetBlock
             // - Else: Normal
-            if (shouldBlockAudio || shouldBlockSubtitles) {
+            if (shouldSoftBlock) {
                 blockedStatus = DialogueDB::BlockedStatus::SoftBlock;
             } else if (shouldBlockSkyrimNet) {
                 blockedStatus = DialogueDB::BlockedStatus::SkyrimNetBlock;
@@ -832,8 +844,9 @@ namespace PopulateTopicInfoHook
                     }
                     
                     if (!sceneEditorID.empty()) {
-                        shouldBlockSceneAudio = db->ShouldBlockAudio(0, sceneEditorID);
-                        shouldBlockSceneSubtitles = db->ShouldBlockSubtitles(0, sceneEditorID);
+                        bool shouldSoftBlockScene = db->ShouldSoftBlock(0, sceneEditorID);
+                        shouldBlockSceneAudio = shouldSoftBlockScene;
+                        shouldBlockSceneSubtitles = shouldSoftBlockScene;
                     }
                 }
                 
@@ -884,24 +897,21 @@ namespace PopulateTopicInfoHook
 
             // Check granular blocking for logging (ConstructResponse will actually apply the blocks)
             uint32_t speakerFormID = a_speaker ? a_speaker->GetFormID() : 0;
-            bool shouldBlockAudio = Config::ShouldBlockAudio(quest, a_topic, speakerName, responseText, speakerFormID);
-            bool shouldBlockSubtitles = Config::ShouldBlockSubtitles(quest, a_topic, speakerName, responseText, speakerFormID);
+            bool shouldSoftBlock = Config::ShouldSoftBlock(quest, a_topic, speakerName, responseText, speakerFormID);
             
-            // Set the flag early so SetSubtitle hook can block the first call (even before ConstructResponse runs)
-            ConstructResponseHook::SetShouldBlockSubtitles(shouldBlockSubtitles);
+            // (Blocking flag now set per-response in ConstructResponse)
             
-            if (shouldBlockAudio || shouldBlockSubtitles) {
+            if (shouldSoftBlock) {
                 uint16_t subtype = static_cast<uint16_t>(a_topic->data.subtype.get());
                 const char* topicEditorID = a_topic->GetFormEditorID();
                 uint32_t topicFormID = a_topic->GetFormID();
 
-                spdlog::debug("[POPULATE SILENCE] Speaker: {} - Topic: {} (subtype: {}, FormID: 0x{:08X}, blockAudio: {}, blockSubtitles: {})",
+                spdlog::debug("[POPULATE SILENCE] Speaker: {} - Topic: {} (subtype: {}, FormID: 0x{:08X}, softBlock: {})",
                     speakerName ? speakerName : "Unknown",
                     topicEditorID ? topicEditorID : "(none)",
                     subtype,
                     topicFormID,
-                    shouldBlockAudio,
-                    shouldBlockSubtitles);
+                    shouldSoftBlock);
 
                 // Don't block - let it through to ConstructResponse hook which will silence it
                 // This allows scripts to execute while removing audio/subtitles/animations

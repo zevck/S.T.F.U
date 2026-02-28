@@ -721,6 +721,41 @@ namespace DialogueDB
         
         spdlog::debug("[DialogueDB] ProcessQueue complete, flushed {} entries to database", entriesCount);
         
+        // Maintain history limit: delete oldest entries if count exceeds 100
+        const int HISTORY_LIMIT = 100;
+        const char* countSql = "SELECT COUNT(*) FROM dialogue_log;";
+        sqlite3_stmt* countStmt = nullptr;
+        
+        if (sqlite3_prepare_v2(db_, countSql, -1, &countStmt, nullptr) == SQLITE_OK) {
+            if (sqlite3_step(countStmt) == SQLITE_ROW) {
+                int totalEntries = sqlite3_column_int(countStmt, 0);
+                
+                if (totalEntries > HISTORY_LIMIT) {
+                    int entriesToDelete = totalEntries - HISTORY_LIMIT;
+                    spdlog::info("[DialogueDB] History limit exceeded ({}/{}), deleting {} oldest entries", 
+                        totalEntries, HISTORY_LIMIT, entriesToDelete);
+                    
+                    // Delete oldest entries beyond the limit
+                    const char* deleteSql = "DELETE FROM dialogue_log WHERE id IN (SELECT id FROM dialogue_log ORDER BY timestamp ASC LIMIT ?);";
+                    sqlite3_stmt* deleteStmt = nullptr;
+                    
+                    if (sqlite3_prepare_v2(db_, deleteSql, -1, &deleteStmt, nullptr) == SQLITE_OK) {
+                        sqlite3_bind_int(deleteStmt, 1, entriesToDelete);
+                        
+                        if (sqlite3_step(deleteStmt) == SQLITE_DONE) {
+                            spdlog::info("[DialogueDB] Successfully deleted {} oldest entries, new count: {}", 
+                                entriesToDelete, HISTORY_LIMIT);
+                        } else {
+                            spdlog::error("[DialogueDB] Failed to delete old entries: {}", sqlite3_errmsg(db_));
+                        }
+                        
+                        sqlite3_finalize(deleteStmt);
+                    }
+                }
+            }
+            sqlite3_finalize(countStmt);
+        }
+        
         // Notify UI to refresh if menu is open
         if (PrismaUIMenu::IsOpen()) {
             spdlog::trace("[DialogueDB] Menu is open, triggering UI refresh");
@@ -2582,7 +2617,7 @@ namespace DialogueDB
         sqlite3_finalize(stmt);
     }
 
-    bool Database::ShouldBlockAudio(uint32_t formID, const std::string& editorID, uint32_t actorFormID, const std::string& actorName)
+    bool Database::ShouldSoftBlock(uint32_t formID, const std::string& editorID, uint32_t actorFormID, const std::string& actorName)
     {
         std::lock_guard<std::mutex> lock(dbMutex_);
         
@@ -2611,11 +2646,11 @@ namespace DialogueDB
                 // If no filter, whitelist applies to everyone
                 // If filter exists, check if actor matches
                 if (filterFormIDs.empty() && filterNames.empty()) {
-                    spdlog::info("[DialogueDB] ShouldBlockAudio: Whitelisted (no filter) -> DON'T BLOCK");
+                    spdlog::info("[DialogueDB] ShouldSoftBlock: Whitelisted (no filter) -> DON'T BLOCK");
                     sqlite3_finalize(whitelistStmt);
                     return false;
                 } else if ((actorFormID > 0 || !actorName.empty()) && ActorMatchesFilter(actorFormID, actorName, filterFormIDs, filterNames)) {
-                    spdlog::info("[DialogueDB] ShouldBlockAudio: Whitelisted for actor '{}' (0x{:08X}) -> DON'T BLOCK", actorName, actorFormID);
+                    spdlog::info("[DialogueDB] ShouldSoftBlock: Whitelisted for actor '{}' (0x{:08X}) -> DON'T BLOCK", actorName, actorFormID);
                     sqlite3_finalize(whitelistStmt);
                     return false;
                 }
@@ -2628,6 +2663,7 @@ namespace DialogueDB
         sqlite3_stmt* stmt = nullptr;
         
         if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+            spdlog::error("[DialogueDB] ShouldSoftBlock: Failed to prepare statement: {}", sqlite3_errmsg(db_));
             return false;
         }
         
@@ -2655,158 +2691,46 @@ namespace DialogueDB
             std::vector<std::string> filterNames = ParseActorNamesFromJson(actorNamesStr);
             
             // Debug: Log what we're checking
-            spdlog::info("[DialogueDB] ShouldBlockAudio: FormID=0x{:08X}, speakerFormID=0x{:08X}, speakerName='{}', filterFormIDs.size()={}, filterNames.size()={}", 
+            spdlog::info("[DialogueDB] ShouldSoftBlock: FormID=0x{:08X}, speakerFormID=0x{:08X}, speakerName='{}', filterFormIDs.size()={}, filterNames.size()={}", 
                 formID, actorFormID, actorName, filterFormIDs.size(), filterNames.size());
             
             // Check if actor matches filter (if actor info provided AND filter exists)
             if ((actorFormID > 0 || !actorName.empty()) && (!filterFormIDs.empty() || !filterNames.empty())) {
                 if (!ActorMatchesFilter(actorFormID, actorName, filterFormIDs, filterNames)) {
                     // Entry doesn't apply to this actor
-                    spdlog::info("[DialogueDB] ShouldBlockAudio: actor '{}' (0x{:08X}) not in filter -> ALLOW", 
+                    spdlog::info("[DialogueDB] ShouldSoftBlock: actor '{}' (0x{:08X}) not in filter -> ALLOW", 
                         actorName, actorFormID);
                     sqlite3_finalize(stmt);
                     return false;
                 } else {
-                    spdlog::info("[DialogueDB] ShouldBlockAudio: actor '{}' (0x{:08X}) matches filter -> checking block type", 
+                    spdlog::info("[DialogueDB] ShouldSoftBlock: actor '{}' (0x{:08X}) matches filter -> checking block type", 
                         actorName, actorFormID);
                 }
             } else if (!filterFormIDs.empty() || !filterNames.empty()) {
                 // Filter exists but no actor info provided - skip actor-specific entries
-                spdlog::info("[DialogueDB] ShouldBlockAudio: Actor filter exists but no speaker info provided -> ALLOW");
+                spdlog::info("[DialogueDB] ShouldSoftBlock: Actor filter exists but no speaker info provided -> ALLOW");
                 sqlite3_finalize(stmt);
                 return false;
             }
             
-            // SkyrimNet-only blocks should never block audio
+            // SkyrimNet-only blocks should never soft block (audio/subtitles still play)
             if (blockType == BlockType::SkyrimNet) {
                 shouldBlock = false;
-            } else if (!Config::IsFilterCategoryEnabled(filterCategory)) {
-                // Check if this entry's filterCategory toggle is enabled
-                shouldBlock = false;  // Toggle disabled, don't block
-            } else {
-                // Toggle enabled - both hard and soft blocks always block audio
-                shouldBlock = true;
-            }
-        }
-        
-        sqlite3_finalize(stmt);
-        return shouldBlock;
-    }
-    
-    bool Database::ShouldBlockSubtitles(uint32_t formID, const std::string& editorID, uint32_t actorFormID, const std::string& actorName)
-    {
-        std::lock_guard<std::mutex> lock(dbMutex_);
-        
-        if (!db_) return false;
-        
-        // FIRST: Check whitelist (takes priority over blacklist)
-        const char* whitelistSql = "SELECT actor_filter_formids, actor_filter_names FROM whitelist WHERE ((target_formid = ? OR target_formid = 0) AND target_editorid = ?) OR (target_editorid = '' AND target_formid = ?) LIMIT 1;";
-        sqlite3_stmt* whitelistStmt = nullptr;
-        
-        if (sqlite3_prepare_v2(db_, whitelistSql, -1, &whitelistStmt, nullptr) == SQLITE_OK) {
-            sqlite3_bind_int(whitelistStmt, 1, formID);
-            sqlite3_bind_text(whitelistStmt, 2, editorID.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_int(whitelistStmt, 3, formID);
-            
-            if (sqlite3_step(whitelistStmt) == SQLITE_ROW) {
-                // Whitelist entry found - check actor filter
-                const char* actorFormIDsJson = reinterpret_cast<const char*>(sqlite3_column_text(whitelistStmt, 0));
-                const char* actorNamesJson = reinterpret_cast<const char*>(sqlite3_column_text(whitelistStmt, 1));
-                
-                std::string actorFormIDsStr = actorFormIDsJson ? actorFormIDsJson : "[]";
-                std::string actorNamesStr = actorNamesJson ? actorNamesJson : "[]";
-                
-                std::vector<uint32_t> filterFormIDs = ParseActorFormIDsFromJson(actorFormIDsStr);
-                std::vector<std::string> filterNames = ParseActorNamesFromJson(actorNamesStr);
-                
-                // If no filter, whitelist applies to everyone
-                // If filter exists, check if actor matches
-                if (filterFormIDs.empty() && filterNames.empty()) {
-                    spdlog::info("[DialogueDB] ShouldBlockSubtitles: Whitelisted (no filter) -> DON'T BLOCK");
-                    sqlite3_finalize(whitelistStmt);
-                    return false;
-                } else if ((actorFormID > 0 || !actorName.empty()) && ActorMatchesFilter(actorFormID, actorName, filterFormIDs, filterNames)) {
-                    spdlog::info("[DialogueDB] ShouldBlockSubtitles: Whitelisted for actor '{}' (0x{:08X}) -> DON'T BLOCK", actorName, actorFormID);
-                    sqlite3_finalize(whitelistStmt);
-                    return false;
-                }
-            }
-            sqlite3_finalize(whitelistStmt);
-        }
-        
-        // SECOND: Check blacklist (only if not whitelisted)
-        const char* sql = "SELECT block_type, filter_category, actor_filter_formids, actor_filter_names FROM blacklist WHERE ((target_formid = ? OR target_formid = 0) AND target_editorid = ?) OR (target_editorid = '' AND target_formid = ?) LIMIT 1;";
-        sqlite3_stmt* stmt = nullptr;
-        
-        if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-            spdlog::error("[DialogueDB] ShouldBlockSubtitles: Failed to prepare statement: {}", sqlite3_errmsg(db_));
-            return false;
-        }
-        
-        sqlite3_bind_int(stmt, 1, formID);
-        sqlite3_bind_text(stmt, 2, editorID.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(stmt, 3, formID);
-        
-        bool shouldBlock = false;
-        if (sqlite3_step(stmt) == SQLITE_ROW) {
-            BlockType blockType = static_cast<BlockType>(sqlite3_column_int(stmt, 0));
-            
-            // Get filterCategory (default to "Blacklist" if not set)
-            const char* filterCategoryC = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
-            std::string filterCategory = (filterCategoryC && filterCategoryC[0]) ? filterCategoryC : "Blacklist";
-            
-            // Get actor filters
-            const char* actorFormIDsJson = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
-            const char* actorNamesJson = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
-            
-            std::string actorFormIDsStr = actorFormIDsJson ? actorFormIDsJson : "[]";
-            std::string actorNamesStr = actorNamesJson ? actorNamesJson : "[]";
-            
-            // Parse actor filters from database
-            std::vector<uint32_t> filterFormIDs = ParseActorFormIDsFromJson(actorFormIDsStr);
-            std::vector<std::string> filterNames = ParseActorNamesFromJson(actorNamesStr);
-            
-            // Debug: Log what we're checking
-            spdlog::info("[DialogueDB] ShouldBlockSubtitles: FormID=0x{:08X}, speakerFormID=0x{:08X}, speakerName='{}', filterFormIDs.size()={}, filterNames.size()={}", 
-                formID, actorFormID, actorName, filterFormIDs.size(), filterNames.size());
-            
-            // Check if actor matches filter (if actor info provided AND filter exists)
-            if ((actorFormID > 0 || !actorName.empty()) && (!filterFormIDs.empty() || !filterNames.empty())) {
-                if (!ActorMatchesFilter(actorFormID, actorName, filterFormIDs, filterNames)) {
-                    // Entry doesn't apply to this actor
-                    spdlog::info("[DialogueDB] ShouldBlockSubtitles: actor '{}' (0x{:08X}) not in filter -> ALLOW", 
-                        actorName, actorFormID);
-                    sqlite3_finalize(stmt);
-                    return false;
-                } else {
-                    spdlog::info("[DialogueDB] ShouldBlockSubtitles: actor '{}' (0x{:08X}) matches filter -> checking block type", 
-                        actorName, actorFormID);
-                }
-            } else if (!filterFormIDs.empty() || !filterNames.empty()) {
-                // Filter exists but no actor info provided - skip actor-specific entries
-                spdlog::info("[DialogueDB] ShouldBlockSubtitles: Actor filter exists but no speaker info provided -> ALLOW");
-                sqlite3_finalize(stmt);
-                return false;
-            }
-            
-            // SkyrimNet-only blocks should never block subtitles
-            if (blockType == BlockType::SkyrimNet) {
-                shouldBlock = false;
-                spdlog::info("[DialogueDB] ShouldBlockSubtitles: FormID=0x{:08X}, EditorID='{}', SkyrimNet-only block -> ALLOW", 
+                spdlog::info("[DialogueDB] ShouldSoftBlock: FormID=0x{:08X}, EditorID='{}', SkyrimNet-only block -> ALLOW audio/subtitles", 
                     formID, editorID);
             } else if (!Config::IsFilterCategoryEnabled(filterCategory)) {
                 // Check if this entry's filterCategory toggle is enabled
                 shouldBlock = false;  // Toggle disabled, don't block
-                spdlog::info("[DialogueDB] ShouldBlockSubtitles: FormID=0x{:08X}, EditorID='{}', category='{}' toggle DISABLED -> ALLOW", 
+                spdlog::info("[DialogueDB] ShouldSoftBlock: FormID=0x{:08X}, EditorID='{}', category='{}' toggle DISABLED -> ALLOW", 
                     formID, editorID, filterCategory);
             } else {
-                // Toggle enabled - both hard and soft blocks always block subtitles
+                // Toggle enabled - both hard and soft blocks always soft-block (audio + subtitles)
                 shouldBlock = true;
-                spdlog::info("[DialogueDB] ShouldBlockSubtitles: Found {} block for FormID=0x{:08X}, EditorID='{}', category='{}' -> BLOCK", 
+                spdlog::info("[DialogueDB] ShouldSoftBlock: Found {} block for FormID=0x{:08X}, EditorID='{}', category='{}' -> BLOCK audio+subtitles", 
                     blockType == BlockType::Hard ? "HARD" : "soft", formID, editorID, filterCategory);
             }
         } else {
-            spdlog::info("[DialogueDB] ShouldBlockSubtitles: No entry found for FormID=0x{:08X}, EditorID='{}'", formID, editorID);
+            spdlog::info("[DialogueDB] ShouldSoftBlock: No entry found for FormID=0x{:08X}, EditorID='{}'", formID, editorID);
         }
         
         sqlite3_finalize(stmt);
