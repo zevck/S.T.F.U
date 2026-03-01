@@ -1,7 +1,7 @@
 import { useState, useMemo, memo, useCallback, useRef, useEffect } from 'react';
 import { useBlacklistStore } from '../stores/blacklist';
 import { BlacklistEntry } from '../types';
-import { Search, Trash2, X, Save, Plus } from 'lucide-react';
+import { Search, Trash2, X, Save, Plus, Settings } from 'lucide-react';
 import { SKSE_API, log } from '../lib/skse-api';
 import { ResponsesModal } from './responses-modal';
 import { ManualEntryModal } from './manual-entry-modal';
@@ -95,8 +95,6 @@ export const Blacklist = () => {
     setBlockSoft,
     blockHard,
     setBlockHard,
-    blockSkyrimNet,
-    setBlockSkyrimNet,
     showTopics,
     setShowTopics,
     showScenes,
@@ -120,7 +118,6 @@ export const Blacklist = () => {
   // Edit state for selected entry
   const [editSoftBlock, setEditSoftBlock] = useState<boolean>(false);
   const [editHardBlock, setEditHardBlock] = useState<boolean>(false);
-  const [editSkyrimNetBlock, setEditSkyrimNetBlock] = useState<boolean>(false);
   const [editFilterCategory, setEditFilterCategory] = useState<string>('Blacklist');
   const [editNotes, setEditNotes] = useState<string>('');  // For single entry edit
   const [bulkFilterCategory, setBulkFilterCategory] = useState<string>('Blacklist'); // For bulk edit
@@ -153,7 +150,7 @@ export const Blacklist = () => {
       const blockTypeMatches = (
         (blockSoft && entry.blockType === 'Soft Block') ||
         (blockHard && entry.blockType === 'Hard Block') ||
-        (blockSkyrimNet && entry.blockType === 'SkyrimNet Block')
+        entry.blockType === 'SkyrimNet Block'
       );
       if (!blockTypeMatches) return false;
       
@@ -163,7 +160,7 @@ export const Blacklist = () => {
       
       return true;
     });
-  }, [entries, searchQuery, typeFilter, blockSoft, blockHard, blockSkyrimNet, showTopics, showScenes]);
+  }, [entries, searchQuery, typeFilter, blockSoft, blockHard, showTopics, showScenes]);
 
   // Lazy loading with IntersectionObserver
   useEffect(() => {
@@ -187,7 +184,7 @@ export const Blacklist = () => {
   // Reset display count when filters change
   useEffect(() => {
     setDisplayCount(100);
-  }, [searchQuery, typeFilter, blockSoft, blockHard, blockSkyrimNet, showTopics, showScenes]);
+  }, [searchQuery, typeFilter, blockSoft, blockHard, showTopics, showScenes]);
 
   // Slice entries for lazy loading
   const displayedEntries = useMemo(() => {
@@ -259,7 +256,6 @@ export const Blacklist = () => {
     setTypeFilter('All');
     setBlockSoft(true);
     setBlockHard(true);
-    setBlockSkyrimNet(true);
     setShowTopics(true);
     setShowScenes(true);
   }, [setSearchQuery]);
@@ -273,15 +269,13 @@ export const Blacklist = () => {
     let blockType = 'Soft'; // default
     if (editHardBlock) {
       blockType = 'Hard';
-    } else if (editSkyrimNetBlock) {
-      blockType = 'SkyrimNet';
     } else if (editSoftBlock) {
       blockType = 'Soft';
     }
     
     log(`[Blacklist] Applying changes: blockType=${blockType}, filterCategory=${editFilterCategory}`)
     SKSE_API.updateBlacklistEntry(selectedEntry.id, blockType, editFilterCategory, editNotes);
-  }, [selectedEntry, selectedEntries.length, editSoftBlock, editHardBlock, editSkyrimNetBlock, editFilterCategory, editNotes]);
+  }, [selectedEntry, selectedEntries.length, editSoftBlock, editHardBlock, editFilterCategory, editNotes]);
   
   // Update edit state when selected entry changes
   useEffect(() => {
@@ -289,7 +283,6 @@ export const Blacklist = () => {
       const blockType = selectedEntry.blockType || 'Soft Block';
       setEditSoftBlock(blockType === 'Soft Block');
       setEditHardBlock(blockType === 'Hard Block');
-      setEditSkyrimNetBlock(blockType === 'SkyrimNet Block');
       setEditFilterCategory(selectedEntry.filterCategory || 'Blacklist');
       setEditNotes(selectedEntry.note || '');
     }
@@ -298,11 +291,7 @@ export const Blacklist = () => {
     if (selectedEntries.length > 1) {
       // Set to first entry's category or default based on type
       const firstEntry = selectedEntries[0];
-      if (firstEntry.filterCategory === 'SkyrimNet' && selectedEntries.every(e => e.filterCategory === 'SkyrimNet')) {
-        setBulkFilterCategory('SkyrimNet');
-      } else {
-        setBulkFilterCategory(firstEntry.filterCategory || 'Blacklist');
-      }
+      setBulkFilterCategory(firstEntry.filterCategory || 'Blacklist');
     }
   }, [selectedEntry, selectedEntries.length, selectedEntries]);
   
@@ -421,12 +410,6 @@ export const Blacklist = () => {
       ];
     }
     
-    // Check if all entries are SkyrimNet blockable
-    const allSkyrimNet = selectedEntries.every(e => e.filterCategory === 'SkyrimNet');
-    if (allSkyrimNet) {
-      return ['SkyrimNet'];
-    }
-    
     // Mixed types - no bulk edit available
     return null;
   }, [selectedEntries]);
@@ -468,15 +451,7 @@ export const Blacklist = () => {
             />
             <span className="text-base text-white">Hard Block</span>
           </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={blockSkyrimNet}
-              onChange={(e) => setBlockSkyrimNet(e.target.checked)}
-              className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 cursor-pointer"
-            />
-            <span className="text-base text-white">SkyrimNet Block</span>
-          </label>
+
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
@@ -607,9 +582,7 @@ export const Blacklist = () => {
                           </button>
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
-                          {bulkFilterCategories.length === 1 
-                            ? 'All selected entries are SkyrimNet compatible'
-                            : selectedEntries[0]?.targetType === 'Scene'
+                          {selectedEntries[0]?.targetType === 'Scene'
                             ? 'All selected entries are Scenes'
                             : 'All selected entries are Topics'}
                         </div>
@@ -697,47 +670,23 @@ export const Blacklist = () => {
                         checked={editSoftBlock}
                         onChange={(e) => {
                           // Only allow unchecking if another box is checked
-                          if (!e.target.checked && !editHardBlock && !editSkyrimNetBlock) {
+                          if (!e.target.checked && !editHardBlock) {
                             return; // Prevent unchecking the last checkbox
                           }
                           setEditSoftBlock(e.target.checked);
                           if (e.target.checked) {
                             setEditHardBlock(false);
-                            setEditSkyrimNetBlock(false);
                           }
                         }}
                         className="w-5 h-5 mt-0.5 rounded border-gray-600 bg-gray-700 text-orange-600 focus:ring-orange-500 cursor-pointer"
                       />
                       <div className="flex-1">
                         <div className="text-base text-white font-medium">Soft Block</div>
-                        <div className="text-sm text-gray-400">Blocks audio/subtitles and SkyrimNet logging</div>
+                        <div className="text-sm text-gray-400">Blocks audio/subtitles</div>
                       </div>
                     </label>
                     
-                    {selectedEntry.filterCategory === 'SkyrimNet' && (
-                      <label className="flex items-start gap-3 cursor-pointer p-2 rounded hover:bg-gray-700 transition-colors">
-                        <input
-                          type="checkbox"
-                          checked={editSkyrimNetBlock}
-                          onChange={(e) => {
-                            // Only allow unchecking if another box is checked
-                            if (!e.target.checked && !editSoftBlock && !editHardBlock) {
-                              return; // Prevent unchecking the last checkbox
-                            }
-                            setEditSkyrimNetBlock(e.target.checked);
-                            if (e.target.checked) {
-                              setEditSoftBlock(false);
-                              setEditHardBlock(false);
-                            }
-                          }}
-                          className="w-5 h-5 mt-0.5 rounded border-gray-600 bg-gray-700 text-purple-600 focus:ring-purple-500 cursor-pointer"
-                        />
-                        <div className="flex-1">
-                          <div className="text-base text-white font-medium">SkyrimNet Block</div>
-                          <div className="text-sm text-gray-400">Block SkyrimNet logging only (audio/subtitles play normally)</div>
-                        </div>
-                      </label>
-                    )}
+
                     
                     <label className="flex items-start gap-3 cursor-pointer p-2 rounded hover:bg-gray-700 transition-colors">
                       <input
@@ -745,13 +694,12 @@ export const Blacklist = () => {
                         checked={editHardBlock}
                         onChange={(e) => {
                           // Only allow unchecking if another box is checked
-                          if (!e.target.checked && !editSoftBlock && !editSkyrimNetBlock) {
+                          if (!e.target.checked && !editSoftBlock) {
                             return; // Prevent unchecking the last checkbox
                           }
                           setEditHardBlock(e.target.checked);
                           if (e.target.checked) {
                             setEditSoftBlock(false);
-                            setEditSkyrimNetBlock(false);
                           }
                         }}
                         className="w-5 h-5 mt-0.5 rounded border-gray-600 bg-gray-700 text-red-600 focus:ring-red-500 cursor-pointer"
@@ -804,7 +752,7 @@ export const Blacklist = () => {
                   }}
                   className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
                 >
-                  <Plus size={18} />
+                  <Settings size={18} />
                   Edit (Advanced)
                 </button>
                 

@@ -5,9 +5,9 @@ import { useWhitelistStore } from '@/stores/whitelist';
 import { DialogueEntry } from '@/types';
 import { SKSE_API, log } from '@/lib/skse-api';
 import { ResponsesModal } from './responses-modal';
-import { AdvancedEntryModal } from './advanced-entry-modal';
+import { ManualEntryModal } from './manual-entry-modal';
 import { AdvancedEditModal } from './advanced-edit-modal';
-import { Search, Trash2, Save, Plus, Settings } from 'lucide-react';
+import { Search, Plus, Settings, Trash2 } from 'lucide-react';
 
 const getStatusColor = (status: DialogueEntry['status']): string => {
   switch (status) {
@@ -130,8 +130,9 @@ export const History = () => {
   const [showResponsesModal, setShowResponsesModal] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
   const [modalResponses, setModalResponses] = useState<string[]>([]);
-  const [statusFilters, setStatusFilters] = useState<Set<string>>(new Set(['Allowed', 'Soft Blocked', 'Hard Blocked', 'SkyrimNet Blocked', 'Whitelisted']));
-  const [showAdvancedEntryModal, setShowAdvancedEntryModal] = useState(false);
+  const [statusFilters, setStatusFilters] = useState<Set<string>>(new Set(['Allowed', 'Soft Blocked', 'Hard Blocked', 'Whitelisted']));
+  const [showManualEntryBlacklistModal, setShowManualEntryBlacklistModal] = useState(false);
+  const [showManualEntryWhitelistModal, setShowManualEntryWhitelistModal] = useState(false);
   const [showBlacklistEditModal, setShowBlacklistEditModal] = useState(false);
   const [showWhitelistEditModal, setShowWhitelistEditModal] = useState(false);
   const [editingBlacklistEntry, setEditingBlacklistEntry] = useState<any>(null);
@@ -139,30 +140,22 @@ export const History = () => {
   
   // For single-item detail panel (first selected item)
   const selectedEntry = selectedEntries.length > 0 ? selectedEntries[0] : null;
-  
-  // Edit state for selected entry
-  const [editSoftBlock, setEditSoftBlock] = useState<boolean>(false);
-  const [editHardBlock, setEditHardBlock] = useState<boolean>(false);
-  const [editSkyrimNetBlock, setEditSkyrimNetBlock] = useState<boolean>(false);
-  const [editWhitelist, setEditWhitelist] = useState<boolean>(false);
-  const [editFilterCategory, setEditFilterCategory] = useState<string>('Blacklist');
-  const [editNotes, setEditNotes] = useState<string>('');
 
-  // Find corresponding blacklist/whitelist entries for selected history entry
+  // Find corresponding blacklist/whitelist entries for the selected history entry
   const blacklistEntry = useMemo(() => {
     if (!selectedEntry) return null;
-    return blacklistEntries.find(bl => 
-      (bl.topicFormID === selectedEntry.topicFormID && bl.topicFormID !== '' && bl.topicFormID !== undefined) ||
-      (bl.topicEditorID === selectedEntry.topicEditorID && bl.topicEditorID !== '' && bl.topicEditorID !== undefined)
-    );
+    return blacklistEntries.find(bl =>
+      (bl.topicFormID && bl.topicFormID === selectedEntry.topicFormID) ||
+      (bl.topicEditorID && bl.topicEditorID === selectedEntry.topicEditorID)
+    ) ?? null;
   }, [selectedEntry, blacklistEntries]);
 
   const whitelistEntry = useMemo(() => {
     if (!selectedEntry) return null;
-    return whitelistEntries.find(wl => 
-      (wl.topicFormID === selectedEntry.topicFormID && wl.topicFormID !== '' && wl.topicFormID !== undefined) ||
-      (wl.topicEditorID === selectedEntry.topicEditorID && wl.topicEditorID !== '' && wl.topicEditorID !== undefined)
-    );
+    return whitelistEntries.find(wl =>
+      (wl.topicFormID && wl.topicFormID === selectedEntry.topicFormID) ||
+      (wl.topicEditorID && wl.topicEditorID === selectedEntry.topicEditorID)
+    ) ?? null;
   }, [selectedEntry, whitelistEntries]);
 
   // Toggle status filter
@@ -181,32 +174,9 @@ export const History = () => {
   // Reset filters
   const handleResetFilters = useCallback(() => {
     setSearchQuery('');
-    setStatusFilters(new Set(['Allowed', 'Soft Blocked', 'Hard Blocked', 'SkyrimNet Blocked', 'Whitelisted']));
+    setStatusFilters(new Set(['Allowed', 'Soft Blocked', 'Hard Blocked', 'Whitelisted']));
   }, [setSearchQuery]);
   
-  // Initialize edit state when selected entry changes
-  useEffect(() => {
-    if (selectedEntry && selectedEntries.length === 1) {
-      // Initialize checkboxes based on current status
-      setEditSoftBlock(selectedEntry.status === 'Soft Block' || selectedEntry.status === 'Filter');
-      setEditHardBlock(selectedEntry.status === 'Hard Block');
-      setEditSkyrimNetBlock(selectedEntry.status === 'SkyrimNet Block');
-      setEditWhitelist(selectedEntry.status === 'Whitelist');
-      
-      // If none are set (Allowed, Toggled Off, Skyrim), default to nothing checked
-      if (selectedEntry.status === 'Allowed' || selectedEntry.status === 'Toggled Off' || selectedEntry.status === 'Skyrim') {
-        setEditSoftBlock(false);
-        setEditHardBlock(false);
-        setEditSkyrimNetBlock(false);
-        setEditWhitelist(false);
-      }
-      
-      // Initialize filter category - always default to 'Blacklist'
-      setEditFilterCategory('Blacklist');
-      setEditNotes('');
-    }
-  }, [selectedEntry, selectedEntries.length]);
-
   // Update selectedEntries when entries change (e.g., after toggle)
   useEffect(() => {
     if (selectedEntries.length > 0) {
@@ -286,109 +256,6 @@ export const History = () => {
     }
   }, [entries.length]);
   
-  // Check if all selected entries are SkyrimNet blockable (menu topics)
-  const allSelectedAreSkyrimNetBlockable = useMemo(() => {
-    return selectedEntries.length > 0 && selectedEntries.every(e => e.skyrimNetBlockable);
-  }, [selectedEntries]);
-  
-  const handleAddToBlacklist = useCallback((blockType: 'Soft' | 'Hard' | 'SkyrimNet') => {
-    log(`[History] handleAddToBlacklist called with blockType: ${blockType}`);
-    // Use selected entries array if available, otherwise use single selected entry
-    const entriesToAdd = selectedEntries.length > 0 ? selectedEntries : (selectedEntry ? [selectedEntry] : []);
-    if (entriesToAdd.length > 0) {
-      log(`[History] Adding to blacklist, ${entriesToAdd.length} entries:`);
-      entriesToAdd.forEach((e, idx) => {
-        log(`  Entry ${idx}: topicEditorID=${e.topicEditorID}, topicFormID=${e.topicFormID}, questEditorID=${e.questEditorID}, questName=${e.questName}, sceneEditorID=${e.sceneEditorID}, isScene=${e.isScene}`);
-      });
-    }
-    if (entriesToAdd.length === 0) {
-      log(`[History] No entries to add, returning`);
-      return;
-    }
-    
-    // Call SKSE API to add entries to blacklist
-    // The C++ backend will update the database and send back refreshed history data
-    log(`[History] Calling SKSE_API.addToBlacklist...`);
-    SKSE_API.addToBlacklist(entriesToAdd, blockType);
-    log(`[History] SKSE_API.addToBlacklist call completed`);
-    
-    // Clear selection after adding
-    setSelectedEntries([]);
-    setLastClickedIndex(-1);
-  }, [selectedEntries, selectedEntry]);
-  
-  const handleAddToWhitelist = useCallback(() => {
-    log(`[History] handleAddToWhitelist called`);
-    // Use selected entries array if available, otherwise use single selected entry
-    const entriesToAdd = selectedEntries.length > 0 ? selectedEntries : (selectedEntry ? [selectedEntry] : []);
-    if (entriesToAdd.length > 0) {
-      log(`[History] Adding to whitelist, ${entriesToAdd.length} entries:`);
-      entriesToAdd.forEach((e, idx) => {
-        log(`  Entry ${idx}: topicEditorID=${e.topicEditorID}, topicFormID=${e.topicFormID}, questEditorID=${e.questEditorID}, questName=${e.questName}, sceneEditorID=${e.sceneEditorID}, isScene=${e.isScene}`);
-      });
-    }
-    if (entriesToAdd.length === 0) {
-      log(`[History] No entries to add, returning`);
-      return;
-    }
-    
-    // Call SKSE API to add entries to whitelist
-    log(`[History] Calling SKSE_API.addToWhitelist...`);
-    SKSE_API.addToWhitelist(entriesToAdd);
-    log(`[History] SKSE_API.addToWhitelist call completed`);
-    
-    // Clear selection
-    setSelectedEntries([]);
-    setLastClickedIndex(-1);
-  }, [selectedEntries, selectedEntry]);
-  
-  const handleRemoveFromBlacklist = useCallback(() => {
-    const entryToRemove = selectedEntries.length > 0 ? selectedEntries[0] : selectedEntry;
-    if (!entryToRemove) return;
-    
-    log(`[History] Removing from blacklist, entry: topicEditorID=${entryToRemove.topicEditorID}, topicFormID=${entryToRemove.topicFormID}, sceneEditorID=${entryToRemove.sceneEditorID}, isScene=${entryToRemove.isScene}, questEditorID=${entryToRemove.questEditorID}`);
-    SKSE_API.removeFromBlacklist(entryToRemove);
-    
-    // Request immediate refresh to show updated status
-    setTimeout(() => {
-      log('[History] Requesting refresh after remove from blacklist');
-      SKSE_API.requestHistoryRefresh();
-    }, 100);
-    
-    // Clear selection
-    setSelectedEntries([]);
-    setLastClickedIndex(-1);
-  }, [selectedEntries, selectedEntry]);
-  
-  const handleApplyChanges = useCallback(() => {
-    if (!selectedEntry || selectedEntries.length !== 1) return;
-    
-    log(`[History] handleApplyChanges called for entry ${selectedEntry.id}`);
-    
-    // Determine action based on checkboxes
-    if (editWhitelist) {
-      // Add to whitelist
-      log(`[History] Applying whitelist with notes: ${editNotes}`);
-      SKSE_API.addToWhitelist([selectedEntry], editNotes);
-    } else if (editSoftBlock) {
-      // Add to blacklist with Soft block
-      log(`[History] Applying Soft block with category=${editFilterCategory}, notes=${editNotes}`);
-      SKSE_API.addToBlacklist([selectedEntry], 'Soft', editFilterCategory, editNotes);
-    } else if (editHardBlock) {
-      // Add to blacklist with Hard block
-      log(`[History] Applying Hard block with category=${editFilterCategory}, notes=${editNotes}`);
-      SKSE_API.addToBlacklist([selectedEntry], 'Hard', editFilterCategory, editNotes);
-    } else if (editSkyrimNetBlock) {
-      // Add to blacklist with SkyrimNet block
-      log(`[History] Applying SkyrimNet block with notes=${editNotes}`);
-      SKSE_API.addToBlacklist([selectedEntry], 'SkyrimNet', 'SkyrimNet', editNotes);
-    }
-    
-    // Clear selection
-    setSelectedEntries([]);
-    setLastClickedIndex(-1);
-  }, [selectedEntry, selectedEntries.length, editSoftBlock, editHardBlock, editSkyrimNetBlock, editWhitelist, editFilterCategory, editNotes, setSelectedEntries]);
-  
   const handleShowAllResponses = useCallback(() => {
     if (!selectedEntry) return;
     
@@ -408,16 +275,23 @@ export const History = () => {
   
   const handleToggleSubtypeFilter = useCallback(() => {
     if (!selectedEntry || selectedEntry.topicSubtype === 0) return;
-    
     log(`[History] Toggling subtype filter for subtype: ${selectedEntry.topicSubtype}`);
     SKSE_API.toggleSubtypeFilter(selectedEntry.topicSubtype);
-    
-    // Request immediate refresh to show updated status
     setTimeout(() => {
       log('[History] Requesting refresh after toggle');
       SKSE_API.requestHistoryRefresh();
     }, 100);
   }, [selectedEntry]);
+
+  const handleRemoveFromBlacklist = useCallback(() => {
+    const entryToRemove = selectedEntries.length > 0 ? selectedEntries[0] : selectedEntry;
+    if (!entryToRemove) return;
+    log(`[History] Removing from blacklist: topicEditorID=${entryToRemove.topicEditorID}`);
+    SKSE_API.removeFromBlacklist(entryToRemove);
+    setTimeout(() => SKSE_API.requestHistoryRefresh(), 100);
+    setSelectedEntries([]);
+    setLastClickedIndex(-1);
+  }, [selectedEntries, selectedEntry, setSelectedEntries]);
   
   // Handle multi-selection click
   const handleItemClick = useCallback((entry: DialogueEntry, index: number, event?: React.MouseEvent) => {
@@ -527,15 +401,7 @@ export const History = () => {
             />
             <span className="text-base text-white">Hard Blocked</span>
           </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={statusFilters.has('SkyrimNet Blocked')}
-              onChange={() => toggleStatusFilter('SkyrimNet Blocked')}
-              className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 cursor-pointer"
-            />
-            <span className="text-base text-white">SkyrimNet Blocked</span>
-          </label>
+
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
@@ -605,73 +471,57 @@ export const History = () => {
                     </ul>
                   </div>
                   
-                  {/* Blacklist controls for multi-selection */}
-                  <div className="space-y-2 border-t border-gray-700 pt-4">
-                    <div className="text-base text-gray-400 font-medium mb-2">Add Selected to Blacklist</div>
+                  <div className="text-sm text-gray-400 text-center pt-2 border-t border-gray-700 mt-2">
+                    Hint: Press DEL key to delete selected entries
+                  </div>
+
+                  {/* Quick action buttons for multi-selection */}
+                  <div className="space-y-2 border-t border-gray-700 pt-4 mt-2">
+                    <div className="text-sm text-gray-400 font-medium mb-1">Blacklist Selected</div>
                     <button
-                      onClick={() => handleAddToBlacklist('Soft')}
-                      className="w-full px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={() => {
+                        SKSE_API.addToBlacklist(selectedEntries, 'Soft');
+                        setSelectedEntries([]);
+                        setLastClickedIndex(-1);
+                      }}
+                      className="w-full px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors"
                     >
                       Soft Block
                     </button>
                     <button
-                      onClick={() => handleAddToBlacklist('Hard')}
-                      className="w-full px-4 py-2 bg-red-800 hover:bg-red-900 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={() => {
+                        SKSE_API.addToBlacklist(selectedEntries, 'Hard');
+                        setSelectedEntries([]);
+                        setLastClickedIndex(-1);
+                      }}
+                      className="w-full px-4 py-2 bg-red-800 hover:bg-red-900 text-white rounded-lg transition-colors"
                     >
                       Hard Block
                     </button>
-                    {allSelectedAreSkyrimNetBlockable && (
-                      <button
-                        onClick={() => handleAddToBlacklist('SkyrimNet')}
-                        className="w-full px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        SkyrimNet Block
-                      </button>
-                    )}
-                    {allSelectedAreSkyrimNetBlockable && (
-                      <div className="text-xs text-green-400 italic">
-                        ✓ All selected are SkyrimNet compatible
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Remove from Blacklist for multi-selection - show if any entry is blacklisted */}
-                  {selectedEntries.some(e => e.status === 'Soft Block' || e.status === 'Hard Block' || e.status === 'SkyrimNet Block') && (
-                    <div className="space-y-2 border-t border-gray-700 pt-4 mt-4">
-                      <div className="text-base text-gray-400 font-medium mb-2">Remove from Blacklist</div>
+                    {selectedEntries.some(e => e.status === 'Soft Block' || e.status === 'Hard Block') && (
                       <button
                         onClick={() => {
-                          selectedEntries.forEach(entry => {
-                            if (entry.status === 'Soft Block' || entry.status === 'Hard Block' || entry.status === 'SkyrimNet Block') {
-                              SKSE_API.removeFromBlacklist(entry);
-                            }
+                          selectedEntries.forEach(e => {
+                            if (e.status === 'Soft Block' || e.status === 'Hard Block') SKSE_API.removeFromBlacklist(e);
                           });
                           setSelectedEntries([]);
                           setLastClickedIndex(-1);
                         }}
                         className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
                       >
-                        Remove Selected from Blacklist
+                        Remove from Blacklist
                       </button>
-                    </div>
-                  )}
-                  
-                  {/* Whitelist controls */}
-                  <div className="space-y-2 border-t border-gray-700 pt-4 mt-4">
-                    <div className="text-base text-gray-400 font-medium mb-2">Add Selected to Whitelist</div>
+                    )}
                     <button
-                      onClick={handleAddToWhitelist}
+                      onClick={() => {
+                        SKSE_API.addToWhitelist(selectedEntries);
+                        setSelectedEntries([]);
+                        setLastClickedIndex(-1);
+                      }}
                       className="w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg transition-colors font-medium"
                     >
                       Add to Whitelist
                     </button>
-                    <div className="text-xs text-gray-400 italic">
-                      Whitelisted entries will never be blocked
-                    </div>
-                  </div>
-                  
-                  <div className="text-sm text-gray-400 text-center pt-2 border-t border-gray-700 mt-2">
-                    Hint: Press DEL key to delete selected entries
                   </div>
                 </>
               ) : (
@@ -723,166 +573,26 @@ export const History = () => {
                 </div>
               )}
               
-              {/* Blocking Settings */}
-              <div className="border-t border-gray-700 pt-3 mt-4">
-                <h4 className="text-lg font-semibold mb-3 text-blue-400">Blocking Settings</h4>
-                
-                {/* Block Type Checkboxes (mutually exclusive with whitelist) */}
-                <div className="mb-4">
-                  <div className="text-base text-gray-400 font-medium mb-2">Action</div>
-                  <div className="space-y-2">
-                    <label className="flex items-start gap-3 cursor-pointer p-2 rounded hover:bg-gray-700 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={editSoftBlock}
-                        onChange={(e) => {
-                          setEditSoftBlock(e.target.checked);
-                          if (e.target.checked) {
-                            setEditHardBlock(false);
-                            setEditSkyrimNetBlock(false);
-                            setEditWhitelist(false);
-                          }
-                        }}
-                        className="w-5 h-5 mt-0.5 rounded border-gray-600 bg-gray-700 text-orange-600 focus:ring-orange-500 cursor-pointer"
-                      />
-                      <div className="flex-1">
-                        <div className="text-base text-white font-medium">Soft Block</div>
-                        <div className="text-sm text-gray-400">Blocks audio/subtitles and SkyrimNet logging</div>
-                      </div>
-                    </label>
-                    
-                    {selectedEntry.skyrimNetBlockable && (
-                      <label className="flex items-start gap-3 cursor-pointer p-2 rounded hover:bg-gray-700 transition-colors">
-                        <input
-                          type="checkbox"
-                          checked={editSkyrimNetBlock}
-                          onChange={(e) => {
-                            setEditSkyrimNetBlock(e.target.checked);
-                            if (e.target.checked) {
-                              setEditSoftBlock(false);
-                              setEditHardBlock(false);
-                              setEditWhitelist(false);
-                            }
-                          }}
-                          className="w-5 h-5 mt-0.5 rounded border-gray-600 bg-gray-700 text-purple-600 focus:ring-purple-500 cursor-pointer"
-                        />
-                        <div className="flex-1">
-                          <div className="text-base text-white font-medium">SkyrimNet Block</div>
-                          <div className="text-sm text-gray-400">Block SkyrimNet logging only (audio/subtitles play normally)</div>
-                        </div>
-                      </label>
-                    )}
-                    
-                    <label className="flex items-start gap-3 cursor-pointer p-2 rounded hover:bg-gray-700 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={editHardBlock}
-                        onChange={(e) => {
-                          setEditHardBlock(e.target.checked);
-                          if (e.target.checked) {
-                            setEditSoftBlock(false);
-                            setEditSkyrimNetBlock(false);
-                            setEditWhitelist(false);
-                          }
-                        }}
-                        className="w-5 h-5 mt-0.5 rounded border-gray-600 bg-gray-700 text-red-600 focus:ring-red-500 cursor-pointer"
-                      />
-                      <div className="flex-1">
-                        <div className="text-base text-white font-medium">Hard Block</div>
-                        <div className="text-sm text-gray-400">
-                          {selectedEntry.isScene 
-                            ? 'Prevent scene from starting entirely'
-                            : 'Block dialogue completely'}
-                        </div>
-                      </div>
-                    </label>
-                    
-                    <label className="flex items-start gap-3 cursor-pointer p-2 rounded hover:bg-gray-700 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={editWhitelist}
-                        onChange={(e) => {
-                          setEditWhitelist(e.target.checked);
-                          if (e.target.checked) {
-                            setEditSoftBlock(false);
-                            setEditHardBlock(false);
-                            setEditSkyrimNetBlock(false);
-                          }
-                        }}
-                        className="w-5 h-5 mt-0.5 rounded border-gray-600 bg-gray-700 text-green-600 focus:ring-green-500 cursor-pointer"
-                      />
-                      <div className="flex-1">
-                        <div className="text-base text-white font-medium">Whitelist</div>
-                        <div className="text-sm text-gray-400">Entry will never be blocked</div>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-                
-                {/* Notes */}
-                <div className="mb-4">
-                  <div className="text-base text-gray-400 font-medium mb-2">Notes (Optional)</div>
-                  <textarea
-                    value={editNotes}
-                    onChange={(e) => setEditNotes(e.target.value)}
-                    className="w-full px-3 py-2 text-base bg-gray-700 text-white rounded border border-gray-600 focus:outline-none focus:border-blue-500 min-h-[80px] resize-y font-mono"
-                    placeholder="Add notes about this entry..."
-                  />
-                </div>
-              </div>
-              
               {/* Action Buttons */}
-              <div className="space-y-2 border-t border-gray-700 pt-4">
-                {/* Edit Blacklist button - only show if blacklist entry exists */}
-                {blacklistEntry && (
+              <div className="space-y-2 border-t border-gray-700 pt-4 mt-4">
+                {!blacklistEntry ? (
                   <button
-                    onClick={() => {
-                      setEditingBlacklistEntry(blacklistEntry);
-                      setShowBlacklistEditModal(true);
-                    }}
+                    onClick={() => setShowManualEntryBlacklistModal(true)}
+                    className="w-full px-4 py-2 bg-red-700 hover:bg-red-800 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
+                  >
+                    <Plus size={18} />
+                    Add to Blacklist
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => { setEditingBlacklistEntry(blacklistEntry); setShowBlacklistEditModal(true); }}
                     className="w-full px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
                   >
                     <Settings size={18} />
                     Edit Blacklist Entry
                   </button>
                 )}
-                
-                {/* Edit Whitelist button - only show if whitelist entry exists */}
-                {whitelistEntry && (
-                  <button
-                    onClick={() => {
-                      setEditingWhitelistEntry(whitelistEntry);
-                      setShowWhitelistEditModal(true);
-                    }}
-                    className="w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
-                  >
-                    <Settings size={18} />
-                    Edit Whitelist Entry
-                  </button>
-                )}
-                
-                {/* Advanced Entry button - only show if not both blacklist and whitelist entries exist */}
-                {!(blacklistEntry && whitelistEntry) && (
-                  <button
-                    onClick={() => setShowAdvancedEntryModal(true)}
-                    className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
-                  >
-                    <Plus size={18} />
-                    Advanced Entry
-                  </button>
-                )}
-
-                <button
-                  onClick={handleApplyChanges}
-                  disabled={!editSoftBlock && !editHardBlock && !editSkyrimNetBlock && !editWhitelist}
-                  className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
-                >
-                  <Save size={18} />
-                  Apply Changes
-                </button>
-                
-                {/* Remove from blacklist button - only show when already blacklisted */}
-                {(selectedEntry.status === 'Soft Block' || selectedEntry.status === 'Hard Block' || selectedEntry.status === 'SkyrimNet Block') && (
+                {(selectedEntry.status === 'Soft Block' || selectedEntry.status === 'Hard Block') && (
                   <button
                     onClick={handleRemoveFromBlacklist}
                     className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
@@ -891,30 +601,43 @@ export const History = () => {
                     Remove from Blacklist
                   </button>
                 )}
+                {!whitelistEntry ? (
+                  <button
+                    onClick={() => setShowManualEntryWhitelistModal(true)}
+                    className="w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
+                  >
+                    <Plus size={18} />
+                    Add to Whitelist
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => { setEditingWhitelistEntry(whitelistEntry); setShowWhitelistEditModal(true); }}
+                    className="w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
+                  >
+                    <Settings size={18} />
+                    Edit Whitelist Entry
+                  </button>
+                )}
               </div>
-              
+
               {/* Subtype Filter Toggle - only show for entries filtered by MCM or toggled off */}
               {(selectedEntry.status === 'Filter' || selectedEntry.status === 'Toggled Off') && (
                 <div className="space-y-2 border-t border-gray-700 pt-4 mt-4">
                   <div className="text-base text-gray-400 font-medium mb-2">
                     Subtype Filter
-                    <span className="text-xs ml-2">
-                      ({selectedEntry.subtypeName})
-                    </span>
+                    <span className="text-xs ml-2">({selectedEntry.subtypeName})</span>
                   </div>
                   <button
                     onClick={handleToggleSubtypeFilter}
                     className={`w-full px-4 py-2 text-white rounded-lg transition-colors ${
-                      selectedEntry.status === 'Toggled Off' 
-                        ? 'bg-cyan-600 hover:bg-cyan-700' 
+                      selectedEntry.status === 'Toggled Off'
+                        ? 'bg-cyan-600 hover:bg-cyan-700'
                         : 'bg-yellow-600 hover:bg-yellow-700'
                     }`}
                   >
                     Toggle {selectedEntry.subtypeName} Filter
                   </button>
-                  <div className="text-xs text-gray-500 italic">
-                    Quick toggle for MCM subtype filter setting
-                  </div>
+                  <div className="text-xs text-gray-500 italic">Quick toggle for MCM subtype filter setting</div>
                 </div>
               )}
               </>
@@ -938,11 +661,20 @@ export const History = () => {
         responses={modalResponses}
       />
       
-      {/* Advanced Entry Modal */}
-      <AdvancedEntryModal
-        isOpen={showAdvancedEntryModal}
-        onClose={() => setShowAdvancedEntryModal(false)}
-        prefillEntry={selectedEntry}
+      {/* Add to Blacklist Modal (prefilled from selected entry) */}
+      <ManualEntryModal
+        isOpen={showManualEntryBlacklistModal}
+        onClose={() => setShowManualEntryBlacklistModal(false)}
+        isWhitelist={false}
+        prefillIdentifier={selectedEntry ? (selectedEntry.isScene ? selectedEntry.sceneEditorID : selectedEntry.topicEditorID || selectedEntry.topicFormID) : undefined}
+      />
+
+      {/* Add to Whitelist Modal (prefilled from selected entry) */}
+      <ManualEntryModal
+        isOpen={showManualEntryWhitelistModal}
+        onClose={() => setShowManualEntryWhitelistModal(false)}
+        isWhitelist={true}
+        prefillIdentifier={selectedEntry ? (selectedEntry.isScene ? selectedEntry.sceneEditorID : selectedEntry.topicEditorID || selectedEntry.topicFormID) : undefined}
       />
       
       {/* Advanced Edit Modal for Blacklist */}

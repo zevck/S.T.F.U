@@ -1,4 +1,5 @@
 import { memo, useState, useEffect, useRef, useMemo } from 'react';
+import { Trash2 } from 'lucide-react';
 import { SKSE_API, log } from '../lib/skse-api';
 import { useHistoryStore } from '../stores/history';
 import { BlacklistEntry } from '../types';
@@ -16,11 +17,12 @@ interface Actor {
 }
 
 export const AdvancedEditModal = memo(({ isOpen, onClose, entry }: AdvancedEditModalProps) => {
-  const [blockType, setBlockType] = useState<'Soft' | 'Hard' | 'SkyrimNet'>('Soft');
+  const [blockType, setBlockType] = useState<'Soft' | 'Hard'>('Soft');
   const [filterCategory, setFilterCategory] = useState('Blacklist');
   const [notes, setNotes] = useState('');
   const [actorFilterNames, setActorFilterNames] = useState<string[]>([]);
   const [actorFilterFormIDs, setActorFilterFormIDs] = useState<string[]>([]);
+  const [factionFilterEditorIDs, setFactionFilterEditorIDs] = useState<string[]>([]);
   const [newActorName, setNewActorName] = useState('');
   const [showActorDropdown, setShowActorDropdown] = useState(false);
   const [nearbyActors, setNearbyActors] = useState<Actor[]>([]);
@@ -165,14 +167,13 @@ export const AdvancedEditModal = memo(({ isOpen, onClose, entry }: AdvancedEditM
         setBlockType('Soft');
       } else if (entry.blockType === 'Hard Block') {
         setBlockType('Hard');
-      } else if (entry.blockType === 'SkyrimNet Block') {
-        setBlockType('SkyrimNet');
       }
       
       setFilterCategory(entry.filterCategory || 'Blacklist');
       setNotes(entry.note || '');
       setActorFilterNames(entry.actorFilterNames || []);
       setActorFilterFormIDs(entry.actorFilterFormIDs || []);
+      setFactionFilterEditorIDs(entry.factionFilterEditorIDs || []);
     }
   }, [entry, isOpen]);
 
@@ -233,10 +234,16 @@ export const AdvancedEditModal = memo(({ isOpen, onClose, entry }: AdvancedEditM
   };
   
   const addActorManually = () => {
-    const name = newActorName.trim();
-    if (name && !actorFilterNames.includes(name)) {
-      setActorFilterNames([...actorFilterNames, name]);
-      setActorFilterFormIDs([...actorFilterFormIDs, '']);
+    const input = newActorName.trim();
+    if (!input) return;
+    // Auto-detect: if input matches a known actor name, add as actor; otherwise treat as faction EditorID
+    const matchedActor = allActors.find(a => a.name.toLowerCase() === input.toLowerCase());
+    if (matchedActor) {
+      addActor(matchedActor);
+      return;
+    }
+    if (!factionFilterEditorIDs.includes(input)) {
+      setFactionFilterEditorIDs([...factionFilterEditorIDs, input]);
     }
     setNewActorName('');
     setShowActorDropdown(false);
@@ -245,6 +252,10 @@ export const AdvancedEditModal = memo(({ isOpen, onClose, entry }: AdvancedEditM
   const removeActor = (index: number) => {
     setActorFilterNames(actorFilterNames.filter((_, i) => i !== index));
     setActorFilterFormIDs(actorFilterFormIDs.filter((_, i) => i !== index));
+  };
+
+  const removeFaction = (index: number) => {
+    setFactionFilterEditorIDs(factionFilterEditorIDs.filter((_, i) => i !== index));
   };
 
   const handleSave = () => {
@@ -258,16 +269,29 @@ export const AdvancedEditModal = memo(({ isOpen, onClose, entry }: AdvancedEditM
 
     log(`[AdvancedEdit] Updating entry ${entry.id}: blockType=${blockType}, filterCategory=${filterCategory}, actors=${actorFilterNames.length}`);
 
-    // Update the entry with actor filters
+    // Update the entry (works for both blacklist and whitelist entries)
     SKSE_API.sendToSKSE('updateBlacklistEntryAdvanced', JSON.stringify({
       id: entry.id,
       blockType,
       filterCategory,
       notes,
       actorFilterNames,
-      actorFilterFormIDs
+      actorFilterFormIDs,
+      factionFilterEditorIDs
     }));
 
+    onClose();
+  };
+
+  const handleDelete = () => {
+    if (!entry) return;
+    const isWhitelist = entry.filterCategory === 'Whitelist';
+    log(`[AdvancedEdit] Deleting entry ${entry.id} (${isWhitelist ? 'whitelist' : 'blacklist'})`);
+    if (isWhitelist) {
+      SKSE_API.removeFromWhitelist(entry.id);
+    } else {
+      SKSE_API.deleteBlacklistEntry(entry.id);
+    }
     onClose();
   };
   
@@ -291,7 +315,7 @@ export const AdvancedEditModal = memo(({ isOpen, onClose, entry }: AdvancedEditM
         <div className="flex items-center justify-between p-4 border-b border-gray-700">
           <div>
             <h2 id="modal-title" className="text-xl font-bold text-white">
-              Edit Blacklist Entry
+              {entry?.filterCategory === 'Whitelist' ? 'Edit Whitelist Entry' : 'Edit Blacklist Entry'}
             </h2>
             <p className="text-sm text-gray-400 mt-1">{getIdentifier()}</p>
           </div>
@@ -360,18 +384,7 @@ export const AdvancedEditModal = memo(({ isOpen, onClose, entry }: AdvancedEditM
                 />
                 <span className="text-base text-white">Hard Block</span>
               </label>
-              {entry.filterCategory === 'SkyrimNet' && (
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="blockType"
-                    checked={blockType === 'SkyrimNet'}
-                    onChange={() => setBlockType('SkyrimNet')}
-                    className="w-5 h-5 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                  />
-                  <span className="text-base text-white">SkyrimNet Only</span>
-                </label>
-              )}
+
             </div>
           </div>
 
@@ -399,20 +412,22 @@ export const AdvancedEditModal = memo(({ isOpen, onClose, entry }: AdvancedEditM
               Actor & Faction Filters
             </label>
             
-            {/* Selected Actors */}
-            {actorFilterNames.length > 0 && (
+            {/* Combined actor & faction chips */}
+            {(actorFilterNames.length > 0 || factionFilterEditorIDs.length > 0) && (
               <div className="flex flex-wrap gap-2 mb-3">
                 {actorFilterNames.map((name, index) => (
-                  <div key={index} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-full text-sm">
+                  <div key={`actor-${index}`} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-full text-sm">
                     <span>{name}</span>
-                    <button
-                      onClick={() => removeActor(index)}
-                      className="hover:text-red-300 transition-colors"
-                      aria-label={`Remove ${name}`}
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
+                    <button onClick={() => removeActor(index)} className="hover:text-red-300 transition-colors" aria-label={`Remove ${name}`}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                ))}
+                {factionFilterEditorIDs.map((id, index) => (
+                  <div key={`faction-${index}`} className="flex items-center gap-2 px-3 py-1.5 bg-purple-700 text-white rounded-full text-sm">
+                    <span>{id}</span>
+                    <button onClick={() => removeFaction(index)} className="hover:text-red-300 transition-colors" aria-label={`Remove ${id}`}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                   </div>
                 ))}
@@ -481,7 +496,7 @@ export const AdvancedEditModal = memo(({ isOpen, onClose, entry }: AdvancedEditM
                       onClick={addActorManually}
                       className="w-full px-4 py-2.5 text-left hover:bg-gray-600 transition-colors text-white"
                     >
-                      Add "{newActorName}" manually
+                      Add "{newActorName}" as faction filter
                     </button>
                   ) : (
                     <div className="px-4 py-2.5 text-gray-400 text-sm">
@@ -493,10 +508,7 @@ export const AdvancedEditModal = memo(({ isOpen, onClose, entry }: AdvancedEditM
             </div>
             
             <div className="text-sm text-gray-400 mt-2">
-              {actorFilterNames.length === 0 
-                ? 'Empty = affects all actors. Add actors to make this entry actor-specific.'
-                : `This entry will only affect: ${actorFilterNames.join(', ')}`
-              }
+              Actors (blue) from the dropdown. Unknown names become faction EditorID filters (purple).
             </div>
           </div>
 
@@ -516,19 +528,28 @@ export const AdvancedEditModal = memo(({ isOpen, onClose, entry }: AdvancedEditM
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-gray-700 flex justify-end gap-3">
+        <div className="p-4 border-t border-gray-700 flex items-center justify-between gap-3">
           <button
-            onClick={onClose}
-            className="px-6 py-2.5 text-base bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+            onClick={handleDelete}
+            className="px-4 py-2.5 text-base bg-red-700 hover:bg-red-800 text-white rounded-lg transition-colors flex items-center gap-2"
           >
-            Cancel
+            <Trash2 size={16} />
+            Delete Entry
           </button>
-          <button
-            onClick={handleSave}
-            className="px-6 py-2.5 text-base bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-          >
-            Save Changes
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="px-6 py-2.5 text-base bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-6 py-2.5 text-base bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+            >
+              Save Changes
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -143,7 +143,7 @@ export const Settings = () => {
   
   // Read settings from global store (updated by C++ in real-time)
   const blacklistEnabled = useSettingsStore(state => state.blacklistEnabled);
-  const skyrimNetEnabled = useSettingsStore(state => state.skyrimNetEnabled);
+
   const scenesEnabled = useSettingsStore(state => state.scenesEnabled);
   const bardSongsEnabled = useSettingsStore(state => state.bardSongsEnabled);
   const combatGruntsBlocked = useSettingsStore(state => state.combatGruntsBlocked);
@@ -297,12 +297,7 @@ export const Settings = () => {
                   onChange={(checked) => SKSE_API.setBlacklistEnabled(checked)}
                   tooltip="Controls dialogue marked with 'Blacklist' category only"
                 />
-                <Toggle
-                  label="Enable SkyrimNet Filter"
-                  checked={skyrimNetEnabled}
-                  onChange={(checked) => SKSE_API.setSkyrimNetEnabled(checked)}
-                  tooltip="Block dialogue from being logged by SkyrimNet"
-                />
+
                 <Toggle
                   label="Block Ambient Scenes"
                   checked={scenesEnabled}
@@ -332,7 +327,7 @@ export const Settings = () => {
                 <button
                   onClick={handleImportYAML}
                   className="px-4 py-3 text-base bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
-                  title="Import from Blacklist, Whitelist, SubtypeOverrides, and SkyrimNetFilter YAMLs"
+                  title="Import from Blacklist, Whitelist, and SubtypeOverrides YAMLs"
                 >
                   <Upload size={18} />
                   Import from YAML
@@ -340,7 +335,7 @@ export const Settings = () => {
               </div>
               <div className="text-sm text-gray-400 mt-3 space-y-1">
                 <p><strong>Import Scenes:</strong> Restores default ambient scenes, bard songs, and follower commentary</p>
-                <p><strong>Import YAML:</strong> Loads entries from blacklist/whitelist/overrides/filter YAML files</p>
+                <p><strong>Import YAML:</strong> Loads entries from blacklist/whitelist/overrides YAML files</p>
               </div>
             </div>
           </div>

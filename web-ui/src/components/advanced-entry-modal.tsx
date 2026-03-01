@@ -23,7 +23,7 @@ interface Actor {
 export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null }: AdvancedEntryModalProps) => {
   const [identifier, setIdentifier] = useState('');
   const [isWhitelist, setIsWhitelist] = useState(false);
-  const [blockType, setBlockType] = useState<'Soft' | 'Hard' | 'SkyrimNet'>('Soft');
+  const [blockType, setBlockType] = useState<'Soft' | 'Hard'>('Soft');
   const [notes, setNotes] = useState('');
   const [detectedType, setDetectedType] = useState<'topic' | 'scene' | 'plugin'>('topic');
   const [categories, setCategories] = useState<string[]>(['Blacklist']);
@@ -451,22 +451,7 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null }
                 />
                 <span className="text-base text-white">Hard Block</span>
               </label>
-              {/* Only show SkyrimNet option if prefill entry is SkyrimNet blockable */}
-              {prefillEntry?.skyrimNetBlockable && (
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="actionType"
-                    checked={!isWhitelist && blockType === 'SkyrimNet'}
-                    onChange={() => {
-                      setIsWhitelist(false);
-                      setBlockType('SkyrimNet');
-                    }}
-                    className="w-5 h-5 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                  />
-                  <span className="text-base text-white">SkyrimNet Only</span>
-                </label>
-              )}
+
               
               {/* Whitelist Radio Button */}
               <label className="flex items-center gap-2 cursor-pointer">
@@ -483,7 +468,7 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null }
             <div className="text-sm text-gray-400 mt-1">
               {isWhitelist 
                 ? 'Whitelist entries allow dialogue to play regardless of other filters'
-                : `Soft blocks mute audio/subtitles. Hard blocks prevent dialogue.${prefillEntry?.skyrimNetBlockable ? ' SkyrimNet blocks only from AI.' : ''}`
+                : `Soft blocks mute audio/subtitles. Hard blocks prevent dialogue.`
               }
             </div>
           </div>

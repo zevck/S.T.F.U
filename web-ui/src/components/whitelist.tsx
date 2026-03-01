@@ -1,7 +1,7 @@
 import { useState, useMemo, memo, useCallback, useRef, useEffect } from 'react';
 import { useWhitelistStore } from '../stores/whitelist';
 import { BlacklistEntry } from '../types';
-import { Search, X, Save, Plus, Trash2 } from 'lucide-react';
+import { Search, X, Save, Plus, Trash2, Settings } from 'lucide-react';
 import { SKSE_API, log } from '../lib/skse-api';
 import { ResponsesModal } from './responses-modal';
 import { ManualEntryModal } from './manual-entry-modal';
@@ -461,7 +461,7 @@ export const Whitelist = () => {
                   }}
                   className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
                 >
-                  <Plus size={18} />
+                  <Settings size={18} />
                   Edit (Advanced)
                 </button>
                 

@@ -6,6 +6,7 @@ interface ManualEntryModalProps {
   isOpen: boolean;
   onClose: () => void;
   isWhitelist?: boolean;
+  prefillIdentifier?: string;
 }
 
 interface DetectionResult {
@@ -19,7 +20,7 @@ interface Actor {
   lastSeen: number;
 }
 
-export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: ManualEntryModalProps) => {
+export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false, prefillIdentifier }: ManualEntryModalProps) => {
   const [identifier, setIdentifier] = useState('');
   const [blockType, setBlockType] = useState<'Soft' | 'Hard'>('Soft');
   const [notes, setNotes] = useState('');
@@ -28,6 +29,7 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
   const [selectedCategory, setSelectedCategory] = useState('Blacklist');
   const [actorFilterNames, setActorFilterNames] = useState<string[]>([]);
   const [actorFilterFormIDs, setActorFilterFormIDs] = useState<string[]>([]);
+  const [factionFilterEditorIDs, setFactionFilterEditorIDs] = useState<string[]>([]);
   const [newActorName, setNewActorName] = useState('');
   const [showActorDropdown, setShowActorDropdown] = useState(false);
   const [nearbyActors, setNearbyActors] = useState<Actor[]>([]);
@@ -109,7 +111,10 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
   }, [allActors, newActorName, actorFilterNames]);
 
   // Set up global handlers for detection results and nearby actors
+  // Only register when modal is open to avoid conflicts when multiple instances are mounted
   useEffect(() => {
+    if (!isOpen) return;
+
     (window as any).handleIdentifierDetection = (result: DetectionResult) => {
       log(`[ManualEntry] Detection result: type=${result.type}, categories=${result.categories.length}`);
       setDetectedType(result.type);
@@ -131,7 +136,7 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
       delete (window as any).handleIdentifierDetection;
       delete (window as any).handleNearbyActors;
     };
-  }, [selectedCategory]);
+  }, [isOpen, selectedCategory]);
 
   // Detect identifier type when it changes (debounced)
   useEffect(() => {
@@ -158,15 +163,19 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
     };
   }, [identifier]);
 
-  // Auto-load nearby actors when modal opens
+  // Auto-load nearby actors when modal opens, and apply prefill identifier
   useEffect(() => {
     if (isOpen) {
       log('[ManualEntry] Modal opened, requesting nearby actors');
       SKSE_API.requestNearbyActors();
+      if (prefillIdentifier) {
+        log(`[ManualEntry] Prefilling identifier: ${prefillIdentifier}`);
+        setIdentifier(prefillIdentifier);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, prefillIdentifier]);
   
-  // Reset form when modal opens/closes
+  // Reset form when modal closes
   useEffect(() => {
     if (!isOpen) {
       setIdentifier('');
@@ -177,6 +186,7 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
       setSelectedCategory('Blacklist');
       setActorFilterNames([]);
       setActorFilterFormIDs([]);
+      setFactionFilterEditorIDs([]);
       setNewActorName('');
       setShowActorDropdown(false);
       setNearbyActors([]);
@@ -232,11 +242,16 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
   };
   
   const addActorManually = () => {
-    const name = newActorName.trim();
-    if (name && !actorFilterNames.includes(name)) {
-      setActorFilterNames([...actorFilterNames, name]);
-      // FormID will be empty for manually entered actors
-      setActorFilterFormIDs([...actorFilterFormIDs, '']);
+    const input = newActorName.trim();
+    if (!input) return;
+    // Auto-detect: if input matches a known actor name, add as actor; otherwise treat as faction EditorID
+    const matchedActor = allActors.find(a => a.name.toLowerCase() === input.toLowerCase());
+    if (matchedActor) {
+      addActor(matchedActor);
+      return;
+    }
+    if (!factionFilterEditorIDs.includes(input)) {
+      setFactionFilterEditorIDs([...factionFilterEditorIDs, input]);
     }
     setNewActorName('');
     setShowActorDropdown(false);
@@ -245,6 +260,10 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
   const removeActor = (index: number) => {
     setActorFilterNames(actorFilterNames.filter((_, i) => i !== index));
     setActorFilterFormIDs(actorFilterFormIDs.filter((_, i) => i !== index));
+  };
+
+  const removeFaction = (index: number) => {
+    setFactionFilterEditorIDs(factionFilterEditorIDs.filter((_, i) => i !== index));
   };
 
   const handleCreate = () => {
@@ -269,7 +288,8 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
       notes,
       isWhitelist,
       actorFilterNames,
-      actorFilterFormIDs
+      actorFilterFormIDs,
+      factionFilterEditorIDs
     }));
 
     // Close modal
@@ -392,19 +412,19 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
               }
             </div>
             
-            {/* Selected actors as chips */}
-            {actorFilterNames.length > 0 && (
+            {/* Combined actor & faction chips */}
+            {(actorFilterNames.length > 0 || factionFilterEditorIDs.length > 0) && (
               <div className="flex flex-wrap gap-2 mb-3">
                 {actorFilterNames.map((name, index) => (
-                  <div key={index} className="bg-blue-600 text-white px-3 py-1 rounded-full flex items-center gap-2 text-sm">
+                  <div key={`actor-${index}`} className="bg-blue-600 text-white px-3 py-1 rounded-full flex items-center gap-2 text-sm">
                     <span>{name}</span>
-                    <button
-                      onClick={() => removeActor(index)}
-                      className="hover:text-red-300 transition-colors"
-                      aria-label={`Remove ${name}`}
-                    >
-                      ✕
-                    </button>
+                    <button onClick={() => removeActor(index)} className="hover:text-red-300 transition-colors" aria-label={`Remove ${name}`}>✕</button>
+                  </div>
+                ))}
+                {factionFilterEditorIDs.map((id, index) => (
+                  <div key={`faction-${index}`} className="bg-purple-700 text-white px-3 py-1 rounded-full flex items-center gap-2 text-sm">
+                    <span>{id}</span>
+                    <button onClick={() => removeFaction(index)} className="hover:text-red-300 transition-colors" aria-label={`Remove ${id}`}>✕</button>
                   </div>
                 ))}
               </div>
@@ -421,6 +441,16 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
                     setShowActorDropdown(true);
                   }}
                   onClick={() => setShowActorDropdown(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (filteredActors.length > 0) {
+                        addActor(filteredActors[0]);
+                      } else {
+                        addActorManually();
+                      }
+                    }
+                  }}
                   placeholder="Actor name or faction EditorID (e.g., WhiterunGuardFaction)..."
                   className="flex-1 px-4 py-2 text-base bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
                 />
@@ -434,37 +464,55 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
               </div>
               
               {/* Dropdown for nearby and recent actors */}
-              {showActorDropdown && filteredActors.length > 0 && (
+              {showActorDropdown && (newActorName || allActors.length > 0) && (
                 <div className="absolute z-10 w-full mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                  <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-600 sticky top-0 bg-gray-700">
-                    {nearbyActors.length > 0 ? 'Nearby & Recent Actors' : 'Recent Actors (Last 30 min)'}
-                  </div>
-                  {filteredActors.map((actor, index) => {
-                    const isNearby = nearbyActors.some(na => na.formID.toUpperCase() === actor.formID.toUpperCase());
-                    return (
-                      <button
-                        key={index}
-                        onClick={() => addActor(actor)}
-                        className="w-full px-4 py-2 text-left hover:bg-gray-600 transition-colors"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="text-white font-medium">{actor.name}</div>
-                            <div className="text-xs text-blue-300">{actor.formID}</div>
-                          </div>
-                          <div className="text-xs text-gray-400 ml-2">
-                            {isNearby ? (
-                              <span className="text-green-400">● Nearby</span>
-                            ) : (
-                              new Date(actor.lastSeen).toLocaleTimeString()
-                            )}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
+                  {filteredActors.length > 0 ? (
+                    <>
+                      <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-600 sticky top-0 bg-gray-700">
+                        {nearbyActors.length > 0 ? 'Nearby & Recent Actors' : 'Recent Actors (Last 30 min)'}
+                      </div>
+                      {filteredActors.map((actor, index) => {
+                        const isNearby = nearbyActors.some(na => na.formID.toUpperCase() === actor.formID.toUpperCase());
+                        return (
+                          <button
+                            key={index}
+                            onClick={() => addActor(actor)}
+                            className="w-full px-4 py-2 text-left hover:bg-gray-600 transition-colors"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <div className="text-white font-medium">{actor.name}</div>
+                                <div className="text-xs text-blue-300">{actor.formID}</div>
+                              </div>
+                              <div className="text-xs text-gray-400 ml-2">
+                                {isNearby ? (
+                                  <span className="text-green-400">● Nearby</span>
+                                ) : (
+                                  new Date(actor.lastSeen).toLocaleTimeString()
+                                )}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </>
+                  ) : newActorName ? (
+                    <button
+                      onClick={addActorManually}
+                      className="w-full px-4 py-2.5 text-left hover:bg-gray-600 transition-colors text-white"
+                    >
+                      Add "{newActorName}" as faction filter
+                    </button>
+                  ) : (
+                    <div className="px-4 py-2.5 text-gray-400 text-sm">
+                      No recent actors found
+                    </div>
+                  )}
                 </div>
               )}
+            </div>
+            <div className="text-sm text-gray-400 mt-2">
+              Actors (blue) from the dropdown. Unknown names become faction EditorID filters (purple).
             </div>
           </div>
 
