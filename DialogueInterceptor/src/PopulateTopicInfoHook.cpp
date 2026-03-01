@@ -396,7 +396,7 @@ namespace PopulateTopicInfoHook
         if (a_topic && a_responseData && !fullResponseText.empty()) {
             RE::TESQuest* quest = a_topic->ownerQuest;
             uint32_t speakerFormID = a_speaker ? a_speaker->GetFormID() : 0;
-            bool shouldSoftBlock = Config::ShouldSoftBlock(quest, a_topic, speakerName, responseText, speakerFormID);
+            bool shouldSoftBlock = Config::ShouldSoftBlock(quest, a_topic, speakerName, responseText, speakerFormID, a_speaker);
             bool shouldBlockSkyrimNet = false;
             if (STFUMenu::IsSkyrimNetLoaded()) {
                 shouldBlockSkyrimNet = Config::ShouldBlockSkyrimNet(quest, a_topic, speakerName);
@@ -572,7 +572,7 @@ namespace PopulateTopicInfoHook
             DialogueDB::BlockedStatus blockedStatus = DialogueDB::BlockedStatus::Normal;
             
             // Check granular blocking flags (speakerFormID already defined at line 441)
-            bool shouldSoftBlock = Config::ShouldSoftBlock(quest, a_topic, speakerName, responseText, speakerFormID);
+            bool shouldSoftBlock = Config::ShouldSoftBlock(quest, a_topic, speakerName, responseText, speakerFormID, a_speaker);
             bool shouldBlockSkyrimNet = false;
             if (STFUMenu::IsSkyrimNetLoaded()) {
                 shouldBlockSkyrimNet = Config::ShouldBlockSkyrimNet(quest, a_topic, speakerName);

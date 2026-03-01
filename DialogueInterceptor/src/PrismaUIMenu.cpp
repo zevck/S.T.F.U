@@ -52,6 +52,7 @@ void PrismaUIMenu::Initialize()
     prismaUI_->RegisterJSListener(view_, "deleteHistoryEntries", &OnDeleteHistoryEntries);
     prismaUI_->RegisterJSListener(view_, "openManualEntry", &OnOpenManualEntry);
     prismaUI_->RegisterJSListener(view_, "detectIdentifierType", &OnDetectIdentifierType);
+    prismaUI_->RegisterJSListener(view_, "detectActorOrFaction", &OnDetectActorOrFaction);
     prismaUI_->RegisterJSListener(view_, "createManualEntry", &OnCreateManualEntry);
     prismaUI_->RegisterJSListener(view_, "createAdvancedEntry", &OnCreateAdvancedEntry);
     prismaUI_->RegisterJSListener(view_, "updateBlacklistEntryAdvanced", &OnUpdateBlacklistEntry);  // Reuse existing handler
@@ -455,23 +456,51 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
                          (!wlEntry.targetEditorID.empty() && wlEntry.targetEditorID == entry.topicEditorID))) {
                         
                         // Whitelist entry found - check actor filter
-                        bool actorMatches = true;
+                        bool hasActorFilter = !wlEntry.actorFilterFormIDs.empty() || !wlEntry.actorFilterNames.empty();
+                        bool actorFilterMatches = false;
                         if (!wlEntry.actorFilterFormIDs.empty()) {
-                            actorMatches = false;
                             // Check if speaker FormID matches any actor filter
                             for (const auto& filterFormID : wlEntry.actorFilterFormIDs) {
                                 if (entry.speakerFormID == filterFormID) {
-                                    actorMatches = true;
+                                    actorFilterMatches = true;
                                     break;
                                 }
                             }
-                        } else if (!wlEntry.actorFilterNames.empty()) {
-                            // Broken state: has names but no FormIDs
-                            // Can't verify actor identity without FormIDs, so don't whitelist anyone
-                            actorMatches = false;
+                        }
+                        // Note: actorFilterNames without FormIDs is broken state, actorFilterMatches stays false
+                        
+                        // Check faction filter using base form (always in memory, unlike placed references)
+                        bool hasFactionFilter = !wlEntry.factionFilterEditorIDs.empty();
+                        bool factionFilterMatches = false;
+                        if (hasFactionFilter && entry.speakerBaseFormID != 0) {
+                            auto* npcBase = RE::TESForm::LookupByID<RE::TESNPC>(entry.speakerBaseFormID);
+                            if (npcBase) {
+                                for (auto& factionInfo : npcBase->factions) {
+                                    if (factionFilterMatches) break;
+                                    if (!factionInfo.faction) continue;
+                                    const char* editorID = factionInfo.faction->GetFormEditorID();
+                                    if (!editorID || !editorID[0]) continue;
+                                    for (const auto& filterFaction : wlEntry.factionFilterEditorIDs) {
+                                        if (filterFaction == editorID) {
+                                            factionFilterMatches = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
                         }
                         
-                        if (actorMatches) {
+                        // Determine if this entry matches: no filters = everyone, else actor OR faction must match
+                        bool filterMatches = false;
+                        if (!hasActorFilter && !hasFactionFilter) {
+                            filterMatches = true;
+                        } else if (hasActorFilter && actorFilterMatches) {
+                            filterMatches = true;
+                        } else if (hasFactionFilter && factionFilterMatches) {
+                            filterMatches = true;
+                        }
+                        
+                        if (filterMatches) {
                             entry.blockedStatus = DialogueDB::BlockedStatus::Whitelisted;
                             foundInWhitelist = true;
                             break;  // Only break if actor matches and we set Whitelisted status
@@ -514,23 +543,51 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
                         for (const auto& blEntry : blacklist) {
                             if (blEntry.id == blacklistId) {
                                 // Check actor filter - if entry has actor filters, verify speaker matches
-                                bool actorMatches = true;
+                                bool hasActorFilter = !blEntry.actorFilterFormIDs.empty() || !blEntry.actorFilterNames.empty();
+                                bool actorFilterMatches = false;
                                 if (!blEntry.actorFilterFormIDs.empty()) {
-                                    actorMatches = false;
                                     // Check if speaker FormID matches any actor filter
                                     for (const auto& filterFormID : blEntry.actorFilterFormIDs) {
                                         if (entry.speakerFormID == filterFormID) {
-                                            actorMatches = true;
+                                            actorFilterMatches = true;
                                             break;
                                         }
                                     }
-                                } else if (!blEntry.actorFilterNames.empty()) {
-                                    // Broken state: has names but no FormIDs
-                                    // Can't verify actor identity without FormIDs, so don't block anyone
-                                    actorMatches = false;
+                                }
+                                // Note: actorFilterNames without FormIDs is broken state, actorFilterMatches stays false
+                                
+                                // Check faction filter using base form (always in memory, unlike placed references)
+                                bool hasFactionFilter = !blEntry.factionFilterEditorIDs.empty();
+                                bool factionFilterMatches = false;
+                                if (hasFactionFilter && entry.speakerBaseFormID != 0) {
+                                    auto* npcBase = RE::TESForm::LookupByID<RE::TESNPC>(entry.speakerBaseFormID);
+                                    if (npcBase) {
+                                        for (auto& factionInfo : npcBase->factions) {
+                                            if (factionFilterMatches) break;
+                                            if (!factionInfo.faction) continue;
+                                            const char* editorID = factionInfo.faction->GetFormEditorID();
+                                            if (!editorID || !editorID[0]) continue;
+                                            for (const auto& filterFaction : blEntry.factionFilterEditorIDs) {
+                                                if (filterFaction == editorID) {
+                                                    factionFilterMatches = true;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                                 
-                                if (actorMatches) {
+                                // Determine if this entry matches: no filters = block everyone, else actor OR faction must match
+                                bool filterMatches = false;
+                                if (!hasActorFilter && !hasFactionFilter) {
+                                    filterMatches = true;
+                                } else if (hasActorFilter && actorFilterMatches) {
+                                    filterMatches = true;
+                                } else if (hasFactionFilter && factionFilterMatches) {
+                                    filterMatches = true;
+                                }
+                                
+                                if (filterMatches) {
                                     // Blacklisted entries show their block type
                                     if (blEntry.blockType == DialogueDB::BlockType::SkyrimNet) {
                                         entry.blockedStatus = DialogueDB::BlockedStatus::SkyrimNetBlock;
@@ -540,8 +597,14 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
                                         entry.blockedStatus = DialogueDB::BlockedStatus::SoftBlock;
                                     }
                                 } else {
-                                    // Actor doesn't match filter - show as Normal (not blocked)
-                                    entry.blockedStatus = DialogueDB::BlockedStatus::Normal;
+                                    // Actor doesn't match filter - treat as if not blacklisted
+                                    if (Config::IsFilteredByMCM(entry.topicFormID, entry.topicSubtype)) {
+                                        entry.blockedStatus = DialogueDB::BlockedStatus::FilteredByConfig;
+                                    } else if (Config::HasDisabledSubtypeToggle(entry.topicSubtype)) {
+                                        entry.blockedStatus = DialogueDB::BlockedStatus::ToggledOff;
+                                    } else {
+                                        entry.blockedStatus = DialogueDB::BlockedStatus::Normal;
+                                    }
                                 }
                                 break;
                             }
@@ -1715,6 +1778,91 @@ void PrismaUIMenu::OnDetectIdentifierType(const char* data)
     }
 }
 
+void PrismaUIMenu::OnDetectActorOrFaction(const char* data)
+{
+    if (!data) {
+        spdlog::error("[PrismaUIMenu::OnDetectActorOrFaction] Null data received");
+        return;
+    }
+    
+    try {
+        std::string jsonStr(data);
+        spdlog::info("[PrismaUIMenu::OnDetectActorOrFaction] Received: {}", jsonStr);
+        
+        // Extract input from JSON
+        size_t inputPos = jsonStr.find("\"input\":\"");
+        if (inputPos == std::string::npos) {
+            spdlog::error("[PrismaUIMenu::OnDetectActorOrFaction] No input found");
+            return;
+        }
+        
+        size_t inputStart = inputPos + 9;
+        size_t inputEnd = jsonStr.find("\"", inputStart);
+        std::string input = jsonStr.substr(inputStart, inputEnd - inputStart);
+        
+        if (input.empty()) {
+            // Empty input - send back unknown
+            std::string response = R"({"type":"unknown","name":"","formID":"","editorID":""})";
+            std::string script = "window.handleActorOrFactionDetection(" + response + ");";
+            prismaUI_->Invoke(view_, script.c_str());
+            return;
+        }
+        
+        std::string detectedType = "unknown";
+        std::string name = "";
+        std::string formID = "";
+        std::string editorID = "";
+        
+        // Check if it's a FormID (starts with 0x)
+        if (input.find("0x") == 0 || input.find("0X") == 0) {
+            try {
+                uint32_t actorFormID = std::stoul(input, nullptr, 16);
+                auto* form = RE::TESForm::LookupByID(actorFormID);
+                
+                if (form) {
+                    auto* actor = form->As<RE::TESNPC>();
+                    if (actor) {
+                        detectedType = "actor";
+                        name = actor->GetFullName();
+                        formID = input;
+                        spdlog::info("[PrismaUIMenu::OnDetectActorOrFaction] Detected as Actor: {} ({})", name, formID);
+                    }
+                }
+            } catch (...) {
+                spdlog::warn("[PrismaUIMenu::OnDetectActorOrFaction] Failed to parse FormID: {}", input);
+            }
+        } else {
+            // Try to look up as faction EditorID
+            auto* form = RE::TESForm::LookupByEditorID(input);
+            if (form) {
+                auto* faction = form->As<RE::TESFaction>();
+                if (faction) {
+                    detectedType = "faction";
+                    editorID = input;
+                    name = faction->GetFullName();
+                    if (name.empty()) {
+                        name = editorID; // Use EditorID as fallback
+                    }
+                    spdlog::info("[PrismaUIMenu::OnDetectActorOrFaction] Detected as Faction: {} ({})", name, editorID);
+                }
+            }
+        }
+        
+        // Build response JSON
+        std::ostringstream responseJson;
+        responseJson << "{\"type\":\"" << detectedType << "\",\"name\":\"" << name << "\",\"formID\":\"" << formID << "\",\"editorID\":\"" << editorID << "\"}";
+        
+        spdlog::info("[PrismaUIMenu::OnDetectActorOrFaction] Response: {}", responseJson.str());
+        
+        // Send response to JavaScript
+        std::string script = "window.handleActorOrFactionDetection(" + responseJson.str() + ");";
+        prismaUI_->Invoke(view_, script.c_str());
+        
+    } catch (const std::exception& e) {
+        spdlog::error("[PrismaUIMenu::OnDetectActorOrFaction] Exception: {}", e.what());
+    }
+}
+
 void PrismaUIMenu::OnCreateManualEntry(const char* data)
 {
     if (!data) {
@@ -2137,7 +2285,10 @@ void PrismaUIMenu::OnCreateAdvancedEntry(const char* data)
         // Parse actor filters - handles both "0x01A6A4" and "01A6A4" formats
         auto parseActorFormIDs = [](const std::string& json) -> std::vector<uint32_t> {
             std::vector<uint32_t> formIDs;
-            size_t arrayStart = json.find("\"actorFilterFormIDs\":[");
+            size_t arrayStart = json.find("\"actorFilterFormIDs\":[]");
+            if (arrayStart != std::string::npos) return formIDs; // Empty array, return immediately
+            
+            arrayStart = json.find("\"actorFilterFormIDs\":[");
             if (arrayStart == std::string::npos) return formIDs;
             
             // Find opening [ bracket
@@ -2187,9 +2338,17 @@ void PrismaUIMenu::OnCreateAdvancedEntry(const char* data)
         
         auto parseActorNames = [](const std::string& json) -> std::vector<std::string> {
             std::vector<std::string> names;
-            size_t arrayStart = json.find("\"actorFilterNames\":[");
+            size_t arrayStart = json.find("\"actorFilterNames\":[]");
+            if (arrayStart != std::string::npos) return names; // Empty array, return immediately
+            
+            arrayStart = json.find("\"actorFilterNames\":[");
             if (arrayStart == std::string::npos) return names;
-            size_t pos = json.find("\"", arrayStart + 20);
+            
+            // Find the opening bracket
+            size_t bracketPos = json.find("[", arrayStart);
+            if (bracketPos == std::string::npos) return names;
+            
+            size_t pos = json.find("\"", bracketPos);
             while (pos != std::string::npos && pos < json.size()) {
                 if (json[pos] != '\"') break;
                 pos++;
@@ -2201,6 +2360,32 @@ void PrismaUIMenu::OnCreateAdvancedEntry(const char* data)
                 pos += 3;
             }
             return names;
+        };
+        
+        auto parseFactionEditorIDs = [](const std::string& json) -> std::vector<std::string> {
+            std::vector<std::string> editorIDs;
+            size_t arrayStart = json.find("\"factionFilterEditorIDs\":[]");
+            if (arrayStart != std::string::npos) return editorIDs; // Empty array, return immediately
+            
+            arrayStart = json.find("\"factionFilterEditorIDs\":[");
+            if (arrayStart == std::string::npos) return editorIDs;
+            
+            // Find the opening bracket
+            size_t bracketPos = json.find("[", arrayStart);
+            if (bracketPos == std::string::npos) return editorIDs;
+            
+            size_t pos = json.find("\"", bracketPos);
+            while (pos != std::string::npos && pos < json.size()) {
+                if (json[pos] != '\"') break;
+                pos++;
+                size_t idEnd = json.find("\"", pos);
+                if (idEnd == std::string::npos) break;
+                editorIDs.push_back(json.substr(pos, idEnd - pos));
+                pos = json.find("\",\"", idEnd);
+                if (pos == std::string::npos) break;
+                pos += 3;
+            }
+            return editorIDs;
         };
         
         // Extract fields
@@ -2261,9 +2446,10 @@ void PrismaUIMenu::OnCreateAdvancedEntry(const char* data)
         entry.notes = notes;
         entry.actorFilterFormIDs = parseActorFormIDs(jsonStr);
         entry.actorFilterNames = parseActorNames(jsonStr);
+        entry.factionFilterEditorIDs = parseFactionEditorIDs(jsonStr);
         
-        spdlog::info("[PrismaUIMenu::OnCreateAdvancedEntry] Parsed {} actor names, {} actor FormIDs",
-                    entry.actorFilterNames.size(), entry.actorFilterFormIDs.size());
+        spdlog::info("[PrismaUIMenu::OnCreateAdvancedEntry] Parsed {} actor names, {} actor FormIDs, {} faction EditorIDs",
+                    entry.actorFilterNames.size(), entry.actorFilterFormIDs.size(), entry.factionFilterEditorIDs.size());
         
         // CRITICAL VALIDATION #2: Verify FormID parsing matched expected count
         if (entry.actorFilterFormIDs.size() != expectedFormIDCount) {

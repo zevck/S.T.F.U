@@ -380,15 +380,15 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
           </div>
           )}
 
-          {/* Actor Filtering */}
+          {/* Actor & Faction Filtering */}
           <div>
             <label className="block text-base font-medium text-gray-300 mb-2">
-              Actor Filter (Optional)
+              Actor & Faction Filters (Optional)
             </label>
             <div className="text-sm text-gray-400 mb-2">
               {isWhitelist 
-                ? 'Leave empty to whitelist for all actors. Add specific actors to only allow their dialogue.'
-                : 'Leave empty to affect all actors. Add specific actors to only block their dialogue.'
+                ? 'Leave empty to whitelist for all actors. Add specific actors/factions to only allow their dialogue.'
+                : 'Leave empty to affect all actors. Add specific actors/factions to only block their dialogue.'
               }
             </div>
             
@@ -421,7 +421,7 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false }: 
                     setShowActorDropdown(true);
                   }}
                   onClick={() => setShowActorDropdown(true)}
-                  placeholder="Type actor name or select from recent..."
+                  placeholder="Actor name or faction EditorID (e.g., WhiterunGuardFaction)..."
                   className="flex-1 px-4 py-2 text-base bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
                 />
                 <button

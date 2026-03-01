@@ -393,10 +393,10 @@ export const AdvancedEditModal = memo(({ isOpen, onClose, entry }: AdvancedEditM
             </select>
           </div>
 
-          {/* Actor Filters */}
+          {/* Actor & Faction Filters */}
           <div>
             <label className="block text-base font-medium text-gray-300 mb-2">
-              Actor Filters
+              Actor & Faction Filters
             </label>
             
             {/* Selected Actors */}
@@ -439,7 +439,7 @@ export const AdvancedEditModal = memo(({ isOpen, onClose, entry }: AdvancedEditM
                     }
                   }
                 }}
-                placeholder="Type actor name or select from recent..."
+                placeholder="Actor name or faction EditorID (e.g., WhiterunGuardFaction)..."
                 className="w-full px-4 py-2.5 text-base bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
               />
               

@@ -97,7 +97,7 @@ namespace Config
     
     // Check if dialogue should be soft-blocked (silences BOTH audio AND subtitles)
     // Checks database entries + YAML + MCM subtypes. Optional actor filtering.
-    bool ShouldSoftBlock(RE::TESQuest* quest, RE::TESTopic* topic, const char* speakerName, const char* responseText, uint32_t speakerFormID = 0);
+    bool ShouldSoftBlock(RE::TESQuest* quest, RE::TESTopic* topic, const char* speakerName, const char* responseText, uint32_t speakerFormID = 0, RE::TESObjectREFR* speakerRef = nullptr);
     
     // Check if dialogue should be filtered from SkyrimNet logging (STFU_SkyrimNetFilter.yaml)
     bool ShouldBlockSkyrimNet(RE::TESQuest* quest, RE::TESTopic* topic, const char* speakerName);

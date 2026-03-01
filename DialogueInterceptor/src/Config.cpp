@@ -1832,7 +1832,7 @@ namespace Config
     
     // Check if dialogue should be soft-blocked (audio + subtitles together)
     // Checks: Database blacklist + YAML + MCM subtype filters
-    bool ShouldSoftBlock(RE::TESQuest* quest, RE::TESTopic* topic, const char* speakerName, const char* responseText, uint32_t speakerFormID)
+    bool ShouldSoftBlock(RE::TESQuest* quest, RE::TESTopic* topic, const char* speakerName, const char* responseText, uint32_t speakerFormID, RE::TESObjectREFR* speakerRef)
     {
         if (!topic) return false;
         
@@ -1844,7 +1844,7 @@ namespace Config
         // Check database for blacklist entry
         auto* db = DialogueDB::GetDatabase();
         if (db) {
-            if (db->ShouldSoftBlock(topicFormID, editorIDStr, speakerFormID, speakerName ? speakerName : "")) {
+            if (db->ShouldSoftBlock(topicFormID, editorIDStr, speakerFormID, speakerName ? speakerName : "", speakerRef)) {
                 return true;
             }
         }

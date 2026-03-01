@@ -8,6 +8,12 @@
 #include <memory>
 #include <cstdint>
 
+// Forward declarations
+namespace RE
+{
+    class TESObjectREFR;
+}
+
 namespace DialogueDB
 {
     enum class BlockedStatus : uint8_t
@@ -110,6 +116,7 @@ namespace DialogueDB
         // Actor filtering: empty vectors = affects all actors
         std::vector<uint32_t> actorFilterFormIDs;  // Actor FormIDs
         std::vector<std::string> actorFilterNames;  // Actor names (ESL-safe matching with FormID)
+        std::vector<std::string> factionFilterEditorIDs;  // Faction EditorIDs for faction-based filtering
     };
 
     // SceneBlacklistEntry removed - scenes now use BlacklistEntry with targetType=Scene
@@ -188,7 +195,7 @@ namespace DialogueDB
         // Query blocking flags (works for both topics and scenes)
         // Optional actor parameters for actor-specific filtering (0 / "" = ignore actor filter)
         // ShouldSoftBlock: Returns true if dialogue should be soft-blocked (silences BOTH audio AND subtitles)
-        bool ShouldSoftBlock(uint32_t formID, const std::string& editorID, uint32_t actorFormID = 0, const std::string& actorName = "");
+        bool ShouldSoftBlock(uint32_t formID, const std::string& editorID, uint32_t actorFormID = 0, const std::string& actorName = "", RE::TESObjectREFR* actorRef = nullptr);
         bool ShouldBlockSkyrimNet(uint32_t formID, const std::string& editorID, uint32_t actorFormID = 0, const std::string& actorName = "");
         
         // Mark topics as SkyrimNet blockable (retroactive update for menu detection)

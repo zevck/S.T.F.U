@@ -30,6 +30,8 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null }
   const [selectedCategory, setSelectedCategory] = useState('Blacklist');
   const [actorFilterNames, setActorFilterNames] = useState<string[]>([]);
   const [actorFilterFormIDs, setActorFilterFormIDs] = useState<string[]>([]);
+  const [factionFilterEditorIDs, setFactionFilterEditorIDs] = useState<string[]>([]);
+  const [factionFilterNames, setFactionFilterNames] = useState<string[]>([]);
   const [newActorFormID, setNewActorFormID] = useState('');
   const [showActorDropdown, setShowActorDropdown] = useState(false);
   const [nearbyActors, setNearbyActors] = useState<Actor[]>([]);
@@ -172,6 +174,8 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null }
       setNotes('');
       setActorFilterNames([]);
       setActorFilterFormIDs([]);
+      setFactionFilterNames([]);
+      setFactionFilterEditorIDs([]);
       // Don't auto-add speaker - let user choose actors manually
     }
   }, [prefillEntry, isOpen]);
@@ -196,6 +200,8 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null }
       setSelectedCategory('Blacklist');
       setActorFilterNames([]);
       setActorFilterFormIDs([]);
+      setFactionFilterNames([]);
+      setFactionFilterEditorIDs([]);
       setNewActorFormID('');
       setShowActorDropdown(false);
       setNearbyActors([]);
@@ -272,40 +278,63 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null }
     const input = newActorFormID.trim();
     if (!input) return;
     
-    // Normalize FormID format
-    const normalizedFormID = normalizeFormID(input);
-    if (!normalizedFormID) {
-      log(`[AdvancedEntry] Invalid FormID format: ${input}`);
-      return;
-    }
+    // Check if input looks like a FormID (starts with 0x and contains hex chars)
+    const isFormID = /^0x[0-9a-fA-F]+$/i.test(input);
     
-    // Check if FormID already added (compare normalized versions)
-    const existingNormalized = actorFilterFormIDs.map(f => normalizeFormID(f) || f);
-    if (existingNormalized.includes(normalizedFormID)) {
-      setNewActorFormID('');
-      return;
-    }
-    
-    // Try to find actor in available actors (compare normalized)
-    const actor = allActors.find(a => {
-      const actorNormalized = normalizeFormID(a.formID);
-      return actorNormalized === normalizedFormID;
-    });
-    
-    if (actor) {
-      addActor(actor);
+    if (isFormID) {
+      // Add as actor
+      const normalizedFormID = normalizeFormID(input);
+      if (!normalizedFormID) {
+        log(`[AdvancedEntry] Invalid FormID format: ${input}`);
+        return;
+      }
+      
+      // Check if FormID already added
+      const existingNormalized = actorFilterFormIDs.map(f => normalizeFormID(f) || f);
+      if (existingNormalized.includes(normalizedFormID)) {
+        setNewActorFormID('');
+        return;
+      }
+      
+      // Try to find actor in available actors
+      const actor = allActors.find(a => {
+        const actorNormalized = normalizeFormID(a.formID);
+        return actorNormalized === normalizedFormID;
+      });
+      
+      if (actor) {
+        addActor(actor);
+      } else {
+        // Add with FormID only, name will be looked up by backend
+        setActorFilterFormIDs([...actorFilterFormIDs, normalizedFormID]);
+        setActorFilterNames([...actorFilterNames, `Unknown (${normalizedFormID})`]);
+        setNewActorFormID('');
+        setShowActorDropdown(false);
+      }
     } else {
-      // Add with FormID only, name will be looked up by backend
-      setActorFilterFormIDs([...actorFilterFormIDs, normalizedFormID]);
-      setActorFilterNames([...actorFilterNames, `Unknown (${normalizedFormID})`]);
+      // Add as faction EditorID
+      if (factionFilterEditorIDs.includes(input)) {
+        log(`[AdvancedEntry] Faction ${input} already added`);
+        setNewActorFormID('');
+        return;
+      }
+      
+      setFactionFilterEditorIDs([...factionFilterEditorIDs, input]);
+      setFactionFilterNames([...factionFilterNames, input]); // Use EditorID as name
       setNewActorFormID('');
       setShowActorDropdown(false);
+      log(`[AdvancedEntry] Added faction: ${input}`);
     }
   };
   
   const removeActor = (index: number) => {
     setActorFilterNames(actorFilterNames.filter((_, i) => i !== index));
     setActorFilterFormIDs(actorFilterFormIDs.filter((_, i) => i !== index));
+  };
+  
+  const removeFaction = (index: number) => {
+    setFactionFilterNames(factionFilterNames.filter((_, i) => i !== index));
+    setFactionFilterEditorIDs(factionFilterEditorIDs.filter((_, i) => i !== index));
   };
 
   const handleCreate = () => {
@@ -319,8 +348,13 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null }
       log(`[AdvancedEntry] ERROR: Array desync! Names: ${actorFilterNames.length}, FormIDs: ${actorFilterFormIDs.length}`);
       return;
     }
+    
+    if (factionFilterNames.length !== factionFilterEditorIDs.length) {
+      log(`[AdvancedEntry] ERROR: Faction array desync! Names: ${factionFilterNames.length}, EditorIDs: ${factionFilterEditorIDs.length}`);
+      return;
+    }
 
-    log(`[AdvancedEntry] Creating entry: identifier=${identifier}, blockType=${blockType}, category=${isWhitelist ? 'Whitelist' : selectedCategory}, isWhitelist=${isWhitelist}, actors=${actorFilterNames.length}`);
+    log(`[AdvancedEntry] Creating entry: identifier=${identifier}, blockType=${blockType}, category=${isWhitelist ? 'Whitelist' : selectedCategory}, isWhitelist=${isWhitelist}, actors=${actorFilterNames.length}, factions=${factionFilterEditorIDs.length}`);
 
     // Call createAdvancedEntry handler
     SKSE_API.sendToSKSE('createAdvancedEntry', JSON.stringify({
@@ -330,7 +364,8 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null }
       notes,
       isWhitelist,
       actorFilterNames,
-      actorFilterFormIDs
+      actorFilterFormIDs,
+      factionFilterEditorIDs
     }));
 
     onClose();
@@ -476,26 +511,44 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null }
           </div>
           )}
 
-          {/* Actor Filters */}
+          {/* Actor & Faction Filters */}
           <div>
             <label className="block text-base font-medium text-gray-300 mb-2">
-              Actor Filters (Optional)
+              Actor & Faction Filters (Optional)
             </label>
             <div className="text-sm text-gray-400 mb-2">
-              Enter actor FormID (e.g., 0x00013478). Multiple NPCs can share names, so FormID ensures accuracy.
+              Enter actor FormID (e.g., 0x00013478) or faction EditorID (e.g., WhiterunGuardFaction). Auto-detects type.
             </div>
             
             {/* Selected Actors */}
             {actorFilterFormIDs.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-3">
                 {actorFilterNames.map((name, index) => (
-                  <div key={index} className="bg-blue-600 text-white px-3 py-1 rounded-full flex items-center gap-2 text-sm">
-                    <span>{name}</span>
+                  <div key={`actor-${index}`} className="bg-blue-600 text-white px-3 py-1 rounded-full flex items-center gap-2 text-sm">
+                    <span>👤 {name}</span>
                     <span className="text-xs text-blue-200">({actorFilterFormIDs[index]})</span>
                     <button
                       onClick={() => removeActor(index)}
                       className="hover:text-red-300 transition-colors"
                       aria-label={`Remove ${name}`}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            {/* Selected Factions */}
+            {factionFilterEditorIDs.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {factionFilterEditorIDs.map((editorID, index) => (
+                  <div key={`faction-${index}`} className="bg-purple-600 text-white px-3 py-1 rounded-full flex items-center gap-2 text-sm">
+                    <span>⚔️ {editorID}</span>
+                    <button
+                      onClick={() => removeFaction(index)}
+                      className="hover:text-red-300 transition-colors"
+                      aria-label={`Remove ${editorID}`}
                     >
                       ✕
                     </button>
@@ -514,7 +567,13 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null }
                   setShowActorDropdown(true);
                 }}
                 onClick={() => setShowActorDropdown(true)}
-                placeholder="Enter FormID (e.g., 0x00013478) or select..."
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addActorByFormID();
+                  }
+                }}
+                placeholder="Actor FormID (0x00013478) or Faction EditorID (WhiterunGuardFaction)..."
                 className="flex-1 px-4 py-2 text-base bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
               />
               <button

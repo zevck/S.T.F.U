@@ -36,6 +36,7 @@ private:
     static void OnDeleteHistoryEntries(const char* data);
     static void OnOpenManualEntry(const char* data);
     static void OnDetectIdentifierType(const char* data);
+    static void OnDetectActorOrFaction(const char* data);
     static void OnCreateManualEntry(const char* data);
     static void OnCreateAdvancedEntry(const char* data);
     static void OnRequestWhitelist(const char* data);
