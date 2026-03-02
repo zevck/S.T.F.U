@@ -147,7 +147,7 @@ namespace Config
     std::vector<std::string> GetFollowerCommentaryScenesList();
     
     // Import YAML blacklist into database
-    void ImportYAMLToDatabase();
+    int ImportYAMLToDatabase();
     
     // Parse form identifier (supports 0x format, FormKey format, or EditorID)
     // Returns pair of (formID, editorID) - formID is 0 if EditorID, editorID is empty if FormID

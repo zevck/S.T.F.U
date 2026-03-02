@@ -189,6 +189,8 @@ namespace DialogueDB
         int64_t GetWhitelistEntryId(uint32_t formID, const std::string& editorID);
         std::vector<BlacklistEntry> GetWhitelist();
         bool IsWhitelisted(BlacklistTarget targetType, uint32_t formID, const std::string& editorID, uint32_t actorFormID = 0, const std::string& actorName = "");
+        // Overload with actorRef for faction-aware whitelist checking
+        bool IsWhitelisted(BlacklistTarget targetType, uint32_t formID, const std::string& editorID, uint32_t actorFormID, const std::string& actorName, RE::TESObjectREFR* actorRef);
         bool IsPluginWhitelisted(const std::string& pluginName);
         int ClearWhitelist();  // Remove all whitelist entries, returns count removed
         

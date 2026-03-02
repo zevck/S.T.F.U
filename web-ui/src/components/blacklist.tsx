@@ -86,7 +86,8 @@ BlacklistItem.displayName = 'BlacklistItem';
 
 export const Blacklist = () => {
   const { 
-    entries, 
+    entries,
+    setEntries,
     searchQuery, 
     setSearchQuery,
     typeFilter,
@@ -115,11 +116,6 @@ export const Blacklist = () => {
   // For single-item detail panel (first selected item)
   const selectedEntry = selectedEntries.length > 0 ? selectedEntries[0] : null;
   
-  // Edit state for selected entry
-  const [editSoftBlock, setEditSoftBlock] = useState<boolean>(false);
-  const [editHardBlock, setEditHardBlock] = useState<boolean>(false);
-  const [editFilterCategory, setEditFilterCategory] = useState<string>('Blacklist');
-  const [editNotes, setEditNotes] = useState<string>('');  // For single entry edit
   const [bulkFilterCategory, setBulkFilterCategory] = useState<string>('Blacklist'); // For bulk edit
 
   // Memoized filtering logic - only recalculates when dependencies change
@@ -260,40 +256,21 @@ export const Blacklist = () => {
     setShowScenes(true);
   }, [setSearchQuery]);
   
-  const handleApplyChanges = useCallback(() => {
-    if (!selectedEntry || selectedEntries.length !== 1) return;
-    
-    log(`[Blacklist] handleApplyChanges called for entry ${selectedEntry.id}`);
-    
-    // Determine block type from checkboxes
-    let blockType = 'Soft'; // default
-    if (editHardBlock) {
-      blockType = 'Hard';
-    } else if (editSoftBlock) {
-      blockType = 'Soft';
-    }
-    
-    log(`[Blacklist] Applying changes: blockType=${blockType}, filterCategory=${editFilterCategory}`)
-    SKSE_API.updateBlacklistEntry(selectedEntry.id, blockType, editFilterCategory, editNotes);
-  }, [selectedEntry, selectedEntries.length, editSoftBlock, editHardBlock, editFilterCategory, editNotes]);
   
-  // Update edit state when selected entry changes
+  // Sync bulk filter category when multiple entries selected
   useEffect(() => {
-    if (selectedEntry && selectedEntries.length === 1) {
-      const blockType = selectedEntry.blockType || 'Soft Block';
-      setEditSoftBlock(blockType === 'Soft Block');
-      setEditHardBlock(blockType === 'Hard Block');
-      setEditFilterCategory(selectedEntry.filterCategory || 'Blacklist');
-      setEditNotes(selectedEntry.note || '');
-    }
-    
-    // Initialize bulk filter category when multiple entries selected
     if (selectedEntries.length > 1) {
-      // Set to first entry's category or default based on type
-      const firstEntry = selectedEntries[0];
-      setBulkFilterCategory(firstEntry.filterCategory || 'Blacklist');
+      setBulkFilterCategory(selectedEntries[0].filterCategory || 'Blacklist');
     }
-  }, [selectedEntry, selectedEntries.length, selectedEntries]);
+  }, [selectedEntries]);
+
+  // Keep selectedEntries pointing to fresh objects after store updates (e.g. after saves)
+  useEffect(() => {
+    if (selectedEntries.length === 0) return;
+    const idSet = new Set(selectedEntries.map(e => e.id));
+    const fresh = entries.filter(e => idSet.has(e.id));
+    setSelectedEntries(fresh);
+  }, [entries]);
   
   // Handle multi-selection click
   const handleItemClick = useCallback((entry: BlacklistEntry, index: number, event?: React.MouseEvent) => {
@@ -354,30 +331,6 @@ export const Blacklist = () => {
     setModalTitle(`All Responses: ${identifier}`);
     setModalResponses(responses);
     setShowResponsesModal(true);
-  }, [selectedEntry]);
-  
-  // Filter categories based on target type
-  const filterCategories = useMemo(() => {
-    const isScene = selectedEntry?.targetType === 'Scene';
-    if (isScene) {
-      return ['Blacklist', 'Scene', 'BardSongs', 'FollowerCommentary'];
-    } else {
-      return [
-        'Blacklist',
-        'AcceptYield', 'ActorCollideWithActor', 'Agree', 'AlertIdle', 'AlertToCombat', 'AlertToNormal',
-        'AllyKilled', 'Assault', 'AssaultNC', 'Attack', 'AvoidThreat', 'BarterExit', 'Bash',
-        'Bleedout', 'Block', 'CombatToLost', 'CombatToNormal', 'Death', 'DestroyObject',
-        'DetectFriendDie', 'ExitFavorState', 'Flee', 'Goodbye', 'Hello', 'Hit', 'Idle',
-        'KnockOverObject', 'LockedObject', 'LostIdle', 'LostToCombat', 'LostToNormal',
-        'MoralRefusal', 'Murder', 'MurderNC', 'NormalToAlert', 'NormalToCombat', 'NoticeCorpse',
-        'ObserveCombat', 'PickpocketCombat', 'PickpocketNC', 'PickpocketTopic',
-        'PlayerCastProjectileSpell', 'PlayerCastSelfSpell', 'PlayerInIronSights', 'PlayerShout',
-        'PowerAttack', 'PursueIdleTopic', 'Refuse', 'ShootBow', 'Show', 'StandOnFurniture', 'Steal',
-        'StealFromNC', 'SwingMeleeWeapon', 'Taunt', 'TimeToGo', 'TrainingExit', 'Trespass',
-        'TrespassAgainstNC', 'VoicePowerEndLong', 'VoicePowerEndShort', 'VoicePowerStartLong',
-        'VoicePowerStartShort', 'WerewolfTransformCrime', 'Yield', 'ZKeyObject'
-      ];
-    }
   }, [selectedEntry]);
   
   // Bulk filter categories - only available if all selected entries are compatible
@@ -656,93 +609,7 @@ export const Blacklist = () => {
                   </div>
                 ) : null;
               })()}
-              
-              <div className="border-t border-gray-700 pt-3">
-                <h4 className="text-lg font-semibold mb-3 text-blue-400">Blocking Settings</h4>
-                
-                {/* Block Type Checkboxes (mutually exclusive) */}
-                <div className="mb-4">
-                  <div className="text-base text-gray-400 font-medium mb-2">Block Type</div>
-                  <div className="space-y-2">
-                    <label className="flex items-start gap-3 cursor-pointer p-2 rounded hover:bg-gray-700 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={editSoftBlock}
-                        onChange={(e) => {
-                          // Only allow unchecking if another box is checked
-                          if (!e.target.checked && !editHardBlock) {
-                            return; // Prevent unchecking the last checkbox
-                          }
-                          setEditSoftBlock(e.target.checked);
-                          if (e.target.checked) {
-                            setEditHardBlock(false);
-                          }
-                        }}
-                        className="w-5 h-5 mt-0.5 rounded border-gray-600 bg-gray-700 text-orange-600 focus:ring-orange-500 cursor-pointer"
-                      />
-                      <div className="flex-1">
-                        <div className="text-base text-white font-medium">Soft Block</div>
-                        <div className="text-sm text-gray-400">Blocks audio/subtitles</div>
-                      </div>
-                    </label>
-                    
 
-                    
-                    <label className="flex items-start gap-3 cursor-pointer p-2 rounded hover:bg-gray-700 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={editHardBlock}
-                        onChange={(e) => {
-                          // Only allow unchecking if another box is checked
-                          if (!e.target.checked && !editSoftBlock) {
-                            return; // Prevent unchecking the last checkbox
-                          }
-                          setEditHardBlock(e.target.checked);
-                          if (e.target.checked) {
-                            setEditSoftBlock(false);
-                          }
-                        }}
-                        className="w-5 h-5 mt-0.5 rounded border-gray-600 bg-gray-700 text-red-600 focus:ring-red-500 cursor-pointer"
-                      />
-                      <div className="flex-1">
-                        <div className="text-base text-white font-medium">Hard Block</div>
-                        <div className="text-sm text-gray-400">
-                          {selectedEntry.targetType === 'Scene' 
-                            ? 'Prevent scene from starting entirely'
-                            : 'Block dialogue completely'}
-                        </div>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-                
-                {/* Filter Category */}
-                <div className="mb-4">
-                  <div className="text-base text-gray-400 font-medium mb-2">Filter Category</div>
-                  <select
-                    value={editFilterCategory}
-                    onChange={(e) => setEditFilterCategory(e.target.value)}
-                    className="w-full px-3 py-2 text-base bg-gray-700 text-white rounded border border-gray-600 focus:outline-none focus:border-blue-500"
-                  >
-                    {filterCategories.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                  <div className="text-sm text-gray-400 mt-1">Which setting toggles blocking for this entry</div>
-                </div>
-                
-                {/* Notes */}
-                <div className="mb-4">
-                  <div className="text-base text-gray-400 font-medium mb-2">Notes</div>
-                  <textarea
-                    value={editNotes}
-                    onChange={(e) => setEditNotes(e.target.value)}
-                    className="w-full px-3 py-2 text-base bg-gray-700 text-white rounded border border-gray-600 focus:outline-none focus:border-blue-500 min-h-[80px] resize-y font-mono"
-                    placeholder="Add notes about this entry..."
-                  />
-                </div>
-              </div>
-              
               {/* Action Buttons */}
               <div className="space-y-2 border-t border-gray-700 pt-4">
                 <button
@@ -753,23 +620,7 @@ export const Blacklist = () => {
                   className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
                 >
                   <Settings size={18} />
-                  Edit (Advanced)
-                </button>
-                
-                <button
-                  onClick={handleApplyChanges}
-                  className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
-                >
-                  <Save size={18} />
-                  Apply Changes
-                </button>
-                
-                <button
-                  onClick={handleDeleteSelected}
-                  className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
-                >
-                  <Trash2 size={18} />
-                  Remove from Blacklist
+                  Edit
                 </button>
               </div>
               </>
@@ -803,6 +654,10 @@ export const Blacklist = () => {
         onClose={() => {
           setShowAdvancedEditModal(false);
           setEditingEntry(null);
+        }}
+        onSave={(updatedEntry) => {
+          setEntries(entries.map(e => e.id === updatedEntry.id ? updatedEntry : e));
+          setSelectedEntries(selectedEntries.map(e => e.id === updatedEntry.id ? updatedEntry : e));
         }}
         entry={editingEntry}
       />

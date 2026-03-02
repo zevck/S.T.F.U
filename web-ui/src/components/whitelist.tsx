@@ -1,7 +1,7 @@
 import { useState, useMemo, memo, useCallback, useRef, useEffect } from 'react';
 import { useWhitelistStore } from '../stores/whitelist';
 import { BlacklistEntry } from '../types';
-import { Search, X, Save, Plus, Trash2, Settings } from 'lucide-react';
+import { Search, X, Plus, Trash2, Settings } from 'lucide-react';
 import { SKSE_API, log } from '../lib/skse-api';
 import { ResponsesModal } from './responses-modal';
 import { ManualEntryModal } from './manual-entry-modal';
@@ -84,7 +84,8 @@ WhitelistItem.displayName = 'WhitelistItem';
 
 export const Whitelist = () => {
   const { 
-    entries, 
+    entries,
+    setEntries,
     searchQuery, 
     setSearchQuery,
     showTopics,
@@ -108,7 +109,7 @@ export const Whitelist = () => {
   const selectedEntry = selectedEntries.length > 0 ? selectedEntries[0] : null;
   
   // Edit state for selected entry
-  const [editNotes, setEditNotes] = useState<string>('');
+
 
   // Memoized filtering logic
   const filteredEntries = useMemo(() => {
@@ -159,12 +160,13 @@ export const Whitelist = () => {
     return () => observer.disconnect();
   }, [displayCount, filteredEntries.length]);
 
-  // Update edit state when selection changes
+  // Keep selectedEntries pointing to fresh objects after store updates (e.g. after saves)
   useEffect(() => {
-    if (selectedEntry) {
-      setEditNotes(selectedEntry.note || '');
-    }
-  }, [selectedEntry]);
+    if (selectedEntries.length === 0) return;
+    const idSet = new Set(selectedEntries.map(e => e.id));
+    const fresh = entries.filter(e => idSet.has(e.id));
+    setSelectedEntries(fresh);
+  }, [entries]);
 
   const handleItemClick = useCallback((entry: BlacklistEntry, _index: number, event: React.MouseEvent) => {
     event.stopPropagation();
@@ -196,18 +198,6 @@ export const Whitelist = () => {
     SKSE_API.removeFromWhitelist(entry.id);
     setSelectedEntries([]);
   }, []);
-
-  const handleUpdateEntry = useCallback(() => {
-    if (!selectedEntry) return;
-    
-    const updates = {
-      id: selectedEntry.id,
-      filterCategory: selectedEntry.filterCategory || 'Whitelist',
-      note: editNotes
-    };
-    
-    SKSE_API.updateWhitelistEntry(updates);
-  }, [selectedEntry, editNotes]);
 
   const handleRemoveMultiple = useCallback(() => {
     const ids = selectedEntries.map(e => e.id);
@@ -432,26 +422,6 @@ export const Whitelist = () => {
                 ) : null;
               })()}
               
-              <div className="border-t border-gray-700 pt-3 mt-4">
-                <h4 className="text-lg font-semibold mb-3 text-green-400">Whitelist Settings</h4>
-                
-                {/* Info box about whitelisting */}
-                <div className="p-3 bg-green-900/20 border border-green-600/30 rounded-lg text-sm text-gray-300 mb-4">
-                  This entry will never be blocked regardless of other filters or settings.
-                </div>
-                
-                {/* Notes */}
-                <div className="mb-4">
-                  <div className="text-base text-gray-400 font-medium mb-2">Notes</div>
-                  <textarea
-                    value={editNotes}
-                    onChange={(e) => setEditNotes(e.target.value)}
-                    className="w-full px-3 py-2 text-base bg-gray-700 text-white rounded border border-gray-600 focus:outline-none focus:border-blue-500 min-h-[80px] resize-y font-mono"
-                    placeholder="Add notes about this entry..."
-                  />
-                </div>
-              </div>
-              
               {/* Action Buttons */}
               <div className="space-y-2 border-t border-gray-700 pt-4">
                 <button
@@ -462,23 +432,7 @@ export const Whitelist = () => {
                   className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
                 >
                   <Settings size={18} />
-                  Edit (Advanced)
-                </button>
-                
-                <button
-                  onClick={handleUpdateEntry}
-                  className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
-                >
-                  <Save size={18} />
-                  Apply Changes
-                </button>
-                
-                <button
-                  onClick={() => selectedEntry && handleRemove(selectedEntry)}
-                  className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
-                >
-                  <Trash2 size={18} />
-                  Remove from Whitelist
+                  Edit
                 </button>
               </div>
               </>
@@ -512,6 +466,10 @@ export const Whitelist = () => {
         onClose={() => {
           setShowAdvancedEditModal(false);
           setEditingEntry(null);
+        }}
+        onSave={(updatedEntry) => {
+          setEntries(entries.map(e => e.id === updatedEntry.id ? updatedEntry : e));
+          setSelectedEntries(selectedEntries.map(e => e.id === updatedEntry.id ? updatedEntry : e));
         }}
         entry={editingEntry}
       />

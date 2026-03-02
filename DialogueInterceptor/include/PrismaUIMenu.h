@@ -42,6 +42,7 @@ private:
     static void OnRequestWhitelist(const char* data);
     static void OnRemoveFromWhitelist(const char* data);
     static void OnUpdateWhitelistEntry(const char* data);
+    static void OnUpdateWhitelistEntryAdvanced(const char* data);
     static void OnMoveToBlacklist(const char* data);
     static void OnMoveToWhitelist(const char* data);
     static void OnRemoveWhitelistBatch(const char* data);

@@ -188,6 +188,11 @@ export const SKSE_API = {
     SKSE_API.sendToSKSE('removeFromWhitelist', jsonData);
   },
 
+  updateWhitelistEntryAdvanced: (data: { id: number; notes: string; actorFilterNames: string[]; actorFilterFormIDs: string[]; factionFilterEditorIDs: string[] }) => {
+    log(`[SKSE_API] Updating whitelist entry (advanced) ${data.id}`);
+    SKSE_API.sendToSKSE('updateWhitelistEntryAdvanced', JSON.stringify(data));
+  },
+
   updateWhitelistEntry: (updates: { id: number; filterCategory: string; note: string }) => {
     log(`[SKSE_API] Updating whitelist entry ${updates.id}`);
     const escapedNote = updates.note.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');

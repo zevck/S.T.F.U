@@ -62,7 +62,7 @@ namespace Config
             wchar_t buffer[MAX_PATH];
             GetModuleFileNameW(nullptr, buffer, MAX_PATH);
             std::filesystem::path exePath(buffer);
-            path = (exePath.parent_path() / "Data" / "SKSE" / "Plugins" / "STFU" / "STFU_Whitelist.yaml").string();
+            path = (exePath.parent_path() / "Data" / "SKSE" / "Plugins" / "STFU" / "import" / "STFU_Whitelist.yaml").string();
         }
         return path;
     }
@@ -74,7 +74,7 @@ namespace Config
             wchar_t buffer[MAX_PATH];
             GetModuleFileNameW(nullptr, buffer, MAX_PATH);
             std::filesystem::path exePath(buffer);
-            path = (exePath.parent_path() / "Data" / "SKSE" / "Plugins" / "STFU" / "STFU_Blacklist.yaml").string();
+            path = (exePath.parent_path() / "Data" / "SKSE" / "Plugins" / "STFU" / "import" / "STFU_Blacklist.yaml").string();
         }
         return path;
     }
@@ -86,7 +86,7 @@ namespace Config
             wchar_t buffer[MAX_PATH];
             GetModuleFileNameW(nullptr, buffer, MAX_PATH);
             std::filesystem::path exePath(buffer);
-            path = (exePath.parent_path() / "Data" / "SKSE" / "Plugins" / "STFU" / "STFU_SkyrimNetFilter.yaml").string();
+            path = (exePath.parent_path() / "Data" / "SKSE" / "Plugins" / "STFU" / "import" / "STFU_SkyrimNetFilter.yaml").string();
         }
         return path;
     }
@@ -98,7 +98,7 @@ namespace Config
             wchar_t buffer[MAX_PATH];
             GetModuleFileNameW(nullptr, buffer, MAX_PATH);
             std::filesystem::path exePath(buffer);
-            path = (exePath.parent_path() / "Data" / "SKSE" / "Plugins" / "STFU" / "STFU_SubtypeOverrides.yaml").string();
+            path = (exePath.parent_path() / "Data" / "SKSE" / "Plugins" / "STFU" / "import" / "STFU_SubtypeOverrides.yaml").string();
         }
         return path;
     }
@@ -109,7 +109,7 @@ namespace Config
         wchar_t buffer[MAX_PATH];
         GetModuleFileNameW(nullptr, buffer, MAX_PATH);
         std::filesystem::path exePath(buffer);
-        std::filesystem::path configDir = exePath.parent_path() / "Data" / "SKSE" / "Plugins" / "STFU";
+        std::filesystem::path configDir = exePath.parent_path() / "Data" / "SKSE" / "Plugins" / "STFU" / "import";
         
         try {
             std::filesystem::create_directories(configDir);
@@ -232,56 +232,7 @@ quest_patterns:
             }
         }
         
-        // Generate SkyrimNet Filter YAML if it doesn't exist
-        std::string skyrimNetPath = GetSkyrimNetFilterPath();
-        if (!std::filesystem::exists(skyrimNetPath)) {
-            try {
-                std::ofstream file(skyrimNetPath);
-                file << R"(# ============================================================================
-#                    STFU SkyrimNet Filter Configuration
-# ============================================================================
-# Blocks dialogue from being logged to SkyrimNet event history
-# Does NOT affect audio, subtitles, or scripts - purely for filtering logs
-# Only works with MENU DIALOGUE (check [Menu] tag in dialogue log)
-# After making changes, use "Import from YAML" in MCM Settings page
-#
-# IDENTIFIER FORMATS:
-#   - EditorID (recommended): TopicEditorID
-#   - FormKey: 0x012345 or 0x012345:PluginName.esp
-#
-# COMMON USE CASES:
-#   - Follower commands (trade, wait, follow, dismiss)
-#   - Service dialogue (merchants, innkeepers, trainers)
-#   - Repetitive greetings (Hello subtype)
-#   - Collision/environmental dialogue
-# ============================================================================
-
-topics:
-  # Filter specific dialogue topics from SkyrimNet logs
-  # Examples:
-  # - DialogueFollowerDismissTopic  # Follower commands
-  # - 0x07F6BB                      # OfferServiceTopic
-  
-quests:
-  # Filter all dialogue from specific quests
-  # Examples:
-  # - nwsFollowerController  # NFF follower management
-  # - sosQuest               # Simple Outfit System
-  
-subtypes:
-  # Filter entire dialogue subtypes from logs
-  # WARNING: This can filter a LOT of dialogue!
-  # Common options: Hello, Idle, Combat, Detection
-  # Examples:
-  # - Hello              # All greeting dialogue
-  # - KnockOverObject    # Environmental reactions
-)";
-                file.close();
-                spdlog::info("[Config] Generated default STFU_SkyrimNetFilter.yaml");
-            } catch (const std::exception& e) {
-                spdlog::error("[Config] Failed to generate SkyrimNet Filter YAML: {}", e.what());
-            }
-        }
+        // NOTE: STFU_SkyrimNetFilter.yaml is not auto-generated; users create it manually if needed.
         
         // Generate Subtype Overrides YAML if it doesn't exist
         std::string overridesPath = GetSubtypeOverridesPath();
@@ -908,9 +859,11 @@ overrides:
         }
         
         // SECOND PRIORITY: Check database whitelist - whitelisted entries are NEVER blocked
+        // Pass speakerName so actor-filtered whitelist entries are respected here too
         if (db) {
             // Check if topic is whitelisted
-            if (db->IsWhitelisted(DialogueDB::BlacklistTarget::Topic, topicFormID, editorIDStr)) {
+            if (db->IsWhitelisted(DialogueDB::BlacklistTarget::Topic, topicFormID, editorIDStr,
+                                  0, speakerName ? speakerName : "")) {
                 return false;
             }
             // Check if quest is whitelisted
@@ -918,7 +871,8 @@ overrides:
                 uint32_t questFormID = quest->GetFormID();
                 const char* questEditorID = quest->GetFormEditorID();
                 std::string questEditorIDStr = questEditorID ? questEditorID : "";
-                if (db->IsWhitelisted(DialogueDB::BlacklistTarget::Quest, questFormID, questEditorIDStr)) {
+                if (db->IsWhitelisted(DialogueDB::BlacklistTarget::Quest, questFormID, questEditorIDStr,
+                                      0, speakerName ? speakerName : "")) {
                     return false;
                 }
             }
@@ -1522,14 +1476,14 @@ overrides:
         }
     }
     
-    void ImportYAMLToDatabase()
+    int ImportYAMLToDatabase()
     {
         spdlog::info("[Config] Starting YAML import to database...");
         
         auto* db = DialogueDB::GetDatabase();
         if (!db) {
             spdlog::error("[Config] Database not available for YAML import");
-            return;
+            return 0;
         }
         
         int blacklistTopics = 0, blacklistScenes = 0, blacklistQuests = 0;
@@ -1815,9 +1769,11 @@ overrides:
         // Import SkyrimNet filter
         ImportSkyrimNetFilter();
         
+        int totalBlacklist = blacklistTopics + blacklistScenes + blacklistQuests;
+        int totalWhitelist = whitelistTopics + whitelistScenes + whitelistQuests + whitelistPlugins;
         spdlog::info("[Config] YAML import complete - Blacklist: {} entries | Whitelist: {} entries",
-            blacklistTopics + blacklistScenes + blacklistQuests,
-            whitelistTopics + whitelistScenes + whitelistQuests + whitelistPlugins);
+            totalBlacklist, totalWhitelist);
+        return totalBlacklist + totalWhitelist;
     }
 }
 
@@ -1848,14 +1804,43 @@ namespace Config
                 return true;
             }
         }
-        
+
+        // WHITELIST OVERRIDE: Check if this topic/quest is explicitly whitelisted for this actor or faction.
+        // This must run BEFORE the MCM subtype filter so that a whitelist entry always wins,
+        // even when the dialogue's subtype is globally silenced by MCM.
+        if (db) {
+            if (db->IsWhitelisted(DialogueDB::BlacklistTarget::Topic, topicFormID, editorIDStr,
+                                  speakerFormID, speakerName ? speakerName : "", speakerRef)) {
+                return false;  // Explicitly whitelisted for this actor/faction - don't soft-block
+            }
+            if (quest) {
+                uint32_t questFormID = quest->GetFormID();
+                const char* questEditorID = quest->GetFormEditorID();
+                std::string questEditorIDStr = questEditorID ? questEditorID : "";
+                if (db->IsWhitelisted(DialogueDB::BlacklistTarget::Quest, questFormID, questEditorIDStr,
+                                      speakerFormID, speakerName ? speakerName : "", speakerRef)) {
+                    return false;  // Explicitly whitelisted for this actor/faction - don't soft-block
+                }
+            }
+        }
+
         // Check MCM subtype filter
         uint16_t subtype = GetAccurateSubtype(topic);
         auto it = g_settings.mcm.subtypeGlobals.find(subtype);
         if (it != g_settings.mcm.subtypeGlobals.end() && it->second) {
             float value = it->second->value;
             if (value > 0.0f) {
-                return true;  // Subtype is filtered
+                // PreserveGrunts override: if Block Combat Grunts is OFF (value < 0.5) and this
+                // response text is a known grunt, allow it through despite the subtype being filtered.
+                // This prevents awkward silence in combat when all combat subtypes are blocked.
+                if (responseText &&
+                    g_settings.mcm.preserveGruntsGlobal &&
+                    g_settings.mcm.preserveGruntsGlobal->value < 0.5f &&
+                    ShouldFilterFromHistory(responseText, subtype, topic)) {
+                    // Grunt with Block Combat Grunts OFF - fall through and allow playback
+                } else {
+                    return true;  // Subtype is filtered
+                }
             }
         }
         

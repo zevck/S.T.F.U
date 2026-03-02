@@ -25,7 +25,7 @@ namespace SettingsPersistence
         wchar_t buffer[MAX_PATH];
         GetModuleFileNameW(nullptr, buffer, MAX_PATH);
         std::filesystem::path exePath(buffer);
-        auto iniPath = exePath.parent_path() / L"Data" / L"SKSE" / L"Plugins" / L"STFU_Config.ini";
+        auto iniPath = exePath.parent_path() / L"Data" / L"SKSE" / L"Plugins" / L"STFU" / L"config" / L"STFU_Config.ini";
         return iniPath.wstring();
     }
     

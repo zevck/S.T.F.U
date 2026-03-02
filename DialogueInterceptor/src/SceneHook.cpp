@@ -48,219 +48,139 @@ namespace SceneHook
     
     void PatchScenes()
     {
-        spdlog::info("Patching scenes...");
-        
-        auto* dataHandler = RE::TESDataHandler::GetSingleton();
-        if (!dataHandler) {
-            spdlog::error("[SCENE BLOCKER] Failed to get TESDataHandler!");
+        spdlog::info("[SCENE BLOCKER] Patching scenes...");
+
+        auto* db = DialogueDB::GetDatabase();
+        if (!db) {
+            spdlog::error("[SCENE BLOCKER] Database not available!");
             return;
         }
-        
-        // Cache the blacklist to check block types
-        auto db = DialogueDB::GetDatabase();
-        std::vector<DialogueDB::BlacklistEntry> blacklistCache;
-        if (db) {
-            blacklistCache = db->GetBlacklist();
+
+        // Bulk-load both lists once — eliminates all per-scene SQLite calls
+        auto blacklistCache = db->GetBlacklist();
+        auto whitelistCache = db->GetWhitelist();
+
+        // Build O(1) lookup sets
+        std::unordered_set<std::string> whitelistedSceneIDs;
+        std::unordered_set<std::string> whitelistedTopicIDs;
+        for (const auto& e : whitelistCache) {
+            if (e.targetEditorID.empty()) continue;
+            if (e.targetType == DialogueDB::BlacklistTarget::Scene)
+                whitelistedSceneIDs.insert(e.targetEditorID);
+            else if (e.targetType == DialogueDB::BlacklistTarget::Topic)
+                whitelistedTopicIDs.insert(e.targetEditorID);
         }
-        
+
+        std::unordered_set<std::string> hardBlockedSceneIDs;
+        std::unordered_set<std::string> hardBlockedTopicIDs;
+        for (const auto& e : blacklistCache) {
+            if (e.blockType != DialogueDB::BlockType::Hard || e.targetEditorID.empty()) continue;
+            if (e.targetType == DialogueDB::BlacklistTarget::Scene)
+                hardBlockedSceneIDs.insert(e.targetEditorID);
+            else if (e.targetType == DialogueDB::BlacklistTarget::Topic)
+                hardBlockedTopicIDs.insert(e.targetEditorID);
+        }
+
         int blockedSceneCount = 0;
         int blockedPhaseCount = 0;
-        int totalScenesChecked = 0;
-        int bardSongScenes = 0;
-        int ambientScenes = 0;
-        
-        // Iterate directly over all scenes instead of through quests
-        for (auto* scene : dataHandler->GetFormArray<RE::BGSScene>()) {
-                if (!scene) continue;
-                totalScenesChecked++;
-                
-                // Determine which global should control this scene
-                RE::TESGlobal* controllingGlobal = nullptr;
-                bool isBardSong = Config::IsBardSongQuest(scene->parentQuest);
-                
-                if (isBardSong) {
-                    // Bard songs are controlled by STFU_BardSongs
-                    controllingGlobal = Config::GetBardSongsGlobal();
+
+        // Helper: apply blocking condition to all phases of a scene
+        auto patchScene = [&](RE::BGSScene* scene, RE::TESGlobal* global) {
+            RemoveConditionsFromScene(scene);
+            for (auto* phase : scene->phases) {
+                if (!phase) continue;
+                if (auto* cond = CreateGlobalDisabledCondition(global)) {
+                    cond->next = phase->startConditions.head;
+                    cond->data.flags.isOR = false;
+                    phase->startConditions.head = cond;
+                    blockedPhaseCount++;
+                }
+            }
+            blockedSceneCount++;
+        };
+
+        auto* scenesGlobal  = Config::GetScenesGlobal();
+        auto* bardSongsGlobal = Config::GetBardSongsGlobal();
+
+        // Pass 1: Hard-blocked scenes by editorID — direct lookup, no full scan needed
+        if (scenesGlobal) {
+            for (const auto& editorID : hardBlockedSceneIDs) {
+                if (whitelistedSceneIDs.count(editorID)) continue;
+                if (auto* scene = RE::TESForm::LookupByEditorID<RE::BGSScene>(editorID)) {
+                    patchScene(scene, scenesGlobal);
+                    spdlog::debug("[SCENE BLOCKER] Patched Hard-blocked scene: {}", editorID);
                 } else {
-                    // TESTING: Only block scenes that are in database blacklist
-                    // Hardcoded scenes are NOT automatically blocked unless also in blacklist
-                    bool hasBlockedContent = false;
-                    
-                    // Check if scene itself is in database (whitelist OR blacklist)
-                    const char* sceneEditorID = scene->GetFormEditorID();
-                    if (sceneEditorID) {
-                        auto db = DialogueDB::GetDatabase();
-                        if (db) {
-                            std::string sceneEditorIDStr = sceneEditorID;
-                            
-                            // Debug log for Carlotta scene
-                            if (sceneEditorIDStr.find("CarlottaNazeem") != std::string::npos) {
-                                spdlog::info("[SCENE BLOCKER] Checking scene: {}", sceneEditorIDStr);
-                            }
-                            
-                            // HIGHEST PRIORITY: Check whitelist - whitelisted scenes are NEVER blocked
-                            if (db->IsWhitelisted(DialogueDB::BlacklistTarget::Scene, 0, std::string(sceneEditorID))) {
-                                hasBlockedContent = false;
-                                
-                                if (sceneEditorIDStr.find("CarlottaNazeem") != std::string::npos) {
-                                    spdlog::info("[SCENE BLOCKER]   Scene is WHITELISTED - skipping");
-                                }
-                                // Skip further checks for this scene
-                                continue;
-                            }
-                            
-                            // Check blacklist - only add phase conditions for HARD blocks
-                            // Soft blocks (silence only) and SkyrimNet blocks (logging only) don't need conditions
-                            auto blacklistEntry = std::find_if(blacklistCache.begin(), blacklistCache.end(),
-                                [&sceneEditorIDStr](const DialogueDB::BlacklistEntry& entry) {
-                                    return entry.targetType == DialogueDB::BlacklistTarget::Scene &&
-                                           entry.targetEditorID == sceneEditorIDStr;
-                                });
-                            
-                            if (blacklistEntry != blacklistCache.end()) {
-                                // Only set hasBlockedContent for HARD blocks (scene prevention via phase conditions)
-                                // Soft blocks (silence) and SkyrimNet blocks (logging) don't need phase conditions
-                                if (blacklistEntry->blockType == DialogueDB::BlockType::Hard) {
-                                    hasBlockedContent = true;
-                                    
-                                    if (sceneEditorIDStr.find("CarlottaNazeem") != std::string::npos) {
-                                        spdlog::info("[SCENE BLOCKER]   Scene is HARD BLOCKED (ID: {}) - will add phase conditions", blacklistEntry->id);
-                                    }
-                                } else {
-                                    if (sceneEditorIDStr.find("CarlottaNazeem") != std::string::npos) {
-                                        const char* blockTypeName = blacklistEntry->blockType == DialogueDB::BlockType::Soft ? "SOFT" : "SKYRIMNET";
-                                        spdlog::info("[SCENE BLOCKER]   Scene is {} BLOCKED (ID: {}) - NOT adding phase conditions", blockTypeName, blacklistEntry->id);
-                                    }
-                                }
-                            } else if (sceneEditorIDStr.find("CarlottaNazeem") != std::string::npos) {
-                                spdlog::info("[SCENE BLOCKER]   Scene NOT found in blacklist");
-                            }
-                        }
-                    }
-                    
-                    // Check topics within the scene for database whitelist/blacklist
-                    if (!hasBlockedContent) {
-                        for (auto* action : scene->actions) {
-                            if (!action || action->GetType() != RE::BGSSceneAction::Type::kDialogue) continue;
-                            auto* dialogueAction = static_cast<RE::BGSSceneActionDialogue*>(action);
-                            if (!dialogueAction || !dialogueAction->topic) continue;
-                            
-                            uint32_t topicFormID = dialogueAction->topic->GetFormID();
-                            const char* topicEditorID = dialogueAction->topic->GetFormEditorID();
-                            std::string editorIDStr = topicEditorID ? topicEditorID : "";
-                            
-                            // Get quest info for ESL-safe matching
-                            std::string questEditorIDStr = "";
-                            if (dialogueAction->topic->ownerQuest) {
-                                const char* questEdID = dialogueAction->topic->ownerQuest->GetFormEditorID();
-                                questEditorIDStr = questEdID ? questEdID : "";
-                            }
-                            const char* topicSourcePlugin = dialogueAction->topic->GetFile(0) ? dialogueAction->topic->GetFile(0)->fileName : nullptr;
-                            std::string topicSourcePluginStr = topicSourcePlugin ? topicSourcePlugin : "";
-                            uint32_t localFormID = topicFormID & 0xFFF;  // Extract last 3 hex digits (stable part)
-                            
-                            auto db = DialogueDB::GetDatabase();
-                            if (db) {
-                                // HIGHEST PRIORITY: If ANY topic in scene is whitelisted, don't block entire scene
-                                if (db->IsWhitelisted(DialogueDB::BlacklistTarget::Topic, topicFormID, editorIDStr)) {
-                                    hasBlockedContent = false;
-                                    break;  // Whitelist overrides everything
-                                }
-                                
-                                // Check blacklist - only add phase conditions for HARD blocks
-                                // Soft blocks (silence only) and SkyrimNet blocks (logging only) don't need conditions
-                                auto topicEntry = std::find_if(blacklistCache.begin(), blacklistCache.end(),
-                                    [&editorIDStr, topicFormID, &questEditorIDStr, &topicSourcePluginStr, localFormID](const DialogueDB::BlacklistEntry& entry) {
-                                        if (entry.targetType != DialogueDB::BlacklistTarget::Topic) {
-                                            return false;
-                                        }
-                                        
-                                        // ESL-safe match: quest + plugin + local FormID
-                                        if (!entry.questEditorID.empty() && !entry.sourcePlugin.empty() &&
-                                            entry.questEditorID == questEditorIDStr && entry.sourcePlugin == topicSourcePluginStr &&
-                                            (entry.targetFormID & 0xFFF) == localFormID) {
-                                            return true;
-                                        }
-                                        
-                                        // EditorID match
-                                        if (entry.targetEditorID == editorIDStr && !editorIDStr.empty()) {
-                                            return true;
-                                        }
-                                        
-                                        // Full FormID match
-                                        if (entry.targetFormID == topicFormID && topicFormID != 0) {
-                                            return true;
-                                        }
-                                        
-                                        return false;
-                                    });
-                                
-                                if (topicEntry != blacklistCache.end() && 
-                                    topicEntry->blockType == DialogueDB::BlockType::Hard) {
-                                    hasBlockedContent = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    
-                    if (hasBlockedContent) {
-                        // User-blacklisted content is controlled by STFU_Scenes
-                        controllingGlobal = Config::GetScenesGlobal();
-                    }
+                    spdlog::warn("[SCENE BLOCKER] Hard-blocked scene not found in form table: {}", editorID);
                 }
-                
-                // If we found a controlling global, add the condition
-                if (controllingGlobal) {
-                    // Remove any existing blocking conditions first to avoid duplicates
-                    RemoveConditionsFromScene(scene);
-                    
-                    blockedSceneCount++;
-                    if (isBardSong) {
-                        bardSongScenes++;
-                    } else {
-                        ambientScenes++;
-                    }
-                    
-                    // Log the scene we're about to patch (only for specific scenes for debugging)
+            }
+        }
+
+        // Pass 2: Bard songs (3 known quests) — direct quest lookup, iterate only their scenes
+        if (bardSongsGlobal) {
+            for (const auto& questEditorID : Config::GetBardSongQuestsList()) {
+                auto* quest = RE::TESForm::LookupByEditorID<RE::TESQuest>(questEditorID);
+                if (!quest) {
+                    spdlog::warn("[SCENE BLOCKER] Bard song quest not found: {}", questEditorID);
+                    continue;
+                }
+                // Walk all registered scenes and patch any whose parentQuest matches
+                // (BGSScene::parentQuest is the link; no direct quest->scenes collection in CommonLibSSE)
+                auto* dataHandler = RE::TESDataHandler::GetSingleton();
+                if (!dataHandler) continue;
+                for (auto* scene : dataHandler->GetFormArray<RE::BGSScene>()) {
+                    if (!scene || scene->parentQuest != quest) continue;
                     const char* sceneEditorID = scene->GetFormEditorID();
-                    std::string sceneEditorIDStr = sceneEditorID ? sceneEditorID : "";
-                    if (sceneEditorIDStr.find("CarlottaNazeem") != std::string::npos) {
-                        spdlog::info("[SCENE BLOCKER] Patching scene: {} with {} phases", sceneEditorIDStr, scene->phases.size());
-                    }
-                    
-                    // Add blocking condition to ALL phases (prepend to any existing conditions)
-                    for (auto* phase : scene->phases) {
-                        if (!phase) continue;
-                        
-                        // Create the condition
-                        auto* newCondition = CreateGlobalDisabledCondition(controllingGlobal);
-                        if (newCondition) {
-                            // Prepend to existing conditions (AND logic)
-                            newCondition->next = phase->startConditions.head;
-                            newCondition->data.flags.isOR = false;  // AND with existing conditions
-                            phase->startConditions.head = newCondition;
-                            blockedPhaseCount++;
-                            
-                            // Log for debugging carlotta scene
-                            if (sceneEditorIDStr.find("CarlottaNazeem") != std::string::npos) {
-                                spdlog::info("[SCENE BLOCKER]   Added condition to phase - global value is currently: {}", controllingGlobal->value);
-                            }
+                    std::string sceneIDStr = sceneEditorID ? sceneEditorID : "";
+                    if (!sceneIDStr.empty() && whitelistedSceneIDs.count(sceneIDStr)) continue;
+                    patchScene(scene, bardSongsGlobal);
+                    spdlog::debug("[SCENE BLOCKER] Patched bard song scene: {}", sceneIDStr);
+                }
+            }
+        }
+
+        // Pass 3: Topic-blocked scenes — full scan only if there are Hard topic blocks
+        // (checking all scene actions against the hardBlockedTopicIDs hash set)
+        if (!hardBlockedTopicIDs.empty() && scenesGlobal) {
+            auto* dataHandler = RE::TESDataHandler::GetSingleton();
+            if (dataHandler) {
+                for (auto* scene : dataHandler->GetFormArray<RE::BGSScene>()) {
+                    if (!scene) continue;
+                    const char* sceneEditorID = scene->GetFormEditorID();
+                    std::string sceneIDStr = sceneEditorID ? sceneEditorID : "";
+
+                    // Skip already patched (Pass 1) or whitelisted scenes
+                    if (!sceneIDStr.empty() && (hardBlockedSceneIDs.count(sceneIDStr) || whitelistedSceneIDs.count(sceneIDStr)))
+                        continue;
+
+                    bool shouldPatch = false;
+                    for (auto* action : scene->actions) {
+                        if (!action || action->GetType() != RE::BGSSceneAction::Type::kDialogue) continue;
+                        auto* da = static_cast<RE::BGSSceneActionDialogue*>(action);
+                        if (!da || !da->topic) continue;
+                        const char* topicEditorID = da->topic->GetFormEditorID();
+                        if (!topicEditorID) continue;
+                        std::string topicIDStr = topicEditorID;
+
+                        if (whitelistedTopicIDs.count(topicIDStr)) {
+                            shouldPatch = false;
+                            break;  // Whitelist overrides
                         }
+                        if (hardBlockedTopicIDs.count(topicIDStr)) {
+                            shouldPatch = true;
+                            // Don't break — keep checking remaining actions for whitelist overrides
+                        }
+                    }
+
+                    if (shouldPatch) {
+                        patchScene(scene, scenesGlobal);
+                        spdlog::debug("[SCENE BLOCKER] Patched topic-blocked scene: {}", sceneIDStr);
                     }
                 }
             }
-            
-            spdlog::debug("[SCENE BLOCKER] Scanned {} scenes", totalScenesChecked);
-            
-            if (blockedSceneCount > 0) {
-                spdlog::info("Patched {} scenes ({} phases): {} bard songs, {} ambient",
-                    blockedSceneCount, blockedPhaseCount, bardSongScenes, ambientScenes);
-            } else {
-                spdlog::warn("[SCENE BLOCKER] No scenes were blocked!");
-            }
-            
-            spdlog::info("[SCENE BLOCKER] Scene patching completed");
+        }
+
+        spdlog::info("[SCENE BLOCKER] Patching complete — {} scenes ({} phases) patched",
+            blockedSceneCount, blockedPhaseCount);
     }
     
     // Helper to remove all conditions from a scene's phases
@@ -316,20 +236,8 @@ namespace SceneHook
         }
         
         taskInterface->AddTask([sceneEditorID, blockType]() {
-            auto* dataHandler = RE::TESDataHandler::GetSingleton();
-            if (!dataHandler) return;
-            
-            // Find the scene by EditorID
-            RE::BGSScene* targetScene = nullptr;
-            for (auto* scene : dataHandler->GetFormArray<RE::BGSScene>()) {
-                if (!scene) continue;
-                const char* editorID = scene->GetFormEditorID();
-                if (editorID && sceneEditorID == editorID) {
-                    targetScene = scene;
-                    break;
-                }
-            }
-            
+            // Direct lookup — no full form array scan needed
+            auto* targetScene = RE::TESForm::LookupByEditorID<RE::BGSScene>(sceneEditorID);
             if (!targetScene) {
                 spdlog::warn("[SCENE UPDATE] Scene not found: {}", sceneEditorID);
                 return;

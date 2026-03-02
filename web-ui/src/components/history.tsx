@@ -7,7 +7,7 @@ import { SKSE_API, log } from '@/lib/skse-api';
 import { ResponsesModal } from './responses-modal';
 import { ManualEntryModal } from './manual-entry-modal';
 import { AdvancedEditModal } from './advanced-edit-modal';
-import { Search, Plus, Settings, Trash2 } from 'lucide-react';
+import { Search, Plus, Settings } from 'lucide-react';
 
 const getStatusColor = (status: DialogueEntry['status']): string => {
   switch (status) {
@@ -283,16 +283,6 @@ export const History = () => {
     }, 100);
   }, [selectedEntry]);
 
-  const handleRemoveFromBlacklist = useCallback(() => {
-    const entryToRemove = selectedEntries.length > 0 ? selectedEntries[0] : selectedEntry;
-    if (!entryToRemove) return;
-    log(`[History] Removing from blacklist: topicEditorID=${entryToRemove.topicEditorID}`);
-    SKSE_API.removeFromBlacklist(entryToRemove);
-    setTimeout(() => SKSE_API.requestHistoryRefresh(), 100);
-    setSelectedEntries([]);
-    setLastClickedIndex(-1);
-  }, [selectedEntries, selectedEntry, setSelectedEntries]);
-  
   // Handle multi-selection click
   const handleItemClick = useCallback((entry: DialogueEntry, index: number, event?: React.MouseEvent) => {
     const isCtrlClick = event?.ctrlKey || event?.metaKey;
@@ -498,20 +488,6 @@ export const History = () => {
                     >
                       Hard Block
                     </button>
-                    {selectedEntries.some(e => e.status === 'Soft Block' || e.status === 'Hard Block') && (
-                      <button
-                        onClick={() => {
-                          selectedEntries.forEach(e => {
-                            if (e.status === 'Soft Block' || e.status === 'Hard Block') SKSE_API.removeFromBlacklist(e);
-                          });
-                          setSelectedEntries([]);
-                          setLastClickedIndex(-1);
-                        }}
-                        className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-                      >
-                        Remove from Blacklist
-                      </button>
-                    )}
                     <button
                       onClick={() => {
                         SKSE_API.addToWhitelist(selectedEntries);
@@ -590,15 +566,6 @@ export const History = () => {
                   >
                     <Settings size={18} />
                     Edit Blacklist Entry
-                  </button>
-                )}
-                {(selectedEntry.status === 'Soft Block' || selectedEntry.status === 'Hard Block') && (
-                  <button
-                    onClick={handleRemoveFromBlacklist}
-                    className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
-                  >
-                    <Trash2 size={18} />
-                    Remove from Blacklist
                   </button>
                 )}
                 {!whitelistEntry ? (
@@ -684,6 +651,9 @@ export const History = () => {
           setShowBlacklistEditModal(false);
           setEditingBlacklistEntry(null);
         }}
+        onSave={() => {
+          setTimeout(() => SKSE_API.requestHistoryRefresh(), 150);
+        }}
         entry={editingBlacklistEntry}
       />
       
@@ -693,6 +663,9 @@ export const History = () => {
         onClose={() => {
           setShowWhitelistEditModal(false);
           setEditingWhitelistEntry(null);
+        }}
+        onSave={() => {
+          setTimeout(() => SKSE_API.requestHistoryRefresh(), 150);
         }}
         entry={editingWhitelistEntry}
       />

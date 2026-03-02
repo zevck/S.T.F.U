@@ -59,6 +59,7 @@ void PrismaUIMenu::Initialize()
     prismaUI_->RegisterJSListener(view_, "requestWhitelist", &OnRequestWhitelist);
     prismaUI_->RegisterJSListener(view_, "removeFromWhitelist", &OnRemoveFromWhitelist);
     prismaUI_->RegisterJSListener(view_, "updateWhitelistEntry", &OnUpdateWhitelistEntry);
+    prismaUI_->RegisterJSListener(view_, "updateWhitelistEntryAdvanced", &OnUpdateWhitelistEntryAdvanced);
     prismaUI_->RegisterJSListener(view_, "moveToBlacklist", &OnMoveToBlacklist);
     prismaUI_->RegisterJSListener(view_, "moveToWhitelist", &OnMoveToWhitelist);
     prismaUI_->RegisterJSListener(view_, "removeWhitelistBatch", &OnRemoveWhitelistBatch);
@@ -295,9 +296,10 @@ void PrismaUIMenu::OnUpdateBlacklistEntry(const char* data)
         // Parse actor filters from JSON if present
         auto parseActorFormIDsFromUpdate = [&jsonStr]() -> std::vector<uint32_t> {
             std::vector<uint32_t> formIDs;
+            // Search string is 25 chars: "actorFilterFormIDs":["0x
             size_t arrayStart = jsonStr.find("\"actorFilterFormIDs\":[\"0x");
             if (arrayStart == std::string::npos) return formIDs;
-            size_t pos = arrayStart + 24;
+            size_t pos = arrayStart + 25;  // points past the '0x' to the hex digits
             while (pos < jsonStr.size()) {
                 size_t hexEnd = jsonStr.find("\"", pos);
                 if (hexEnd == std::string::npos) break;
@@ -317,6 +319,8 @@ void PrismaUIMenu::OnUpdateBlacklistEntry(const char* data)
             std::vector<std::string> names;
             size_t arrayStart = jsonStr.find("\"actorFilterNames\":[");
             if (arrayStart == std::string::npos) return names;
+            // Early exit for empty array
+            if (arrayStart + 20 < jsonStr.size() && jsonStr[arrayStart + 20] == ']') return names;
             size_t pos = jsonStr.find("\"", arrayStart + 20);
             while (pos != std::string::npos && pos < jsonStr.size()) {
                 if (jsonStr[pos] != '\"') break;
@@ -333,7 +337,33 @@ void PrismaUIMenu::OnUpdateBlacklistEntry(const char* data)
         
         existingEntry->actorFilterFormIDs = parseActorFormIDsFromUpdate();
         existingEntry->actorFilterNames = parseActorNamesFromUpdate();
-        
+
+        // Parse faction EditorIDs from JSON array: "factionFilterEditorIDs":["FactionA","FactionB"]
+        auto parseFactionEditorIDsFromUpdate = [&jsonStr]() -> std::vector<std::string> {
+            std::vector<std::string> ids;
+            size_t arrayStart = jsonStr.find("\"factionFilterEditorIDs\":");
+            if (arrayStart == std::string::npos) return ids;
+            size_t bracketPos = jsonStr.find('[', arrayStart);
+            if (bracketPos == std::string::npos) return ids;
+            size_t pos = bracketPos + 1;
+            while (pos < jsonStr.size()) {
+                // Skip whitespace
+                while (pos < jsonStr.size() && (jsonStr[pos] == ' ' || jsonStr[pos] == '\t')) pos++;
+                if (pos >= jsonStr.size() || jsonStr[pos] == ']') break;
+                if (jsonStr[pos] != '"') { pos++; continue; }
+                pos++; // skip opening quote
+                size_t end = jsonStr.find('"', pos);
+                if (end == std::string::npos) break;
+                ids.push_back(jsonStr.substr(pos, end - pos));
+                pos = end + 1;
+                // Skip to next element or end
+                while (pos < jsonStr.size() && jsonStr[pos] != ',' && jsonStr[pos] != ']') pos++;
+                if (pos < jsonStr.size() && jsonStr[pos] == ',') pos++;
+            }
+            return ids;
+        };
+        existingEntry->factionFilterEditorIDs = parseFactionEditorIDsFromUpdate();
+
         // Save to database (AddToBlacklist handles both insert and update)
         if (db->AddToBlacklist(*existingEntry)) {
             spdlog::info("[PrismaUIMenu] Successfully updated blacklist entry {}", entryId);
@@ -366,8 +396,10 @@ void PrismaUIMenu::Toggle()
         prismaUI_->Show(view_);
         prismaUI_->Focus(view_, true, false); // Pause game, don't disable focus menu
         
-        // Refresh data when opening
+        // Refresh all tab data when opening so whichever tab is active is current
         SendHistoryData();
+        SendBlacklistData();
+        SendWhitelistData();
         
         spdlog::info("[PrismaUIMenu] Menu opened");
     }
@@ -387,6 +419,12 @@ void PrismaUIMenu::SendHistoryData()
     if (!initialized_ || !prismaUI_ || !prismaUI_->IsValid(view_)) {
         spdlog::warn("[PrismaUIMenu::SendHistoryData] Not initialized  or invalid view");
         return;
+    }
+    
+    // Flush pending write queue so recently-logged dialogue is visible immediately
+    auto* db = DialogueDB::GetDatabase();
+    if (db) {
+        db->FlushQueue();
     }
     
     try {
@@ -2818,6 +2856,14 @@ std::string PrismaUIMenu::SerializeWhitelistToJSON()
             if (i > 0) json << ",";
             json << "\"" << escapeJSON(entry.actorFilterNames[i]) << "\"";
         }
+        json << "],";
+        
+        // Add faction filters
+        json << "\"factionFilterEditorIDs\":[";
+        for (size_t i = 0; i < entry.factionFilterEditorIDs.size(); ++i) {
+            if (i > 0) json << ",";
+            json << "\"" << escapeJSON(entry.factionFilterEditorIDs[i]) << "\"";
+        }
         json << "]";
         
         json << "}";
@@ -2974,6 +3020,142 @@ void PrismaUIMenu::OnUpdateWhitelistEntry(const char* data)
         
     } catch (const std::exception& e) {
         spdlog::error("[PrismaUIMenu::OnUpdateWhitelistEntry] Exception: {}", e.what());
+    }
+}
+
+void PrismaUIMenu::OnUpdateWhitelistEntryAdvanced(const char* data)
+{
+    if (!data) {
+        spdlog::warn("[PrismaUIMenu::OnUpdateWhitelistEntryAdvanced] Null data");
+        return;
+    }
+
+    try {
+        spdlog::info("[PrismaUIMenu] Updating whitelist entry (advanced), data: {}", data);
+        std::string jsonStr(data);
+
+        auto getValue = [&jsonStr](const std::string& key) -> std::string {
+            std::string searchKey = "\"" + key + "\":";
+            size_t pos = jsonStr.find(searchKey);
+            if (pos == std::string::npos) return "";
+            pos += searchKey.length();
+            while (pos < jsonStr.length() && (jsonStr[pos] == ' ' || jsonStr[pos] == '\t')) pos++;
+            if (pos >= jsonStr.length()) return "";
+            if (jsonStr[pos] == '"') {
+                pos++;
+                size_t endPos = jsonStr.find('"', pos);
+                if (endPos == std::string::npos) return "";
+                return jsonStr.substr(pos, endPos - pos);
+            } else {
+                size_t endPos = jsonStr.find_first_of(",}", pos);
+                if (endPos == std::string::npos) endPos = jsonStr.length();
+                return jsonStr.substr(pos, endPos - pos);
+            }
+        };
+
+        int64_t entryId = std::stoll(getValue("id"));
+        std::string notes = getValue("notes");
+
+        // Unescape notes
+        size_t escapePos = 0;
+        while ((escapePos = notes.find("\\n", escapePos)) != std::string::npos) {
+            notes.replace(escapePos, 2, "\n");
+            escapePos += 1;
+        }
+
+        // Parse actorFilterFormIDs: ["0x...", ...]
+        auto parseFormIDs = [&jsonStr]() -> std::vector<uint32_t> {
+            std::vector<uint32_t> formIDs;
+            size_t arrayStart = jsonStr.find("\"actorFilterFormIDs\":[\"0x");
+            if (arrayStart == std::string::npos) return formIDs;
+            size_t pos = arrayStart + 24;
+            while (pos < jsonStr.size()) {
+                size_t hexEnd = jsonStr.find('"', pos);
+                if (hexEnd == std::string::npos) break;
+                std::string hexStr = jsonStr.substr(pos, hexEnd - pos);
+                try { formIDs.push_back(std::stoul(hexStr, nullptr, 16)); } catch (...) {}
+                pos = jsonStr.find("\"0x", hexEnd);
+                if (pos == std::string::npos) break;
+                pos += 3;
+            }
+            return formIDs;
+        };
+
+        // Parse actorFilterNames
+        auto parseNames = [&jsonStr]() -> std::vector<std::string> {
+            std::vector<std::string> names;
+            size_t arrayStart = jsonStr.find("\"actorFilterNames\":");
+            if (arrayStart == std::string::npos) return names;
+            size_t pos = jsonStr.find('"', arrayStart + 20);
+            while (pos != std::string::npos && pos < jsonStr.size()) {
+                if (jsonStr[pos] != '"') break;
+                pos++;
+                size_t nameEnd = jsonStr.find('"', pos);
+                if (nameEnd == std::string::npos) break;
+                names.push_back(jsonStr.substr(pos, nameEnd - pos));
+                pos = jsonStr.find("\",\"", nameEnd);
+                if (pos == std::string::npos) break;
+                pos += 3;
+            }
+            return names;
+        };
+
+        // Parse factionFilterEditorIDs
+        auto parseFactions = [&jsonStr]() -> std::vector<std::string> {
+            std::vector<std::string> ids;
+            size_t arrayStart = jsonStr.find("\"factionFilterEditorIDs\":");
+            if (arrayStart == std::string::npos) return ids;
+            size_t bracketPos = jsonStr.find('[', arrayStart);
+            if (bracketPos == std::string::npos) return ids;
+            size_t pos = bracketPos + 1;
+            while (pos < jsonStr.size()) {
+                while (pos < jsonStr.size() && (jsonStr[pos] == ' ' || jsonStr[pos] == '\t')) pos++;
+                if (pos >= jsonStr.size() || jsonStr[pos] == ']') break;
+                if (jsonStr[pos] != '"') { pos++; continue; }
+                pos++;
+                size_t end = jsonStr.find('"', pos);
+                if (end == std::string::npos) break;
+                ids.push_back(jsonStr.substr(pos, end - pos));
+                pos = end + 1;
+                while (pos < jsonStr.size() && jsonStr[pos] != ',' && jsonStr[pos] != ']') pos++;
+                if (pos < jsonStr.size() && jsonStr[pos] == ',') pos++;
+            }
+            return ids;
+        };
+
+        auto* db = DialogueDB::GetDatabase();
+        if (!db) {
+            spdlog::error("[PrismaUIMenu] Database not available");
+            return;
+        }
+
+        auto allEntries = db->GetWhitelist();
+        DialogueDB::BlacklistEntry* existingEntry = nullptr;
+        for (auto& entry : allEntries) {
+            if (entry.id == entryId) {
+                existingEntry = &entry;
+                break;
+            }
+        }
+
+        if (!existingEntry) {
+            spdlog::error("[PrismaUIMenu] Whitelist entry {} not found", entryId);
+            return;
+        }
+
+        existingEntry->notes = notes;
+        existingEntry->actorFilterFormIDs = parseFormIDs();
+        existingEntry->actorFilterNames = parseNames();
+        existingEntry->factionFilterEditorIDs = parseFactions();
+
+        if (db->AddToWhitelist(*existingEntry)) {
+            spdlog::info("[PrismaUIMenu] Successfully updated whitelist entry (advanced) {}", entryId);
+            SendWhitelistData();
+        } else {
+            spdlog::error("[PrismaUIMenu] Failed to update whitelist entry (advanced) {}", entryId);
+        }
+    } catch (const std::exception& e) {
+        spdlog::error("[PrismaUIMenu::OnUpdateWhitelistEntryAdvanced] Exception: {}", e.what());
     }
 }
 
@@ -3297,7 +3479,7 @@ void PrismaUIMenu::OnImportYAML(const char* data)
         wchar_t buffer[MAX_PATH];
         GetModuleFileNameW(nullptr, buffer, MAX_PATH);
         std::filesystem::path exePath(buffer);
-        std::filesystem::path yamlDir = exePath.parent_path() / "Data" / "SKSE" / "Plugins" / "STFU";
+        std::filesystem::path yamlDir = exePath.parent_path() / "Data" / "SKSE" / "Plugins" / "STFU" / "import";
         std::filesystem::path blacklistPath = yamlDir / "STFU_Blacklist.yaml";
         std::filesystem::path whitelistPath = yamlDir / "STFU_Whitelist.yaml";
         

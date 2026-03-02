@@ -16,14 +16,10 @@ namespace PapyrusInterface
         }).detach();
     }
     
-    void ImportFromYAML(RE::StaticFunctionTag*)
+int32_t ImportFromYAML(RE::StaticFunctionTag*)
     {
         spdlog::info("[PapyrusInterface] ImportFromYAML called from MCM");
-        
-        // Run import on background thread to avoid blocking MCM
-        std::thread([](){ 
-            Config::ImportYAMLToDatabase(); 
-        }).detach();
+        return static_cast<int32_t>(Config::ImportYAMLToDatabase());
     }
     
     int32_t GetMenuHotkey(RE::StaticFunctionTag*)
@@ -96,7 +92,7 @@ namespace PapyrusInterface
         }
         
         vm->RegisterFunction("ImportHardcodedScenes", "STFU_MCM", ImportHardcodedScenes);
-        vm->RegisterFunction("ImportFromYAML", "STFU_MCM", ImportFromYAML);
+        vm->RegisterFunction("ImportFromYAML", "STFU_MCM", ImportFromYAML);  // returns int (total entries imported)
         vm->RegisterFunction("GetMenuHotkey", "STFU_MCM", GetMenuHotkey);
         vm->RegisterFunction("SetMenuHotkey", "STFU_MCM", SetMenuHotkey);
         vm->RegisterFunction("SaveSettings", "STFU_MCM", SaveSettings);

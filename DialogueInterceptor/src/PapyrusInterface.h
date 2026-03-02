@@ -8,7 +8,8 @@ namespace PapyrusInterface
     void ImportHardcodedScenes(RE::StaticFunctionTag*);
     
     // Import from YAML files (Blacklist, Whitelist, SubtypeOverrides, SkyrimNetFilter)
-    void ImportFromYAML(RE::StaticFunctionTag*);
+    // Returns total number of entries imported
+    int32_t ImportFromYAML(RE::StaticFunctionTag*);
     
     // Get current menu hotkey scancode
     int32_t GetMenuHotkey(RE::StaticFunctionTag*);

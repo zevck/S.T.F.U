@@ -7,6 +7,7 @@ import { BlacklistEntry } from '../types';
 interface AdvancedEditModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSave?: (updatedEntry: BlacklistEntry) => void;
   entry: BlacklistEntry | null;
 }
 
@@ -16,7 +17,7 @@ interface Actor {
   lastSeen: number;
 }
 
-export const AdvancedEditModal = memo(({ isOpen, onClose, entry }: AdvancedEditModalProps) => {
+export const AdvancedEditModal = memo(({ isOpen, onClose, onSave, entry }: AdvancedEditModalProps) => {
   const [blockType, setBlockType] = useState<'Soft' | 'Hard'>('Soft');
   const [filterCategory, setFilterCategory] = useState('Blacklist');
   const [notes, setNotes] = useState('');
@@ -261,26 +262,60 @@ export const AdvancedEditModal = memo(({ isOpen, onClose, entry }: AdvancedEditM
   const handleSave = () => {
     if (!entry) return;
 
-    // Validate array synchronization
+    // Ensure actor arrays stay in sync — truncate to shorter length if desynced
+    const syncedLength = Math.min(actorFilterNames.length, actorFilterFormIDs.length);
     if (actorFilterNames.length !== actorFilterFormIDs.length) {
-      log(`[AdvancedEdit] ERROR: Array desync! Names: ${actorFilterNames.length}, FormIDs: ${actorFilterFormIDs.length}`);
-      return;
+      log(`[AdvancedEdit] WARNING: Array desync (names=${actorFilterNames.length}, formIDs=${actorFilterFormIDs.length}), truncating to ${syncedLength}`);
+    }
+    const safeActorNames = actorFilterNames.slice(0, syncedLength);
+    const safeActorFormIDs = actorFilterFormIDs.slice(0, syncedLength);
+
+    const isWhitelist = entry.filterCategory === 'Whitelist';
+    log(`[AdvancedEdit] Updating entry ${entry.id} (${isWhitelist ? 'whitelist' : 'blacklist'}): actors=${safeActorNames.length}, factions=${factionFilterEditorIDs.length}`);
+
+    if (isWhitelist) {
+      SKSE_API.updateWhitelistEntryAdvanced({
+        id: entry.id,
+        notes,
+        actorFilterNames: safeActorNames,
+        actorFilterFormIDs: safeActorFormIDs,
+        factionFilterEditorIDs
+      });
+    } else {
+      SKSE_API.sendToSKSE('updateBlacklistEntryAdvanced', JSON.stringify({
+        id: entry.id,
+        blockType,
+        filterCategory,
+        notes,
+        actorFilterNames: safeActorNames,
+        actorFilterFormIDs: safeActorFormIDs,
+        factionFilterEditorIDs
+      }));
     }
 
-    log(`[AdvancedEdit] Updating entry ${entry.id}: blockType=${blockType}, filterCategory=${filterCategory}, actors=${actorFilterNames.length}`);
-
-    // Update the entry (works for both blacklist and whitelist entries)
-    SKSE_API.sendToSKSE('updateBlacklistEntryAdvanced', JSON.stringify({
-      id: entry.id,
-      blockType,
-      filterCategory,
-      notes,
-      actorFilterNames,
-      actorFilterFormIDs,
-      factionFilterEditorIDs
-    }));
+    // Notify parent to update its store immediately (same React batch as onClose)
+    if (onSave) {
+      const blockTypeDisplay = blockType === 'Hard' ? 'Hard Block' : 'Soft Block';
+      onSave({
+        ...entry,
+        blockType: isWhitelist ? entry.blockType : blockTypeDisplay,
+        filterCategory,
+        note: notes,
+        actorFilterNames: safeActorNames,
+        actorFilterFormIDs: safeActorFormIDs,
+        factionFilterEditorIDs,
+      });
+    }
 
     onClose();
+    // Also request C++ to push fresh confirmed data
+    setTimeout(() => {
+      if (isWhitelist) {
+        SKSE_API.requestWhitelistRefresh();
+      } else {
+        SKSE_API.refreshBlacklist();
+      }
+    }, 150);
   };
 
   const handleDelete = () => {
@@ -358,53 +393,56 @@ export const AdvancedEditModal = memo(({ isOpen, onClose, entry }: AdvancedEditM
             </div>
           </div>
 
-          {/* Block Type */}
-          <div>
-            <label className="block text-base font-medium text-gray-300 mb-2">
-              Block Type
-            </label>
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="blockType"
-                  checked={blockType === 'Soft'}
-                  onChange={() => setBlockType('Soft')}
-                  className="w-5 h-5 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                />
-                <span className="text-base text-white">Soft Block</span>
+          {/* Block Type — hidden for whitelist entries */}
+          {entry?.filterCategory !== 'Whitelist' && (
+            <div>
+              <label className="block text-base font-medium text-gray-300 mb-2">
+                Block Type
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="blockType"
-                  checked={blockType === 'Hard'}
-                  onChange={() => setBlockType('Hard')}
-                  className="w-5 h-5 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                />
-                <span className="text-base text-white">Hard Block</span>
-              </label>
-
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="blockType"
+                    checked={blockType === 'Soft'}
+                    onChange={() => setBlockType('Soft')}
+                    className="w-5 h-5 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  />
+                  <span className="text-base text-white">Soft Block</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="blockType"
+                    checked={blockType === 'Hard'}
+                    onChange={() => setBlockType('Hard')}
+                    className="w-5 h-5 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  />
+                  <span className="text-base text-white">Hard Block</span>
+                </label>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Filter Category */}
-          <div>
-            <label className="block text-base font-medium text-gray-300 mb-2">
-              Filter Category
-            </label>
-            <select
-              value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
-              className="w-full px-4 py-2.5 text-base bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
-            >
-              {filterCategories.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Filter Category — hidden for whitelist entries */}
+          {entry?.filterCategory !== 'Whitelist' && (
+            <div>
+              <label className="block text-base font-medium text-gray-300 mb-2">
+                Filter Category
+              </label>
+              <select
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+                className="w-full px-4 py-2.5 text-base bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
+              >
+                {filterCategories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Actor & Faction Filters */}
           <div>

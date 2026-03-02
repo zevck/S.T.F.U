@@ -1200,9 +1200,10 @@ namespace DialogueDB
                 return false;
             }
             
-            // Serialize actor filters to JSON
+            // Serialize actor and faction filters to JSON
             std::string actorFormIDsJson = ActorFormIDsToJson(enrichedEntry.actorFilterFormIDs);
             std::string actorNamesJson = ActorNamesToJson(enrichedEntry.actorFilterNames);
+            std::string factionEditorIDsJson = FactionEditorIDsToJson(enrichedEntry.factionFilterEditorIDs);
             
             sqlite3_bind_int(updateStmt, 1, static_cast<int>(enrichedEntry.blockType));
             sqlite3_bind_int64(updateStmt, 2, enrichedEntry.addedTimestamp);
@@ -1216,7 +1217,8 @@ namespace DialogueDB
             sqlite3_bind_text(updateStmt, 10, enrichedEntry.questEditorID.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_text(updateStmt, 11, actorFormIDsJson.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_text(updateStmt, 12, actorNamesJson.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_int64(updateStmt, 13, existingId);
+            sqlite3_bind_text(updateStmt, 13, factionEditorIDsJson.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_int64(updateStmt, 14, existingId);
             
             bool success = sqlite3_step(updateStmt) == SQLITE_DONE;
             if (!success) {
@@ -2404,6 +2406,59 @@ namespace DialogueDB
             }
         }
         
+        sqlite3_finalize(stmt);
+        return isWhitelisted;
+    }
+
+    bool Database::IsWhitelisted(BlacklistTarget targetType, uint32_t formID, const std::string& editorID, uint32_t actorFormID, const std::string& actorName, RE::TESObjectREFR* actorRef)
+    {
+        std::lock_guard<std::mutex> lock(dbMutex_);
+        if (!db_) return false;
+
+        // Select actor, name, and faction filters
+        const char* sql = "SELECT actor_filter_formids, actor_filter_names, faction_filter_editorids FROM whitelist WHERE target_type = ? AND (((target_formid = ? OR target_formid = 0) AND target_editorid = ?) OR (target_editorid = '' AND target_formid = ?)) LIMIT 1;";
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+        sqlite3_bind_int(stmt, 1, static_cast<int>(targetType));
+        sqlite3_bind_int(stmt, 2, formID);
+        sqlite3_bind_text(stmt, 3, editorID.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int(stmt, 4, formID);
+
+        bool isWhitelisted = false;
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            const char* actorFormIDsJson = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+            const char* actorNamesJson   = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+            const char* factionJson      = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+
+            std::vector<uint32_t>    filterFormIDs = ParseActorFormIDsFromJson(actorFormIDsJson ? actorFormIDsJson : "[]");
+            std::vector<std::string> filterNames   = ParseActorNamesFromJson(actorNamesJson ? actorNamesJson : "[]");
+            std::vector<std::string> factionFilter = ParseFactionEditorIDsFromJson(factionJson ? factionJson : "[]");
+
+            bool hasActorFilter   = !filterFormIDs.empty() || !filterNames.empty();
+            bool hasFactionFilter = !factionFilter.empty();
+
+            if (!hasActorFilter && !hasFactionFilter) {
+                // No filters - whitelist applies to everyone
+                isWhitelisted = true;
+                spdlog::debug("[DialogueDB] IsWhitelisted(+ref): No filter -> WHITELISTED for all");
+            } else if ((actorFormID > 0 || !actorName.empty()) || actorRef) {
+                bool actorMatches   = hasActorFilter   && ActorMatchesFilter(actorFormID, actorName, filterFormIDs, filterNames);
+                bool factionMatches = hasFactionFilter && FactionMatchesFilter(actorRef, factionFilter);
+                if (actorMatches || factionMatches) {
+                    isWhitelisted = true;
+                    spdlog::debug("[DialogueDB] IsWhitelisted(+ref): Actor '{}' (0x{:08X}) or faction matches -> WHITELISTED", actorName, actorFormID);
+                } else {
+                    isWhitelisted = false;
+                    spdlog::debug("[DialogueDB] IsWhitelisted(+ref): Actor '{}' (0x{:08X}) not in filter -> NOT WHITELISTED", actorName, actorFormID);
+                }
+            } else {
+                // Filter exists but no actor info provided
+                isWhitelisted = false;
+                spdlog::debug("[DialogueDB] IsWhitelisted(+ref): Filter exists but no actor info -> NOT WHITELISTED");
+            }
+        }
+
         sqlite3_finalize(stmt);
         return isWhitelisted;
     }

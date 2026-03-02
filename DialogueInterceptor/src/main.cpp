@@ -420,7 +420,8 @@ namespace
                 std::filesystem::path exePath(buffer);
                 auto dataPath = exePath.parent_path() / "Data" / "SKSE" / "Plugins" / "STFU";
                 std::filesystem::create_directories(dataPath);
-                auto dbPath = (dataPath / "dialogue.db").string();
+                std::filesystem::create_directories(dataPath / "data");
+                auto dbPath = (dataPath / "data" / "dialogue.db").string();
                 
                 spdlog::info("Initializing database at: {}", dbPath);
                 

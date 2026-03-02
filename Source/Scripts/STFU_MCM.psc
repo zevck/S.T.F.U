@@ -1,5 +1,14 @@
 Scriptname STFU_MCM extends SKI_ConfigBase
 
+; Native functions provided by STFU SKSE plugin
+Function ImportHardcodedScenes() native global
+int Function ImportFromYAML() native global
+int Function ClearBlacklist() native global
+int Function ClearWhitelist() native global
+int Function GetMenuHotkey() native global
+Function SetMenuHotkey(int scancode) native global
+Function SaveSettings() native global
+
 ; Config file tracking
 int configHandle = 0
 bool configLoaded = false
@@ -160,93 +169,100 @@ GlobalVariable Property STFU_WerewolfTransformCrime Auto
 GlobalVariable Property STFU_PursueIdleTopic Auto
 
 ; Option IDs
-int oid_EnableAll
-int oid_DisableAll
-int oid_Attack
-int oid_Hit
-int oid_PowerAttack
-int oid_Death
-int oid_Block
-int oid_Bleedout
-int oid_AllyKilled
-int oid_Taunt
-int oid_NormalToCombat
-int oid_CombatToNormal
-int oid_CombatToLost
-int oid_NormalToAlert
-int oid_AlertToCombat
-int oid_AlertToNormal
-int oid_AlertIdle
-int oid_LostIdle
-int oid_LostToCombat
-int oid_LostToNormal
-int oid_ObserveCombat
-int oid_Flee
-int oid_AvoidThreat
-int oid_Yield
-int oid_AcceptYield
-int oid_Bash
-int oid_PickpocketCombat
-int oid_DetectFriendDie
-int oid_PreserveGrunts
+int oid_EnableAll = -1
+int oid_DisableAll = -1
+int oid_Attack = -1
+int oid_Hit = -1
+int oid_PowerAttack = -1
+int oid_Death = -1
+int oid_Block = -1
+int oid_Bleedout = -1
+int oid_AllyKilled = -1
+int oid_Taunt = -1
+int oid_NormalToCombat = -1
+int oid_CombatToNormal = -1
+int oid_CombatToLost = -1
+int oid_NormalToAlert = -1
+int oid_AlertToCombat = -1
+int oid_AlertToNormal = -1
+int oid_AlertIdle = -1
+int oid_LostIdle = -1
+int oid_LostToCombat = -1
+int oid_LostToNormal = -1
+int oid_ObserveCombat = -1
+int oid_Flee = -1
+int oid_AvoidThreat = -1
+int oid_Yield = -1
+int oid_AcceptYield = -1
+int oid_Bash = -1
+int oid_PickpocketCombat = -1
+int oid_DetectFriendDie = -1
+int oid_PreserveGrunts = -1
 
 ; Follower Dialogue Option IDs
-int oid_EnableAllFollower
-int oid_DisableAllFollower
-int oid_MoralRefusal
-int oid_ExitFavorState
-int oid_Agree
-int oid_Show
-int oid_RefuseFollower
-int oid_FollowerCommentary
-
+int oid_EnableAllFollower = -1
+int oid_DisableAllFollower = -1
+int oid_MoralRefusal = -1
+int oid_ExitFavorState = -1
+int oid_Agree = -1
+int oid_Show = -1
+int oid_RefuseFollower = -1
+int oid_FollowerCommentary = -1
 
 ; Other/Miscellaneous Option IDs
-int oid_EnableAllOther
-int oid_DisableAllOther
-int oid_BardSongs
-int oid_Scenes
-int oid_Blacklist
-int oid_SkyrimNetFilter
+int oid_EnableAllOther = -1
+int oid_DisableAllOther = -1
+int oid_BardSongs = -1
+int oid_Scenes = -1
+int oid_Blacklist = -1
+int oid_SkyrimNetFilter = -1
+
+; Settings Option IDs
+int oid_MenuHotkey = -1
+int oid_ImportScenes = -1
+int oid_ImportYAML = -1
+int oid_ClearBlacklist = -1
+int oid_ClearWhitelist = -1
+int oid_ClearDatabase = -1
 
 ; Non-Combat Option IDs
-int oid_EnableAllNC
-int oid_DisableAllNC
-int oid_Murder
-int oid_MurderNC
-int oid_Assault
-int oid_AssaultNC
-int oid_ActorCollideWithActor
-int oid_BarterExit
-int oid_DestroyObject
-int oid_Goodbye
-int oid_Hello
-int oid_KnockOverObject
-int oid_NoticeCorpse
-int oid_PickpocketTopic
-int oid_PickpocketNC
-int oid_LockedObject
-int oid_Trespass
-int oid_TimeToGo
-int oid_Idle
-int oid_StealFromNC
-int oid_TrespassAgainstNC
-int oid_PlayerShout
-int oid_PlayerInIronSights
-int oid_PlayerCastProjectileSpell
-int oid_PlayerCastSelfSpell
-int oid_Steal
-int oid_SwingMeleeWeapon
-int oid_ShootBow
-int oid_StandOnFurniture
-int oid_TrainingExit
-int oid_ZKeyObject
-int oid_VoicePowerEndLong
-int oid_VoicePowerEndShort
-int oid_VoicePowerStartLong
-int oid_VoicePowerStartShort
-int oid_WerewolfTransformCrime
-int oid_PursueIdleTopic
+int oid_EnableAllNC = -1
+int oid_DisableAllNC = -1
+int oid_Murder = -1
+int oid_MurderNC = -1
+int oid_Assault = -1
+int oid_AssaultNC = -1
+int oid_ActorCollideWithActor = -1
+int oid_BarterExit = -1
+int oid_DestroyObject = -1
+int oid_Goodbye = -1
+int oid_Hello = -1
+int oid_KnockOverObject = -1
+int oid_NoticeCorpse = -1
+int oid_PickpocketTopic = -1
+int oid_PickpocketNC = -1
+int oid_LockedObject = -1
+int oid_Trespass = -1
+int oid_TimeToGo = -1
+int oid_Idle = -1
+int oid_StealFromNC = -1
+int oid_TrespassAgainstNC = -1
+int oid_PlayerShout = -1
+int oid_PlayerInIronSights = -1
+int oid_PlayerCastProjectileSpell = -1
+int oid_PlayerCastSelfSpell = -1
+int oid_Steal = -1
+int oid_SwingMeleeWeapon = -1
+int oid_ShootBow = -1
+int oid_StandOnFurniture = -1
+int oid_TrainingExit = -1
+int oid_ZKeyObject = -1
+int oid_VoicePowerEndLong = -1
+int oid_VoicePowerEndShort = -1
+int oid_VoicePowerStartLong = -1
+int oid_VoicePowerStartShort = -1
+int oid_WerewolfTransformCrime = -1
+int oid_PursueIdleTopic = -1
 
 Event OnConfigInit()
     ModName = "S.T.F.U"
@@ -259,6 +275,10 @@ Event OnConfigOpen()
     LoadConfig()
     CheckSkyrimNetInstallation()
     BuildPageList()
+EndEvent
+
+Event OnConfigClose()
+    SaveSettings()
 EndEvent
 
 Function CheckSkyrimNetInstallation()
@@ -292,7 +312,7 @@ Function BuildPageList()
     EndIf
     
     ; Create properly sized array
-    Pages = new string[4]
+    Pages = new string[5]
     int currentIndex = 0
     
     If HasCombatDialogue()
@@ -314,6 +334,9 @@ Function BuildPageList()
         Pages[currentIndex] = "Other Dialogue"
         currentIndex += 1
     EndIf
+    
+    ; Settings page is always shown
+    Pages[currentIndex] = "Settings"
 EndFunction
 
 bool Function HasCombatDialogue()
@@ -441,11 +464,12 @@ EndFunction
 
 Event OnVersionUpdate(int aiNewVersion)
     ModName = "S.T.F.U"
-    Pages = new string[4]
+    Pages = new string[5]
     Pages[0] = "Combat Dialogue"
     Pages[1] = "Generic Dialogue"
     Pages[2] = "Follower Dialogue"
     Pages[3] = "Other Dialogue"
+    Pages[4] = "Settings"
 EndEvent
 
 Event OnPageReset(string page)
@@ -724,6 +748,23 @@ Event OnPageReset(string page)
         If filterFollowerCommentary
             oid_FollowerCommentary = AddToggleOption("Block Commentary Quests", STFU_FollowerCommentary.GetValue() as bool)
         EndIf
+    ElseIf page == "Settings"
+        SetCursorFillMode(TOP_TO_BOTTOM)
+        
+        AddHeaderOption("UI Settings")
+        oid_MenuHotkey = AddKeyMapOption("Menu Hotkey", GetMenuHotkey())
+        AddEmptyOption()
+        
+        AddHeaderOption("Import & Restore")
+        oid_ImportScenes = AddTextOption("Import Scenes", "Run")
+        oid_ImportYAML = AddTextOption("Import from YAML", "Run")
+        AddEmptyOption()
+        
+        AddHeaderOption("Database Management")
+        oid_ClearBlacklist = AddTextOption("Clear Blacklist", "")
+        oid_ClearWhitelist = AddTextOption("Clear Whitelist", "")
+        oid_ClearDatabase = AddTextOption("Clear Database", "")
+        
     ElseIf page == "Other Dialogue"
         SetCursorFillMode(TOP_TO_BOTTOM)
         
@@ -932,6 +973,29 @@ Event OnOptionSelect(int option)
         ToggleGlobal(STFU_TrainingExit, oid_TrainingExit)
     ElseIf option == oid_ZKeyObject
         ToggleGlobal(STFU_ZKeyObject, oid_ZKeyObject)
+    ; Settings handlers
+    ElseIf option == oid_ImportScenes
+        Debug.Notification("STFU: Importing scenes...")
+        ImportHardcodedScenes()
+    ElseIf option == oid_ImportYAML
+        int yamlCount = ImportFromYAML()
+        Debug.Notification("STFU: YAML import complete - " + yamlCount + " entries")
+    ElseIf option == oid_ClearBlacklist
+        If ShowMessage("Clear all blacklist entries?\nThis cannot be undone.", true, "Yes", "No")
+            int count = ClearBlacklist()
+            Debug.Notification("STFU: Cleared " + count + " blacklist entries")
+        EndIf
+    ElseIf option == oid_ClearWhitelist
+        If ShowMessage("Clear all whitelist entries?\nThis cannot be undone.", true, "Yes", "No")
+            int count = ClearWhitelist()
+            Debug.Notification("STFU: Cleared " + count + " whitelist entries")
+        EndIf
+    ElseIf option == oid_ClearDatabase
+        If ShowMessage("Clear ENTIRE database (blacklist + whitelist)?\nThis cannot be undone.", true, "Yes", "No")
+            int blCount = ClearBlacklist()
+            int wlCount = ClearWhitelist()
+            Debug.Notification("STFU: Cleared " + (blCount + wlCount) + " entries total")
+        EndIf
     EndIf
 EndEvent
 
@@ -1291,5 +1355,25 @@ Event OnOptionHighlight(int option)
         SetInfoText("Training exit - Trainer dialogue when exiting training menu")
     ElseIf option == oid_ZKeyObject
         SetInfoText("ZKeyObject - NPCs commenting when you pick up objects through the physics system")
+    ; Settings hover texts
+    ElseIf option == oid_MenuHotkey
+        SetInfoText("Key to open/close the STFU UI overlay. Default: Insert")
+    ElseIf option == oid_ImportScenes
+        SetInfoText("Restores default ambient scenes, bard songs, and follower commentary to the blacklist")
+    ElseIf option == oid_ImportYAML
+        SetInfoText("Imports entries from STFU/import/STFU_Blacklist.yaml and STFU_Whitelist.yaml")
+    ElseIf option == oid_ClearBlacklist
+        SetInfoText("Removes all entries from the blacklist database. Use Import Scenes or Import YAML to restore them")
+    ElseIf option == oid_ClearWhitelist
+        SetInfoText("Removes all entries from the whitelist database")
+    ElseIf option == oid_ClearDatabase
+        SetInfoText("Removes ALL entries from both the blacklist and whitelist databases. Use with caution")
+    EndIf
+EndEvent
+
+Event OnOptionKeyMapChange(int option, int keyCode, string conflictControl, string conflictName)
+    If option == oid_MenuHotkey
+        SetKeyMapOptionValue(oid_MenuHotkey, keyCode)
+        SetMenuHotkey(keyCode)
     EndIf
 EndEvent
