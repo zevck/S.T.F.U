@@ -1,6 +1,6 @@
 #include "PapyrusInterface.h"
 #include "Config.h"
-#include "STFUMenu.h"
+#include "DialogueDatabase.h"
 #include "SettingsPersistence.h"
 #include <thread>
 
@@ -11,8 +11,16 @@ namespace PapyrusInterface
         spdlog::info("[PapyrusInterface] ImportHardcodedScenes called from MCM");
         
         // Run import on background thread to avoid blocking MCM
-        std::thread([](){ 
-            STFUMenu::ReimportHardcodedScenes(); 
+        std::thread([](){
+            auto* db = DialogueDB::GetDatabase();
+            if (!db) return;
+            auto scenesList = Config::GetHardcodedScenesList();
+            db->ImportHardcodedScenes(scenesList, "Scene");
+            auto bardSongs = Config::GetBardSongQuestsList();
+            std::vector<std::string> bardScenes(bardSongs.begin(), bardSongs.end());
+            db->ImportHardcodedScenes(bardScenes, "BardSongs");
+            auto followerScenes = Config::GetFollowerCommentaryScenesList();
+            db->ImportHardcodedScenes(followerScenes, "FollowerCommentary");
         }).detach();
     }
     
@@ -32,8 +40,8 @@ int32_t ImportFromYAML(RE::StaticFunctionTag*)
     {
         spdlog::info("[PapyrusInterface] SetMenuHotkey called with scancode: 0x{:X}", scancode);
         
-        // Validate hotkey
-        if (!STFUMenu::IsValidMenuHotkey(static_cast<uint32_t>(scancode))) {
+        // Validate hotkey (must be a non-zero DirectInput scancode, max 0x1FF)
+        if (scancode <= 0 || static_cast<uint32_t>(scancode) > 0x1FF) {
             spdlog::warn("[PapyrusInterface] Invalid hotkey scancode: 0x{:X}", scancode);
             return;
         }

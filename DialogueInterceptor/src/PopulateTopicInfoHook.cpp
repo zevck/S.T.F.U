@@ -4,7 +4,6 @@
 #include "ConstructResponseHook.h"
 #include "TopicResponseExtractor.h"
 #include "SceneHook.h"
-#include "STFUMenu.h"
 #include "../include/PCH.h"
 #include "../external/Detours/src/detours.h"
 #include <RE/B/BGSSceneActionDialogue.h>
@@ -149,7 +148,7 @@ namespace PopulateTopicInfoHook
         RE::TESTopic* a_topic, 
         RE::TESTopicInfo* a_topicInfo, 
         RE::Character* a_speaker, 
-        RE::TESTopicInfo::ResponseData* a_responseData
+        RE::TESTopicInfo::TESResponse* a_responseData
     );
 
     static PopulateTopicInfoType _OriginalPopulateTopicInfo = nullptr;
@@ -160,7 +159,7 @@ namespace PopulateTopicInfoHook
         RE::TESTopic* a_topic,
         RE::TESTopicInfo* a_topicInfo,
         RE::Character* a_speaker,
-        RE::TESTopicInfo::ResponseData* a_responseData)
+        RE::TESTopicInfo::TESResponse* a_responseData)
     {
         // Store speaker context for actor-specific filtering (used by ConstructResponseHook)
         StoreSpeakerContext(a_speaker, a_topicInfo);
@@ -180,7 +179,7 @@ namespace PopulateTopicInfoHook
         }
         const char* responseText = !fullResponseText.empty() ? fullResponseText.c_str() : nullptr;
         
-        spdlog::info("[POPULATE EXTRACTED] Speaker: {}, Text from topicInfo: '{}'",
+        spdlog::debug("[POPULATE EXTRACTED] Speaker: {}, Text from topicInfo: '{}'",
             speakerName ? speakerName : "Unknown",
             responseText ? responseText : "(NULL/EMPTY)");
         
@@ -195,7 +194,7 @@ namespace PopulateTopicInfoHook
             // For duplicates, check cached decision and set early flag if needed
             bool cachedSoftBlock = ConstructResponseHook::GetCachedSoftBlock();
             if (cachedSoftBlock && a_responseData && !fullResponseText.empty()) {
-                spdlog::info("[POPULATE] Duplicate is soft-blocked (cached decision) - clearing response text and setting flag");
+                spdlog::debug("[POPULATE] Duplicate is soft-blocked (cached decision) - clearing response text and setting flag");
                 a_responseData->responseText = "";
                 ConstructResponseHook::SetEarlyBlockFlag(true);
             }
@@ -292,14 +291,14 @@ namespace PopulateTopicInfoHook
                 trimmedText.erase(trimmedText.find_last_not_of(" \t\n\r") + 1);
                 
                 if (trimmedText.empty()) {
-                    spdlog::info("[HARD BLOCK] Skipping log - no text: {} (subtype: {})",
+                    spdlog::debug("[HARD BLOCK] Skipping log - no text: {} (subtype: {})",
                         topicEditorIDStr, Config::GetSubtypeName(subtype));
                     return 0;
                 }
                 
                 // Filter breathing/grunt sounds from history even when hard blocked
                 if (Config::ShouldFilterFromHistory(responseText, subtype, a_topic)) {
-                    spdlog::info("[HARD BLOCK] Filtered from history: {} (subtype: {})", 
+                    spdlog::debug("[HARD BLOCK] Filtered from history: {} (subtype: {})", 
                         topicEditorIDStr, subtype);
                     return 0;  // Block without logging
                 }
@@ -398,7 +397,7 @@ namespace PopulateTopicInfoHook
             uint32_t speakerFormID = a_speaker ? a_speaker->GetFormID() : 0;
             bool shouldSoftBlock = Config::ShouldSoftBlock(quest, a_topic, speakerName, responseText, speakerFormID, a_speaker);
             bool shouldBlockSkyrimNet = false;
-            if (STFUMenu::IsSkyrimNetLoaded()) {
+            if (Config::IsSkyrimNetLoaded()) {
                 shouldBlockSkyrimNet = Config::ShouldBlockSkyrimNet(quest, a_topic, speakerName);
             }
             
@@ -418,7 +417,7 @@ namespace PopulateTopicInfoHook
             
             // SOFT BLOCKING: Block audio + subtitles + SkyrimNet
             if (shouldSoftBlock) {
-                spdlog::info("[POPULATE] Clearing NPC response text for SOFT-BLOCKED dialogue: '{}'", 
+                spdlog::debug("[POPULATE] Clearing NPC response text for SOFT-BLOCKED dialogue: '{}'", 
                     responseText ? responseText : "(none)");
                 // Clear response text - this prevents subtitles AND audio
                 a_responseData->responseText = "";
@@ -453,6 +452,12 @@ namespace PopulateTopicInfoHook
             
             uint32_t topicFormID = a_topic->GetFormID();
             uint32_t speakerFormID = a_speaker->GetFormID();
+            
+            // Never log dialogue from the player character
+            if (speakerFormID == 0x14) {
+                spdlog::trace("[POPULATE] Skipping log - speaker is player (0x14)");
+                return result;
+            }
             
             auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::system_clock::now().time_since_epoch()
@@ -497,7 +502,7 @@ namespace PopulateTopicInfoHook
                         
                         if (it->speakerFormID == speakerFormID && it->topicInfoFormID == topicInfoFormID && timeSince < 50) {
                             wasConstructed = true;
-                            spdlog::info("[POPULATE] MATCH FOUND! Logging dialogue.");
+                            spdlog::debug("[POPULATE] MATCH FOUND! Logging dialogue.");
                             // Remove this construct (single-use to prevent multi-response duplication)
                             it = g_recentConstructs.erase(it);
                             break;
@@ -512,13 +517,13 @@ namespace PopulateTopicInfoHook
             // We check this BEFORE wasConstructed to catch cases where correlation might succeed
             bool wasManuallyLogged = DialogueItemCtorHook::WasBlockedWithNullptr(speakerFormID, fullResponseText);
             if (wasManuallyLogged) {
-                spdlog::info("[POPULATE] MANUALLY LOGGED - DialogueItem::Ctor already logged this before returning nullptr, skipping duplicate");
+                spdlog::debug("[POPULATE] MANUALLY LOGGED - DialogueItem::Ctor already logged this before returning nullptr, skipping duplicate");
                 return result;
             }
             
             if (!wasConstructed) {
                 // No matching DialogueItem::Ctor - likely menu evaluation, skip logging
-                spdlog::info("[POPULATE] NO MATCH - Skipping logging (likely menu evaluation)");
+                spdlog::debug("[POPULATE] NO MATCH - Skipping logging (likely menu evaluation)");
                 return result;
             }
             
@@ -574,7 +579,7 @@ namespace PopulateTopicInfoHook
             // Check granular blocking flags (speakerFormID already defined at line 441)
             bool shouldSoftBlock = Config::ShouldSoftBlock(quest, a_topic, speakerName, responseText, speakerFormID, a_speaker);
             bool shouldBlockSkyrimNet = false;
-            if (STFUMenu::IsSkyrimNetLoaded()) {
+            if (Config::IsSkyrimNetLoaded()) {
                 shouldBlockSkyrimNet = Config::ShouldBlockSkyrimNet(quest, a_topic, speakerName);
             }
             
@@ -684,24 +689,24 @@ namespace PopulateTopicInfoHook
             // Extract all responses for this topic/scene
             if (entry.isScene && !entry.sceneEditorID.empty()) {
                 // Scene dialogue - extract all responses from the scene
-                spdlog::info("[POPULATE EXTRACT] Extracting all responses for scene: {}", entry.sceneEditorID);
+                spdlog::debug("[POPULATE EXTRACT] Extracting all responses for scene: {}", entry.sceneEditorID);
                 entry.allResponses = TopicResponseExtractor::ExtractAllResponsesForScene(entry.sceneEditorID);
-                spdlog::info("[POPULATE EXTRACT] Scene extraction returned {} responses", entry.allResponses.size());
+                spdlog::debug("[POPULATE EXTRACT] Scene extraction returned {} responses", entry.allResponses.size());
             } else if (!entry.topicEditorID.empty()) {
                 // Regular topic dialogue with EditorID - extract by EditorID
-                spdlog::info("[POPULATE EXTRACT] Extracting all responses for topic EditorID: {}", entry.topicEditorID);
+                spdlog::debug("[POPULATE EXTRACT] Extracting all responses for topic EditorID: {}", entry.topicEditorID);
                 entry.allResponses = TopicResponseExtractor::ExtractAllResponsesForTopic(entry.topicEditorID);
-                spdlog::info("[POPULATE EXTRACT] Topic EditorID extraction returned {} responses", entry.allResponses.size());
+                spdlog::debug("[POPULATE EXTRACT] Topic EditorID extraction returned {} responses", entry.allResponses.size());
             } else if (entry.topicFormID > 0) {
                 // Regular topic with FormID only (no EditorID) - extract by FormID
-                spdlog::info("[POPULATE EXTRACT] Extracting all responses for topic FormID: 0x{:08X}", entry.topicFormID);
+                spdlog::debug("[POPULATE EXTRACT] Extracting all responses for topic FormID: 0x{:08X}", entry.topicFormID);
                 entry.allResponses = TopicResponseExtractor::ExtractAllResponsesForTopic(entry.topicFormID);
-                spdlog::info("[POPULATE EXTRACT] Topic FormID extraction returned {} responses", entry.allResponses.size());
+                spdlog::debug("[POPULATE EXTRACT] Topic FormID extraction returned {} responses", entry.allResponses.size());
             }
             
             // If extraction failed or returned empty, fall back to just the current response
             if (entry.allResponses.empty() && !fullResponseText.empty()) {
-                spdlog::info("[POPULATE EXTRACT] Extraction returned empty, falling back to current response");
+                spdlog::debug("[POPULATE EXTRACT] Extraction returned empty, falling back to current response");
                 entry.allResponses.push_back(fullResponseText);
             }
             
@@ -742,7 +747,7 @@ namespace PopulateTopicInfoHook
                 if (it != g_recentlyLoggedByText.end()) {
                     int64_t timeSinceLast = now - it->second;
                     if (timeSinceLast < TEXT_COOLDOWN_DURATION) {
-                        spdlog::info("[POPULATE] TEXT DUPLICATE SKIP - Same speaker said same text {}ms ago, skipping", timeSinceLast);
+                        spdlog::debug("[POPULATE] TEXT DUPLICATE SKIP - Same speaker said same text {}ms ago, skipping", timeSinceLast);
                         return result;
                     }
                 }
@@ -824,6 +829,7 @@ namespace PopulateTopicInfoHook
                 bool shouldBlockSceneAudio = false;
                 bool shouldBlockSceneSubtitles = false;
                 std::string sceneEditorID;  // Declare in wider scope for safety net
+                uint32_t sceneFormID = 0;
                 
                 if (db && quest && a_topic) {
                     // Find the scene that contains this topic
@@ -837,6 +843,7 @@ namespace PopulateTopicInfoHook
                             if (dialogueAction && dialogueAction->topic == a_topic) {
                                 const char* scnEditorID = scene->GetFormEditorID();
                                 sceneEditorID = scnEditorID ? scnEditorID : "";
+                                sceneFormID = scene->GetFormID();
                                 break;
                             }
                         }
@@ -844,7 +851,7 @@ namespace PopulateTopicInfoHook
                     }
                     
                     if (!sceneEditorID.empty()) {
-                        bool shouldSoftBlockScene = db->ShouldSoftBlock(0, sceneEditorID);
+                        bool shouldSoftBlockScene = db->ShouldSoftBlock(sceneFormID, sceneEditorID);
                         shouldBlockSceneAudio = shouldSoftBlockScene;
                         shouldBlockSceneSubtitles = shouldSoftBlockScene;
                     }
@@ -885,7 +892,7 @@ namespace PopulateTopicInfoHook
                     // This should not happen - log error for debugging
                     if (!sceneEditorID.empty()) {
                         spdlog::error("[POPULATE SCENE SAFETY] Hard-blocked scene '{}' started despite conditions! "
-                                   "Quest: {} - This should be investigated",
+                                   "Quest: {}",
                                    sceneEditorID,
                                    questEditorID ? questEditorID : "(unknown)");
                     }
@@ -925,7 +932,7 @@ namespace PopulateTopicInfoHook
     void Install()
     {
         // Get the function address
-        REL::Relocation<std::uintptr_t> target{ RELOCATION_ID(34429, 35249) };
+        REL::Relocation<std::uintptr_t> target{ REL::VariantID(34429, 35249, 0x573B70) };
         _OriginalPopulateTopicInfo = reinterpret_cast<PopulateTopicInfoType>(target.address());
 
         // Install the hook using Microsoft Detours

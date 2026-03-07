@@ -7,17 +7,17 @@ namespace TopicResponseExtractor
 {
     // Call the game's GetResponseList function (not exposed in CommonLibSSE-NG but exists in game)
     // RELOCATION_ID(25083, 25626) - from CommonLibSSE
-    using GetResponseListFunc = RE::TESTopicInfo::ResponseData*(*)(RE::TESTopicInfo*, RE::TESTopicInfo::ResponseData**);
+    using GetResponseListFunc = RE::TESTopicInfo::TESResponse*(*)(RE::TESTopicInfo*, RE::TESTopicInfo::TESResponse**);
     
-    RE::TESTopicInfo::ResponseData* GetResponseList(RE::TESTopicInfo* topicInfo)
+    RE::TESTopicInfo::TESResponse* GetResponseList(RE::TESTopicInfo* topicInfo)
     {
         if (!topicInfo) return nullptr;
         
         // Call game function to get response list
         // This loads the responses from the plugin file into memory
-        static REL::Relocation<GetResponseListFunc> func{ RELOCATION_ID(25083, 25626) };
+        static REL::Relocation<GetResponseListFunc> func{ REL::VariantID(25083, 25626, 0x3A3000) };
         
-        RE::TESTopicInfo::ResponseData* responseList = nullptr;
+        RE::TESTopicInfo::TESResponse* responseList = nullptr;
         func(topicInfo, &responseList);  // Function populates responseList via pointer
         return responseList;  // Return the populated list, not the function's return value
     }

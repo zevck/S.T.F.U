@@ -146,7 +146,9 @@ export const History = () => {
     if (!selectedEntry) return null;
     return blacklistEntries.find(bl =>
       (bl.topicFormID && bl.topicFormID === selectedEntry.topicFormID) ||
-      (bl.topicEditorID && bl.topicEditorID === selectedEntry.topicEditorID)
+      (bl.topicEditorID && bl.topicEditorID === selectedEntry.topicEditorID) ||
+      // For scene entries: the blacklist stores the sceneEditorID in topicEditorID (from targetEditorID)
+      (selectedEntry.isScene && bl.topicEditorID && bl.topicEditorID === selectedEntry.sceneEditorID)
     ) ?? null;
   }, [selectedEntry, blacklistEntries]);
 
@@ -154,7 +156,9 @@ export const History = () => {
     if (!selectedEntry) return null;
     return whitelistEntries.find(wl =>
       (wl.topicFormID && wl.topicFormID === selectedEntry.topicFormID) ||
-      (wl.topicEditorID && wl.topicEditorID === selectedEntry.topicEditorID)
+      (wl.topicEditorID && wl.topicEditorID === selectedEntry.topicEditorID) ||
+      // For scene entries: the whitelist stores the sceneEditorID in topicEditorID (from targetEditorID)
+      (selectedEntry.isScene && wl.topicEditorID && wl.topicEditorID === selectedEntry.sceneEditorID)
     ) ?? null;
   }, [selectedEntry, whitelistEntries]);
 

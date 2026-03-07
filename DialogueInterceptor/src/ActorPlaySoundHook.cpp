@@ -37,17 +37,17 @@ namespace ActorPlaySoundHook
     {
         // LOG ABSOLUTELY EVERYTHING - no filters
         const char* actorName = a_this ? a_this->GetName() : nullptr;
-        spdlog::info("[HOOK] Actor::PlayASound - Actor: {} (ptr: {:p}), FormID: 0x{:08X}, arg3: {}, flags: 0x{:08X}",
+        spdlog::debug("[HOOK] Actor::PlayASound - Actor: {} (ptr: {:p}), FormID: 0x{:08X}, arg3: {}, flags: 0x{:08X}",
                      actorName ? actorName : "<null>", (void*)a_this, a_formID, a_arg3, a_flags);
         
         // Check if this is our tracked speaker
         bool isTracked = g_expectingDialogueAudio && a_this && a_this->GetFormID() == g_lastSpeakerFormID;
         if (isTracked) {
-            spdlog::info("  -> THIS IS THE TRACKED DIALOGUE SPEAKER!");
+            spdlog::debug("  -> THIS IS THE TRACKED DIALOGUE SPEAKER!");
             
             // Check if this is dialogue audio via MenuTopicManager
             bool isDialogue = IsDialogueSpeaker(a_this);
-            spdlog::info("  MenuTopicManager isDialogue check: {}", isDialogue);
+            spdlog::debug("  MenuTopicManager isDialogue check: {}", isDialogue);
             
             if (isDialogue) {
                 auto menuTopicManager = RE::MenuTopicManager::GetSingleton();
@@ -61,7 +61,7 @@ namespace ActorPlaySoundHook
                 }
                 
                 if (shouldBlock) {
-                    spdlog::info("  -> BLOCKING DIALOGUE AUDIO - Invalidating sound handle");
+                    spdlog::debug("  -> BLOCKING DIALOGUE AUDIO - Invalidating sound handle");
                     a_result.soundID = RE::BSSoundHandle::kInvalidID;
                     a_result.state = RE::BSSoundHandle::AssumedState::kStopped;
                     return;
@@ -78,7 +78,7 @@ namespace ActorPlaySoundHook
         spdlog::info("Installing Actor::PlayASound hook...");
         
         // Actor::PlayASound: RELOCATION_ID(36730, 37743)
-        REL::Relocation<std::uintptr_t> PlayASoundAddr{ RELOCATION_ID(36730, 37743) };
+        REL::Relocation<std::uintptr_t> PlayASoundAddr{ REL::VariantID(36730, 37743, 0x604830) };
         
         auto& trampoline = SKSE::GetTrampoline();
         

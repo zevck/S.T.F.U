@@ -17,7 +17,6 @@ export const SKSE_API = {
     log('[SKSE_API] Initializing...');
     window.SKSE_API = {
       call: (eventName: string, ...args: any[]) => {
-        log(`[SKSE_API] Event received: ${eventName}`);
         const filtered = listeners.filter((listener) => listener.eventName === eventName);
 
         for (const listener of filtered) {

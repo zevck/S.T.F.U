@@ -1,5 +1,4 @@
 #include "PrismaUIMenu.h"
-#include "STFUMenu.h"
 #include "Config.h"
 #include "SettingsPersistence.h"
 #include "TopicResponseExtractor.h"
@@ -390,7 +389,7 @@ void PrismaUIMenu::Toggle()
         // Unfocus and hide
         prismaUI_->Unfocus(view_);
         prismaUI_->Hide(view_);
-        spdlog::info("[PrismaUIMenu] Menu closed");
+        spdlog::debug("[PrismaUIMenu] Menu closed");
     } else {
         // Show and focus
         prismaUI_->Show(view_);
@@ -401,7 +400,7 @@ void PrismaUIMenu::Toggle()
         SendBlacklistData();
         SendWhitelistData();
         
-        spdlog::info("[PrismaUIMenu] Menu opened");
+        spdlog::debug("[PrismaUIMenu] Menu opened");
     }
 }
 
@@ -449,7 +448,7 @@ void PrismaUIMenu::SendHistoryData()
         
         prismaUI_->Invoke(view_, jsCode.c_str());
         
-        spdlog::info("[PrismaUIMenu] Successfully invoked updateHistory");
+        spdlog::debug("[PrismaUIMenu] Successfully invoked updateHistory");
     } catch (const std::exception& e) {
         spdlog::error("[PrismaUIMenu] Failed to send history data: {}", e.what());
     }
@@ -822,7 +821,7 @@ void PrismaUIMenu::SendBlacklistData()
         
         prismaUI_->Invoke(view_, jsCode.c_str());
         
-        spdlog::info("[PrismaUIMenu] Successfully invoked updateBlacklist");
+        spdlog::debug("[PrismaUIMenu] Successfully invoked updateBlacklist");
     } catch (const std::exception& e) {
         spdlog::error("[PrismaUIMenu] Failed to send blacklist data: {}", e.what());
     }
@@ -1682,8 +1681,7 @@ void PrismaUIMenu::OnOpenManualEntry(const char* data)
         
         spdlog::info("[PrismaUIMenu::OnOpenManualEntry] Opening manual entry for {}", isWhitelist ? "whitelist" : "blacklist");
         
-        // Call STFUMenu to open the manual entry modal
-        STFUMenu::OpenManualEntry(isWhitelist);
+        // Manual entry is handled entirely within the PrismaUI — no legacy modal needed.
         
     } catch (const std::exception& e) {
         spdlog::error("[PrismaUIMenu::OnOpenManualEntry] Exception: {}", e.what());
@@ -2746,7 +2744,7 @@ void PrismaUIMenu::SendWhitelistData()
         
         prismaUI_->Invoke(view_, jsCode.c_str());
         
-        spdlog::info("[PrismaUIMenu] Successfully invoked updateWhitelist");
+        spdlog::debug("[PrismaUIMenu] Successfully invoked updateWhitelist");
     } catch (const std::exception& e) {
         spdlog::error("[PrismaUIMenu] Failed to send whitelist data: {}", e.what());
     }
@@ -3434,6 +3432,7 @@ void PrismaUIMenu::OnImportScenes(const char* data)
     spdlog::info("[PrismaUIMenu::OnImportScenes] Import hardcoded scenes requested");
     
     try {
+        // Import ambient scenes, bard songs, and follower commentary
         auto* db = DialogueDB::GetDatabase();
         if (!db) {
             spdlog::error("[PrismaUIMenu::OnImportScenes] Database not available");
@@ -3442,8 +3441,18 @@ void PrismaUIMenu::OnImportScenes(const char* data)
             return;
         }
         
-        // Call the existing STFUMenu function that handles scene import
-        STFUMenu::ReimportHardcodedScenes();
+        auto scenesList = Config::GetHardcodedScenesList();
+        db->ImportHardcodedScenes(scenesList, "Scene");
+        spdlog::info("[PrismaUIMenu::OnImportScenes] Imported {} ambient scenes", scenesList.size());
+        
+        auto bardSongs = Config::GetBardSongQuestsList();
+        std::vector<std::string> bardScenes(bardSongs.begin(), bardSongs.end());
+        db->ImportHardcodedScenes(bardScenes, "BardSongs");
+        spdlog::info("[PrismaUIMenu::OnImportScenes] Imported {} bard song quests", bardScenes.size());
+        
+        auto followerScenes = Config::GetFollowerCommentaryScenesList();
+        db->ImportHardcodedScenes(followerScenes, "FollowerCommentary");
+        spdlog::info("[PrismaUIMenu::OnImportScenes] Imported {} follower commentary scenes", followerScenes.size());
         
         spdlog::info("[PrismaUIMenu::OnImportScenes] Scene import completed successfully");
         

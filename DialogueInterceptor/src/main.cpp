@@ -7,7 +7,6 @@
 #include "SceneHook.h"
 #include "SceneMonitor.h"
 #include "Config.h"
-#include "STFUMenu.h"
 #include "TopicResponseExtractor.h"
 #include "PrismaUIMenu.h"
 #include "SettingsPersistence.h"
@@ -17,6 +16,29 @@
 #include <algorithm>
 #include <string>
 #include <unordered_set>
+
+// Watch for the "Loading Menu" opening — at that point the engine has already stopped all
+// running scenes, so it is safe to patch conditions. Patching on open (not close) ensures
+// conditions are in place before the new cell's scenes are allowed to start.
+class LoadingMenuSink : public RE::BSTEventSink<RE::MenuOpenCloseEvent>
+{
+public:
+    static LoadingMenuSink* GetSingleton()
+    {
+        static LoadingMenuSink instance;
+        return &instance;
+    }
+
+    RE::BSEventNotifyControl ProcessEvent(
+        const RE::MenuOpenCloseEvent* a_event,
+        RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override
+    {
+        if (a_event && a_event->opening && a_event->menuName == "Loading Menu") {
+            SceneHook::PatchDeferredScenes();
+        }
+        return RE::BSEventNotifyControl::kContinue;
+    }
+};
 
 // Forward declare function for PopulateTopicInfo to check if dialogue should be force-logged
 namespace DialogueItemCtorHook {
@@ -61,7 +83,7 @@ namespace DialogueItemCtorHook
             const char* topicEditorID = a_topic->GetFormEditorID();
             const char* speakerName = a_speaker->GetName();
             uint16_t subtype = Config::GetAccurateSubtype(a_topic);
-            spdlog::info("[CTOR ENTRY] Speaker: {}, Topic: {}, TopicInfo: 0x{:08X}, Subtype: {}",
+            spdlog::debug("[CTOR ENTRY] Speaker: {}, Topic: {}, TopicInfo: 0x{:08X}, Subtype: {}",
                 speakerName ? speakerName : "Unknown",
                 topicEditorID ? topicEditorID : "(none)",
                 a_topicInfo->GetFormID(),
@@ -71,7 +93,7 @@ namespace DialogueItemCtorHook
         // If SkyrimNet is loaded AND this is MENU dialogue AND should be SkyrimNet-blocked, return nullptr
         // This prevents SkyrimNet from seeing this dialogue while allowing subtitles to work normally
         // NOTE: Only for MENU dialogue - background/ambient dialogue uses ConstructResponse blocking
-        if (STFUMenu::IsSkyrimNetLoaded() && a_topic && a_topicInfo && a_speaker) {
+        if (Config::IsSkyrimNetLoaded() && a_topic && a_topicInfo && a_speaker) {
             const char* topicEditorID = a_topic->GetFormEditorID();
             const char* speakerName = a_speaker->GetName();
             uint16_t subtype = Config::GetAccurateSubtype(a_topic);
@@ -115,7 +137,7 @@ namespace DialogueItemCtorHook
                     // First check PopulateTopicInfo's recent logs
                     if (PopulateTopicInfoHook::WasRecentlyLogged(a_speaker->GetFormID(), responseText, 5000)) {
                         alreadyLogged = true;
-                        spdlog::info("[CTOR NULLPTR] DUPLICATE - PopulateTopicInfo already logged this, skipping: text='{}'",
+                        spdlog::debug("[CTOR NULLPTR] DUPLICATE - PopulateTopicInfo already logged this, skipping: text='{}'",
                             responseText.substr(0, 50));
                     }
                     
@@ -139,7 +161,7 @@ namespace DialogueItemCtorHook
                                 int64_t timeSince = now - key.timestamp;
                                 if (timeSince < 5000) { // Within last 5 seconds
                                     alreadyLogged = true;
-                                    spdlog::info("[CTOR NULLPTR] DUPLICATE - Already manually logged {}ms ago, skipping: text='{}'",
+                                    spdlog::debug("[CTOR NULLPTR] DUPLICATE - Already manually logged {}ms ago, skipping: text='{}'",
                                         timeSince, responseText.substr(0, 50));
                                     break;
                                 }
@@ -154,13 +176,13 @@ namespace DialogueItemCtorHook
                         trimmedText.erase(trimmedText.find_last_not_of(" \t\n\r") + 1);
                         
                         if (trimmedText.empty()) {
-                            spdlog::info("[CTOR NULLPTR] Skipping log - no text for TopicInfo 0x{:08X}",
+                            spdlog::debug("[CTOR NULLPTR] Skipping log - no text for TopicInfo 0x{:08X}",
                                 a_topicInfo->GetFormID());
                             return nullptr;
                         }
                         
                         // Manually log to database BEFORE returning nullptr (PopulateTopicInfo won't log it)
-                        spdlog::info("[CTOR NULLPTR] Manually logging to database before returning nullptr");
+                        spdlog::debug("[CTOR NULLPTR] Manually logging to database before returning nullptr");
                         
                         DialogueDB::DialogueEntry entry;
                         entry.timestamp = now / 1000;
@@ -207,7 +229,7 @@ namespace DialogueItemCtorHook
                         
                         // Log to database
                         DialogueDB::GetDatabase()->LogDialogue(entry);
-                        spdlog::info("[CTOR NULLPTR] Logged to database: speaker=0x{:08X}, topicInfo=0x{:08X}, text='{}'",
+                        spdlog::debug("[CTOR NULLPTR] Logged to database: speaker=0x{:08X}, topicInfo=0x{:08X}, text='{}'",
                             entry.speakerFormID, entry.topicInfoFormID, responseText.substr(0, 50));
                         
                         // Track that this was manually logged (using speaker + responseText as key)
@@ -218,7 +240,7 @@ namespace DialogueItemCtorHook
                         }
                     }
                     
-                    spdlog::info("[CTOR NULLPTR] Returning nullptr to block dialogue from SkyrimNet: Topic='{}', Speaker='{}'", 
+                    spdlog::debug("[CTOR NULLPTR] Returning nullptr to block dialogue from SkyrimNet: Topic='{}', Speaker='{}'", 
                         topicEditorID ? topicEditorID : "(none)", 
                         speakerName ? speakerName : "Unknown");
                     
@@ -272,7 +294,7 @@ namespace DialogueItemCtorHook
             if (it->speakerFormID == speakerFormID && it->responseText == responseText) {
                 int64_t timeSince = now - it->timestamp;
                 if (timeSince < 5000) {
-                    spdlog::info("[CTOR NULLPTR] Found nullptr-blocked dialogue {}ms ago, PopulateTopicInfo should skip", timeSince);
+                    spdlog::debug("[CTOR NULLPTR] Found nullptr-blocked dialogue {}ms ago, PopulateTopicInfo should skip", timeSince);
                     return true; // Don't erase - multiple PopulateTopicInfo calls need to see it
                 }
             }
@@ -284,7 +306,7 @@ namespace DialogueItemCtorHook
     
     void Install()
     {
-        REL::Relocation<std::uintptr_t> target{ RELOCATION_ID(34413, 35220) };
+        REL::Relocation<std::uintptr_t> target{ REL::VariantID(34413, 35220, 0x572FD0) };
         _DialogueItemCtor = reinterpret_cast<DialogueItemCtor_t>(target.address());
         
         DetourTransactionBegin();
@@ -303,52 +325,41 @@ namespace DialogueItemCtorHook
 
 namespace
 {
-    // SKSEMenuFramework input event callback for menu hotkey
-    // Lifetime: Created during kDataLoaded, automatically cleaned up by unique_ptr on DLL unload
-    // SKSEMenuFramework maintains weak references, so no explicit unregistration needed
-    static std::unique_ptr<SKSEMenuFramework::Model::InputEvent> g_inputHandler;
-    
-    bool __stdcall HandleInputEvent(RE::InputEvent* a_event)
+    // Input event sink for the PrismaUI menu hotkey
+    class InputEventSink : public RE::BSTEventSink<RE::InputEvent*>
     {
-        if (!a_event) {
-            return false;
+    public:
+        static InputEventSink* GetSingleton()
+        {
+            static InputEventSink singleton;
+            return &singleton;
         }
-        
-        for (auto event = a_event; event; event = event->next) {
-            if (event->eventType != RE::INPUT_EVENT_TYPE::kButton) {
-                continue;
+
+        RE::BSEventNotifyControl ProcessEvent(RE::InputEvent* const* a_event,
+                                              RE::BSTEventSource<RE::InputEvent*>*) override
+        {
+            if (!a_event) return RE::BSEventNotifyControl::kContinue;
+            for (auto* event = *a_event; event; event = event->next) {
+                if (event->eventType != RE::INPUT_EVENT_TYPE::kButton) continue;
+                const auto* button = static_cast<const RE::ButtonEvent*>(event);
+                if (!button->IsDown()) continue;
+                const auto keyCode = button->GetIDCode();
+                const auto& settings = Config::GetSettings();
+                if (keyCode == settings.menuHotkey) {
+                    spdlog::debug("[HOTKEY] Menu hotkey (0x{:X}) detected - toggling menu", keyCode);
+                    PrismaUIMenu::Toggle();
+                }
             }
-            
-            const auto button = static_cast<RE::ButtonEvent*>(event);
-            if (!button->IsDown()) {
-                continue;
-            }
-            
-            const auto keyCode = button->GetIDCode();
-            
-            // If in hotkey capture mode, prioritize capturing the key
-            // if (STFUMenu::IsCapturingHotkey()) {  // DISABLED
-            //     if (STFUMenu::CaptureHotkey(keyCode)) {  // DISABLED
-            //         return true;  // Consume the event  // DISABLED
-            //     }  // DISABLED
-            // }  // DISABLED
-            
-            // Check for configured menu hotkey (when not in capture mode)
-            const auto& settings = Config::GetSettings();
-            if (keyCode == settings.menuHotkey) {
-                spdlog::debug("[HOTKEY] Menu hotkey (0x{:X}) detected - toggling menu", keyCode);
-                // STFUMenu::Toggle();  // DISABLED: Using PrismaUI
-                PrismaUIMenu::Toggle();
-            }
-            
-            // Note: We intentionally DON'T consume keyboard events while typing
-            // ImGui handles this automatically via WantCaptureKeyboard
-            // Consuming events here would block mouse wheel from reaching ImGui
+            return RE::BSEventNotifyControl::kContinue;
         }
-        
-        // Always return false to let ImGui receive all input including mouse wheel
-        return false;
-    }
+
+    private:
+        InputEventSink() = default;
+        InputEventSink(const InputEventSink&) = delete;
+        InputEventSink(InputEventSink&&) = delete;
+        InputEventSink& operator=(const InputEventSink&) = delete;
+        InputEventSink& operator=(InputEventSink&&) = delete;
+    };
     
     // Event sink for cell loading - reapplies scene conditions on loading screen transitions
     class CellLoadEventHandler : public RE::BSTEventSink<RE::TESCellFullyLoadedEvent>
@@ -388,30 +399,6 @@ namespace
             {
                 // Load configuration first
                 Config::Load();
-                
-                // Check if SkyrimNet is loaded
-                bool skyrimNetLoaded = false;
-                auto* dataHandler = RE::TESDataHandler::GetSingleton();
-                if (dataHandler) {
-                    for (auto* file : dataHandler->files) {
-                        if (file) {
-                            auto filenameSV = file->GetFilename();
-                            if (filenameSV.empty()) continue;
-                            std::string filename(filenameSV);
-                            std::transform(filename.begin(), filename.end(), filename.begin(), ::tolower);
-                            if (filename == "skyrimnet.esp") {
-                                skyrimNetLoaded = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                
-                if (skyrimNetLoaded) {
-                    spdlog::info("[SKYRIMNET] SkyrimNet.esp detected - will use nullptr blocking for menu dialogue");
-                } else {
-                    spdlog::info("[SKYRIMNET] SkyrimNet.esp not found - nullptr blocking disabled");
-                }
                 
                 // Initialize dialogue database in Data/SKSE/Plugins/STFU/ for MO2 compatibility
                 // MO2 will virtualize this path and redirect to overwrite folder on first creation
@@ -466,20 +453,23 @@ namespace
                 // Install DialogueItem::Ctor hook using Detours (better hook priority than SKSE trampoline)
                 DialogueItemCtorHook::Install();
                 
-                // Initialize STFU menu (must be done after database init)
-                // STFUMenu::Initialize();  // DISABLED: Using PrismaUI instead
-
                 // Initialize PrismaUI menu (must be done after database init)
                 PrismaUIMenu::Initialize();
-                if (!SKSEMenuFramework::IsInstalled()) {
-                    spdlog::error("SKSEMenuFramework is not installed!");
+                if (auto* inputManager = RE::BSInputDeviceManager::GetSingleton()) {
+                    inputManager->AddEventSink(InputEventSink::GetSingleton());
+                    spdlog::info("Registered menu hotkey handler");
                 } else {
-                    g_inputHandler = std::make_unique<SKSEMenuFramework::Model::InputEvent>(HandleInputEvent);
-                    spdlog::info("Registered menu hotkey (Insert key)");
+                    spdlog::error("Failed to get BSInputDeviceManager - menu hotkey will not work!");
                 }
                 
-                // Cell load event handler not needed - conditions persist through cell changes
-                
+                // Register a menu-event sink that watches for the Loading Menu closing.
+                // This fires after every loading screen (door transitions, fast travel, save loads)
+                // and is more reliable than TESLoadGameEvent which only fires on save loads.
+                if (auto* ui = RE::UI::GetSingleton()) {
+                    ui->AddEventSink(LoadingMenuSink::GetSingleton());
+                    spdlog::info("[MAIN] Registered LoadingMenuSink for deferred scene patching");
+                }
+
                 // Patch scenes immediately after data is loaded to prevent early scenes from starting unblocked
                 spdlog::info("Patching scenes...");
                 SceneHook::PatchScenes();
@@ -495,6 +485,8 @@ namespace
                 SettingsPersistence::LoadSettings();
                 // Flush database queue periodically
                 DialogueDB::GetDatabase()->FlushQueue();
+                // Note: deferred scene patching is handled by LoadingMenuSink (fires when
+                // the loading screen closes), so no explicit PatchDeferredScenes() call needed here.
             }
             break;
             
@@ -507,31 +499,9 @@ namespace
             break;
             
         case SKSE::MessagingInterface::kPreLoadGame:
-            {
-                // Note: g_inputHandler cleanup not needed here - it persists across save loads
-                // Only cleaned up on DLL unload via unique_ptr destructor
-            }
             break;
         }
     }
-}
-
-extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Query(const SKSE::QueryInterface* a_skse, SKSE::PluginInfo* a_info)
-{
-    a_info->infoVersion = SKSE::PluginInfo::kVersion;
-    a_info->name = PLUGIN_NAME;
-    a_info->version = 1;
-
-    if (a_skse->IsEditor()) {
-        return false;
-    }
-
-    const auto ver = a_skse->RuntimeVersion();
-    if (ver < SKSE::RUNTIME_SSE_1_5_39) {
-        return false;
-    }
-
-    return true;
 }
 
 extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_skse)

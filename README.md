@@ -1,364 +1,120 @@
-# S.T.F.U - Skyrim Talk Filter Utility
-Skyrim Talk Filter Utility allows you to block dialogue from playing at the source with filters for 60+ categories. Block only what you want blocked.
+# S.T.F.U — Skyrim Talk Filter Utility
+Skyrim Talk Filter Utility gives you full control over what dialogue you hear in game. You can use the intuitive UI to view all recent dialogue and add it to the blacklist. S.T.F.U also ships with options for pre-configured blocking categories. All blocking is handled instantly at runtime.
 
-## What This Does
-&emsp;S.T.F.U uses the power of Mutagen/Synthesis to patch dialogue responses with conditions that must be true in order for it to be used. Skyrim organizes responses into topics which are assigned into subtypes like Hello, CombatToNormal, KnockOverObject, Taunts, etc. S.T.F.U assigns each subtype with it's own condition variable which can be toggled on or off in the MCM.
-
-&emsp;The patcher scans your entire load order for mods and copies the dialogue into a new ESP with the conditions applied. The patcher doesn't touch any important dialogue like quests or dialogue trees. It is highly customizable with blacklists, whitelists, configs, and 60+ separate filters.
-
-
-### Blocked Dialogue Types
-**Combat Dialogue**: AcceptYield, AlertIdle, AlertToCombat, AlertToNormal, AllyKilled, Attack, AvoidThreat, Bash, Block, Bleedout, CombatToLost, CombatToNormal, Death, DetectFriendDie, Flee, Hit, LostIdle, LostToCombat, LostToNormal, NormalToAlert, NormalToCombat, ObserveCombat, PickpocketCombat, PowerAttack, Taunt, and Yield
-  - There is a separate toggle for combat grunt sounds so combat isn't awkwardly silent
-
-**Generic Dialogue**: ActorCollideWithActor, Assault, AssaultNC, BarterExit, DestroyObject, Goodbye, Hello, Idle, KnockOverObject, LockedObject, Murder, MurderNC, NoticeCorpse, PickpocketNC, PickpocketTopic, PlayerCastProjectileSpell, PlayerCastSelfSpell, PlayerInIronSights, PlayerShout, PursueIdleTopic, ShootBow, StandOnFurniture, Steal, StealFromNC, SwingMeleeWeapon, TimeToGo, TrainingExit, Trespass, TrespassAgainstNC, WerewolfTransformCrime, and ZKeyObject
-
-**Follower Dialogue**: Agree, ExitFavorState, Moral Refusal, Refuse, Show, and Follower Commentary
-
-**Other**: VoicePower, Bard songs, a curated list of safe to block scenes, and a custom user-defined blacklist
-
-***NEW***: Prevent certain topics from being included in SkyrimNet's event history. Topics are defined in STFU_SkyrimNetFilter.yaml. An SKSE plugin hijacks `DialogueItem::Ctor` and sets it to null after dialogue plays but before SkyrimNet logs it. Experimental.
-
-This mod does **NOT** block dialogue with the Scene or Custom subtypes, as these are important for game functions and quests. Certain topics belonging to those subtypes can be added to the blacklist if safe.
-
-**DISCLAIMER**: It's possible that a dialogue response that gets blocked could have have an important script attached despite not belonging to the Custom or Scene subtypes. So far in my 80+ hours of testing I've only had one minor script related issue which has since been fixed.
+*No longer requires a Synthesis patcher
 
 ## Requirements
-- **[SkyUI](https://www.nexusmods.com/skyrimspecialedition/mods/12604)** (for MCM)
-- **[Synthesis](https://github.com/Mutagen-Modding/Synthesis/releases)** (patcher framework)
-- **[.NET 8.0 Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)** or newer
+- Skyrim Special Edition (1.5.97 or AE) or Skyrim VR
+- [SKSE64](https://skse.silverlock.org/)
+- [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444)
+- [SkyrimNet Prisma Dashboard](https://www.nexusmods.com/skyrimspecialedition/mods/148718) *(for the in-game interface)*
 
-## Installation
+(Install it like any other mod)
 
-### Step 1: Install the Mod
-1. Install **S.T.F.U** via your mod manager
-2. Enable the mod
-3. **Important**: Place `STFU.esp` and any mods with dialogue **ABOVE** any other Synthesis patches in your load order (`Synthesis.esp` for example)
-   - If `STFU.esp` is after another patch, the patcher won't detect it
+## How It Works
+S.T.F.U runs silently in the background and checks every line of dialogue before it plays. If a line matches your configured rules, it either silences it or blocks it entirely — the NPC keeps moving and doing what they were doing, they just don't say anything.
 
-### Step 2: Add Patcher to Synthesis
-1. Launch Synthesis through your mod manager
-2. Create a new group in the top left corner named "STFU_Patch" or similar
-3. Click **"External Program"** in the top left corner
-4. Browse to STFU.exe in the "STFU Patcher" folder in the mod directory
-5. Click **"Confirm"**
-6. Confirm "STFU" is in the new group
-7. Run (this will create a new ESP)
+There are two ways to block dialogue:
 
-<p align="center">
-  <img src="images/stfuSynthesis.png">
-</p>
+### Soft Block *(recommended)*
+The audio is silenced and subtitles are hidden, but everything else continues normally. Quest scripts run, follower commands work, conversation flags get set — the game doesn't know anything was blocked. The NPC simply says nothing.
 
-*You will need to rerun the patcher whenever you add or remove mods containing dialogue. If you have multiple patchers all in one group, you will have to rerun all of them each time.
+### Hard Block
+The dialogue or scene is stopped from running at all. Scripts do **not** execute. Only use this for purely ambient scenes (like bard songs) that have no quest or script involvement — applying a hard block to the wrong thing can break quests.
 
-### Step 3: Enable the new ESP in your mod manager
-1. Find the new ESP and enable it (it will be named after the Synthesis group)
-2. Load the new ESP after STFU.esp and any mods containing dialogue
+## What You Can Block
+**Individual topics** — silence a specific line or set of lines, identified by name or ID.
 
-### Step 4: Load the game and open the MCM
-1. Launch the game and open the S.T.F.U MCM
-2. Enable the categories you want to block
+**Scenes** — stop an entire scene sequence. Bard performances, inn conversations, ambient banter. Blocked by injecting conditions at runtime with no ESP edits required.
+
+**Quests** — block all dialogue from a specific quest at once. Useful for silencing entire systems like follower management mods.
+
+**Subtypes** — the broadest option. Every line of dialogue in Skyrim has a subtype: `Hello`, `Idle`, `Attack`, `Hit`, `Taunt`, etc. Toggling a subtype off silences thousands of lines at once. See [DIALOGUE_SUBTYPES.md](DIALOGUE_SUBTYPES.md) for the full list.
+
+**Whitelist** — mark topics, scenes, quests, or plugins as protected so they are *never* blocked, even if they match a blacklist rule. Use this to punch exceptions through broad filters.
+
+## In-Game Interface
+Open the S.T.F.U menu with the **Insert** key (configurable in the MCM). Requires [SkyrimNet Prisma Dashboard](https://www.nexusmods.com/skyrimspecialedition/mods/148718).
 
 <p align="center">
-  <img src="images/stfuMCM.png">
+  <img src="images/stfumenu.jpg">
 </p>
 
-### Example load order:
-- [All mods containing dialogue]
-- STFU.esp
-- STFU_Patch.esp (or whatever you named the group)
-- [Other Synthesis patches]
+### History Tab
+A live, searchable log of every line of dialogue that has played recently — who said it, what quest it belongs to, what subtype it is, and whether it was blocked. Click any entry to open a detail panel where you can immediately add it to your blacklist or whitelist, set the blocking mode, and configure actor/faction filters. This is the fastest way to silence something you just heard in-game.
 
-## Configuration
-All config files are in `\STFU Patcher\Config\`. 
+### Blacklist Tab
+The full list of everything currently being blocked. Browse, search, and edit existing entries. Click any entry to change its blocking mode, restrict it to specific actors or factions, or remove it entirely. Supports multi-selection with Ctrl+Click and Shift+Click for bulk edits.
 
-For a more detailed guide on configuration see [CONFIG_TUTORIAL.md](https://github.com/zevck/S.T.F.U/blob/main/CONFIG_TUTORIAL.md)
+### Whitelist Tab
+The full list of everything that is protected from being blocked. Same editing controls as the blacklist tab.
 
-### STFU_Config.ini
-```ini
-[General]
-; Only process dialogue topics from Skyrim.esm and official DLCs
-vanillaOnly = false
-; Don't patch any responses with scripts attached, overkill and not recommended
-safeMode = false
+### Settings Tab
+- **Enable Blacklist Filter** — master on/off for all blacklist rules
+- **Block Ambient Scenes** — toggle the built-in ambient scene blocking
+- **Block Bard Songs** — toggle bard performance blocking
+- **Subtype toggles** — enable or disable each dialogue subtype individually, with Enable All / Disable All per category
+- **Hotkey** — click to rebind the menu key
+- **Import Scenes** — restore the default set of blocked scenes and bard songs
+- **Import from YAML** — apply changes made to your YAML config files (see below)
 
-[Combat]
-; Combat-related dialogue subtypes
-filterAcceptYield = true
-filterAlertIdle = true
-filterAlertToCombat = true
-filterAlertToNormal = true
-filterAllyKilled = true
-filterAttack = true
-filterAvoidThreat = true
-filterBash = true
-filterBlock = true
-filterBleedout = true
-filterCombatToLost = true
-filterCombatToNormal = true
-filterDeath = true
-filterDetectFriendDie = true
-filterFlee = true
-filterHit = true
-filterLostIdle = true
-filterLostToCombat = true
-filterLostToNormal = true
-filterNormalToAlert = true
-filterNormalToCombat = true
-filterObserveCombat = true
-filterPickpocketCombat = true
-filterPowerAttack = true
-filterPreserveGrunts = true
-filterTaunt = true
-filterYield = true
+### Actor and Faction Filtering
+Any blacklist or whitelist entry can be scoped to specific actors or factions. For example: silence a specific topic only when spoken by a particular NPC, or protect a topic only when the speaker belongs to a certain faction.
 
-[Generic]
-; Generic dialogue (non-combat)
-filterActorCollideWithActor = true
-filterAssault = true
-filterAssaultNC = true
-filterBarterExit = true
-filterDestroyObject = true
-filterGoodbye = true
-filterHello = true
-filterIdle = true
-filterKnockOverObject = true
-filterLockedObject = true
-filterMurder = true
-filterMurderNC = true
-filterNoticeCorpse = true
-filterPickpocketNC = true
-filterPickpocketTopic = true
-filterPlayerCastProjectileSpell = true
-filterPlayerCastSelfSpell = true
-filterPlayerInIronSights = true
-filterPlayerShout = true
-filterPursueIdleTopic = true
-filterShootBow = true
-filterStandOnFurniture = true
-filterSteal = true
-filterStealFromNC = true
-filterSwingMeleeWeapon = true
-filterTimeToGo = true
-filterTrainingExit = true
-filterTrespass = true
-filterTrespassAgainstNC = true
-filterWerewolfTransformCrime = true
-filterZKeyObject = true
+## Configuring Without the UI
+Topics, scenes, and quests can be added to your blacklist and whitelist through plain text YAML files — useful for sharing configs, batch-adding entries, or setting things up before launching the game. Actor and faction filtering requires the in-game UI.
 
-[Follower]
-; Follower-specific dialogue
-filterAgree = true
-filterExitFavorState = true
-filterFollowerCommentary = true
-filterMoralRefusal = true
-filterRefuse = true
-filterShow = true
-
-[Other]
-; Miscellaneous dialogue filtering
-filterBardSongs = true
-filterBlacklist = true
-; Curated list of repeating town scenes
-filterScenes = true
-filterVoicePowerEndLong = true
-filterVoicePowerEndShort = true
-filterVoicePowerStartLong = true
-filterVoicePowerStartShort = true
+### Where Are the Files?
+On first load, S.T.F.U generates blank template files at:
 ```
-### STFU_Blacklist.yaml
-Blacklist specific dialogue topics or scenes. Becareful what you include in here, some topics and scenes are essential for the game to function.
+SKSE/Plugins/STFU/import/
+├── STFU_Blacklist.yaml
+├── STFU_Whitelist.yaml
+└── STFU_SubtypeOverrides.yaml
+```
+
+### Using the Dialogue Log
+S.T.F.U logs every intercepted line to:
+```
+SKSE/Plugins/STFU/STFU_DialogueLog.txt
+```
+Each entry shows the topic's EditorID or FormKey, the speaker, and what happened to it. You can copy entries directly into your YAML files.
+```
+[14:01:34] [ALLOWED] [Hello] [DialogueWhiterun] [02707A] Nazeem: Do you get to the Cloud District very often? Oh, what am I saying - of course you don't.
+  - 02707A  <--- Copy this
+```
+
+### YAML Format
+Add entries by EditorID (preferred) or FormKey:
 ```yaml
-# Blacklist - Topics that will be blocked when MCM toggle is OFF
-# Supports both FormKeys (with :) and Editor IDs. Editor IDs are recommended for ESPFE plugins
-# For any ESP or Editor ID with special YAML characters like [, ], {, }, :, #, @, &, *, etc., use quotes
 topics:
- - WICastMagicNonHostileSpellStealthTopic
- - WICastMagicNonHostileSpellHealingTopic
- - WICastMagicNonHostileSpellWeirdTopic
- - WICastMagicNonHostileSpellCourageTopic
- - WICastMagicNonHostileSpellCalmTopic
- 
-plugins: #Block every dialogue response in a plugin. Probably not a good idea
-  -
-  
-#---------------------------
-#      Scene blocking
-#---------------------------
-# Use carefully, this blocks scenes from playing entirely and may break quests that rely on them
+  - WICastMagicNonHostileSpellStealthTopic
+  - 0x012345:SomeMod.esp
+
 scenes:
   - WhiterunMikaelSongScene
-  - WICraftItem01Scene
-  - WICraftItem02Scene
-  - WICraftItem03Scene
-  # nwsFollowerFramework.esp
-  - nwsFollowerLeveledScene
-  
-quests: # Block every scene referenced by a quest
-  - DA07MuseumScenes
 
-quest_patterns: # EditorIDs only. Use * wildcard to catch multiple quests with similar naming schemes
-  # Companions Dialogue Bundle.esp
-  - "_JQ_CompanionsScenes*"
+quests:
+  - nwsFollowerController
 ```
+Use quotes for any identifier containing YAML special characters (`[`, `]`, `{`, `}`, `:`, `#`, etc.).
 
-### STFU_Whitelist.yaml
-**Never patch** specific dialogue (protection list):
-```yaml
-# Whitelist - Topics that will NEVER be touched by the patcher
-# Use this to exclude specific dialogue you want to keep
-# Supports both FormKeys and Editor IDs. Editor IDs are recommended for ESPFE plugins
-# For any ESP or Editor ID with special YAML characters like [, ], {, }, :, #, @, &, *, etc., use quotes
-topics:
-  # Example: Editor ID
-  - WEJS27Hello #Taunting adventurer greeting
-  # Example FormKey
-  - 062103:Skyrim.esm #Scavenger encounter dialogue
-  - 04C592:Skyrim.esm #Draugr Attack dialogue (shouts and laughs)
-  - 04C2D2:Skyrim.esm #Ayarg garag gar! (giants)
-  # A Cat's Life cat noises
-  - ACLDialogueCatsHello
-  - ACLCatDialogueFollow
-  - ACLCatDialogueBranchReFollowTopic
-  - ACLCatDialogueBranchMortalityTopic
-  - ACLCatDialogueAdopt
-  - ACLCatDialogueDismiss
-  - ACLCatDialogueAbandonReject
-  - ACLCatDialogueWait
-  - ACLCatDialogueCommand
-  - ACLDialogueCatsHit
-  - CLCatDialogueAssignHome
-  - ACLCatDialoguePet
-  - ACLCatDialogueAbandonConfirm
-  - ACLCatDialogueGiveYarnTopic
-  - ACLDialogueCatsMiscSwingWeapon
-  - ACLDialogueCatsMiscBow
-  - ACLDialogueCatsMiscShout
-  - ACLDialogueCatsFlee
-  - ACLDialogueCatsMiscCollide
-
-plugins:
-  # Example: Don't filter any dialogue from Skyrim on Skooma
-  - "Skyrim On Skooma.esp"
-  
-scenes:
-  - 
-
-quests: 
-  # Great Cities (houses won't be purchasable if Hello dialogue doesn't trigger quest)
-  - WinterholdBuyHomeTGCoWH
-  - DialogueKynesgroveBuyHomeTGCoKG
-quest_patterns:
- - 
-```
+After editing a YAML file, use **Import from YAML** in the Settings tab or MCM to apply your changes — no restart required.
 
 ### STFU_SubtypeOverrides.yaml
-Override subtype classification for specific topics. Originally to fix miscategorized dialogue, it can also be used to blacklist a topic by assigning it to a specific subtype's MCM toggle instead of the blacklist MCM toggle:
+If a topic is miscategorized (assigned the wrong subtype by the game), you can manually correct it here. You can also use this to add blacklisted topics to specific filter categories.
 ```yaml
-# Subtype Overrides - Manually correct miscategorized dialogue
-# Format: key: subtype
-# Key can be FormKey or Editor ID. Editor IDs are recommended for ESPFE plugins.
-# For any ESP or Editor ID with special YAML characters like [, ], {, }, :, #, @, &, *, etc., use quotes
 overrides:
-  DLC2PillarBlockingTopic: Idle #Enthralled worker chants
+  DLC2PillarBlockingTopic: Idle
 ```
 
-After editing configs, re-run Synthesis to apply changes.
+## Finding Dialogue to Block
+If you hear something you want to silence but don't know what it's called, there are three ways to track it down:
 
-### STFU_SkyrimNetFilter.yaml *NEW*
-Prevent certain topics from being logged in SkyrimNet's event history:
-```yaml
-# DialogueInterceptor - Blocked Topics Configuration
-# These topics will be blocked from SkyrimNet logging
-# Scripts still execute (follower commands still work)
-topics:
-  # Merchant/Service Topics
-  - 0x07F6BB  # OfferServiceTopic
-  - 0x09CC92  # RentRoomTopic
-  # Follower Favor States
-  - DialogueFollowerEndFavorState
-  - DialogueFollowerContinueFavorState
-  - DialogueFollowerDoingFavorBlockingTopic
-  - DialogueFollowerFavorStateTopic
-  # Follower Commands
-  - 0x05C80C  # DialogueFollowerDismissTopic
-  - 0x060020  # DialogueFollowerTradeTopic
-  - 0x075083  # DialogueFollowerFollowTopic
-  - 0x075084  # DialogueFollowerWaitTopic
-  - 0x0B0EE6  # Additional follow topic
-  # NFF
-  - nwsFollowerXStorageTopic
+**Dialogue Log** — the easiest option. The log at `Data/SKSE/Plugins/STFU/STFU_DialogueLog.txt` records every line as it plays with its EditorID. Search for something you heard and copy the ID straight into your config.
 
-quests: # Block all topics from these quests from being logged
-  - nwsFollowerController #NFF follower management dialogue
-  - sosQuest #Simple Outfit System dialogue controls
-  
-subtypes: # Block topics by subtype from being logged in SkyrimNet's event history
-  - Hello
-```
+**In-game History tab** — if you have the in-game UI open, you can see lines as they happen and add them to the blacklist with one click.
 
-You don't need to need to re-run the patcher if only editing STFU_SkyrimNetFilter.yaml
 
-## Troubleshooting
 
-### // Missing globals, topics aren't patched
-**Problem**: STFU.esp not detected by Synthesis
-  
-**Solution**: 
-1. Check that `STFU.esp` is enabled in your mod manager
-2. Move STFU.esp **ABOVE** any other Synthesis patches in load order
-3. Re-run Synthesis
 
-### // Config changes not taking effect
-After editing YAML/INI files, you must re-run Synthesis to regenerate the patch.
-
-### // Dialogue I want is blocked
-Uncheck the subtype in the MCM or add it to `STFU_Whitelist.yaml`. Look below for how to locate dialogue's FormID or EditorID.
-
-### // Dialogue I don't want is NOT blocked
-Check the subtype in the MCM or add it to `STFU_Blacklist.yaml`. Look below for how to locate dialogue's FormID or EditorID.
-
-### // Patch isn't being updated when re-running Synthesis
-Delete the generated patch ESP and run it again.
-
-### // S.T.F.U MCM is loading but nothing is being blocked
-Make sure the generated patch ESP is enabled and below any mods with dialogue. Check the Synthesis output log to ensure it completed without any errors.
-
-### // Can't find the patch ESP after running
-The ESP will be named after the group the patcher was in. Ensure that the patcher completed successfully without errors.
-
-### // Writing with compression enabled is not currently supported
-Move the STFU patch into it's own group that doesn't have compression enabled.
-
-## Useful Tools
-You can use these to find the EditorID or FormID of dialogue topics so they can be added to configuration yamls. EditorIDs are better, but FormIDs will work fine for non-ESL flagged mods.
-- [xTranslator](https://www.nexusmods.com/skyrimspecialedition/mods/134) Useful for quickly searching through dialogue to find what you want blacklisted or whitelisted
-- [xEdit](https://www.nexusmods.com/skyrimspecialedition/mods/164) More detailed information than xTranslator but slower to search
-  - [Dialogue Search Scipt](https://gist.github.com/tasairis/51e530a1af9e8a4be089328376e41108)
-
-For a guide on how to use these, see [CONFIG_TUTORIAL.md](https://github.com/zevck/S.T.F.U/blob/main/CONFIG_TUTORIAL.md)
-## Reporting Issues
-If you encounter any vanilla dialogue not being blocked when it should, send me the quote and the context that it happened. I won't make patches for modded dialogue, that should be done with the yaml configs.
-
-If you suspect that blocked dialogue broke a quest, please try reloading a save and testing again before blaming me. It's possible a blocked dialogue script somewhere is important, but Skyrim quests can break for any number of reasons. As always, save often.
-
-Ideal test flow:
-  - Test quest with STFU enabled --> Quest doesn't work
-  - Reload and test quest AGAIN with STFU enabled
-    1. Quest works, not my fault
-    2. Quest still doesn't work, continue
-  - Reload and test quest AGAIN with STFU disabled
-    1. Quest still doesn't work, not my fault
-    2. Quest works, continue
-  - Let me know the quest name or editor ID (preferable) and the mod it's from (or vanilla)
-
-Conversely, don't blame other mod authors if blocking dialogue breaks their quests.
-
-If dialogue you want to hear is being blocked, whitelist it or disable that subtype, leave me alone. You know what you signed up for.
-
-If the patcher gives an error when running, close Synthesis and try again, then check the troubleshooting section. If it's still not working send me the log from the Synthesis output window.
-
-Submit a [github issue](https://github.com/zevck/S.T.F.U/issues) if you think something is wrong
-
-## Credits
-- Mutagen/Synthesis Framework

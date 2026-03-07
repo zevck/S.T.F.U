@@ -21,11 +21,11 @@ set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/.." CACHE PATH "Install pr
 
 # ---- Add CommonLibSSE-NG ----
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(RAPIDCSV_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/external/rapidcsv/src" CACHE PATH "" FORCE)
 
-# Build from source (same as Physical Diaries - this is known to work)
-message(STATUS "Building CommonLibSSE from source")
-add_subdirectory(external/CommonLibSSE-NG EXCLUDE_FROM_ALL)
+# Build from source
+message(STATUS "Building CommonLibSSE (CommonLibVR 4.5.0) from source")
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../.resources/CommonLibVR-4.5.0 ${CMAKE_CURRENT_BINARY_DIR}/CommonLibSSE-NG EXCLUDE_FROM_ALL)
+include(${CMAKE_CURRENT_SOURCE_DIR}/../.resources/CommonLibVR-4.5.0/cmake/CommonLibSSE.cmake)
 
 # ---- Add Detours library ----
 add_library(Detours STATIC
@@ -53,24 +53,25 @@ find_package(yaml-cpp CONFIG REQUIRED)
 find_package(unofficial-sqlite3 CONFIG REQUIRED)
 
 # ---- Plugin Target ----
-add_library(
+add_commonlibsse_plugin(
     ${PROJECT_NAME}
-    SHARED
-    src/main.cpp
-    src/DialogueHook.cpp
-    src/Config.cpp
-    src/PopulateTopicInfoHook.cpp
-    src/ConstructResponseHook.cpp
-    src/SceneHook.cpp
-    src/SceneMonitor.cpp
-    src/DialogueDatabase.cpp
-    src/DialogueLogger.cpp
-    src/TopicResponseExtractor.cpp
-    src/STFUMenu.cpp
-    src/STFUMenu_Settings.cpp
-    src/PrismaUIMenu.cpp
-    src/SettingsPersistence.cpp
-    src/PapyrusInterface.cpp
+    NAME "STFU"
+    AUTHOR "Zevick"
+    USE_ADDRESS_LIBRARY
+    SOURCES
+        src/main.cpp
+        src/DialogueHook.cpp
+        src/Config.cpp
+        src/PopulateTopicInfoHook.cpp
+        src/ConstructResponseHook.cpp
+        src/SceneHook.cpp
+        src/SceneMonitor.cpp
+        src/DialogueDatabase.cpp
+        src/DialogueLogger.cpp
+        src/TopicResponseExtractor.cpp
+        src/PrismaUIMenu.cpp
+        src/SettingsPersistence.cpp
+        src/PapyrusInterface.cpp
 )
 
 target_compile_features(
@@ -89,19 +90,17 @@ target_include_directories(
 target_link_libraries(
     ${PROJECT_NAME}
     PRIVATE
-        CommonLibSSE::CommonLibSSE
         yaml-cpp::yaml-cpp
         unofficial::sqlite3::sqlite3
         Detours
 )
 
-# Enable PCH to avoid static assertion issues
-# Temporarily disable PCH to debug (same as Physical Diaries)
-# target_precompile_headers(
-#     ${PROJECT_NAME}
-#     PRIVATE
-#         include/PCH.h
-# )
+# Enable PCH - required for CommonLibVR 4.5.0 (auto-generated plugin file needs std:: headers)
+target_precompile_headers(
+    ${PROJECT_NAME}
+    PRIVATE
+        include/PCH.h
+)
 
 # ---- Installation ----
 install(

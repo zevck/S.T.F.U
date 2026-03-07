@@ -219,11 +219,11 @@ namespace DialogueDB
 
     private:
         sqlite3* db_ = nullptr;
-        std::mutex dbMutex_;
+        std::recursive_mutex dbMutex_;
         std::mutex queueMutex_;
         std::queue<DialogueEntry> pendingEntries_;
         int64_t lastFlushTime_ = 0;  // Timestamp of last queue flush
-        
+
         // Performance tuning constants
         static constexpr size_t BATCH_SIZE = 200;  // Increased from 50 for better batching
         static constexpr int64_t FLUSH_INTERVAL_MS = 1000;  // Flush every 1 second for responsive UI

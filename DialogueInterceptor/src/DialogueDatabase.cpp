@@ -252,7 +252,7 @@ namespace DialogueDB
         for (const auto& actorFaction : actorFactions) {
             for (const auto& filterFaction : factionFilter) {
                 if (actorFaction == filterFaction) {
-                    spdlog::info("[DialogueDB] Faction match found: actor has faction '{}'", actorFaction);
+                    spdlog::debug("[DialogueDB] Faction match found: actor has faction '{}'", actorFaction);
                     return true;
                 }
             }
@@ -286,7 +286,7 @@ namespace DialogueDB
 
     bool Database::Initialize(const std::string& dbPath)
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
 
         // Create directory if it doesn't exist
         std::filesystem::path path(dbPath);
@@ -335,7 +335,7 @@ namespace DialogueDB
 
     void Database::Close()
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         
         FlushQueue();
         FinalizeStatements();
@@ -738,7 +738,7 @@ namespace DialogueDB
 
     void Database::ProcessQueue()
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         
         if (!db_ || !insertDialogueStmt_) return;
         
@@ -879,7 +879,7 @@ namespace DialogueDB
 
     std::vector<DialogueEntry> Database::GetRecentDialogue(int limit)
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         std::vector<DialogueEntry> results;
 
         if (!db_) return results;
@@ -976,7 +976,7 @@ namespace DialogueDB
 
     bool Database::HasRecentDuplicate(uint32_t speakerFormID, const std::string& responseText, int64_t withinSeconds)
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         
         if (!db_) return false;
         
@@ -1003,7 +1003,7 @@ namespace DialogueDB
             int count = sqlite3_column_int(stmt, 0);
             hasDuplicate = (count > 0);
             if (hasDuplicate) {
-                spdlog::info("[DialogueDB] Found {} duplicate(s) within last {}s for speaker 0x{:08X}", 
+                spdlog::debug("[DialogueDB] Found {} duplicate(s) within last {}s for speaker 0x{:08X}", 
                     count, withinSeconds, speakerFormID);
             }
         }
@@ -1014,7 +1014,7 @@ namespace DialogueDB
 
     bool Database::DeleteDialogueEntry(int64_t id)
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         
         if (!db_) return false;
         
@@ -1041,7 +1041,7 @@ namespace DialogueDB
     {
         if (ids.empty()) return 0;
         
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         
         if (!db_) return 0;
         
@@ -1078,7 +1078,7 @@ namespace DialogueDB
 
     bool Database::AddToBlacklist(const BlacklistEntry& entry, bool skipEnrichment)
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
 
         if (!db_) return false;
 
@@ -1286,54 +1286,6 @@ namespace DialogueDB
                     
                     // Update scene phase conditions
                     SceneHook::UpdateSceneConditions(enrichedEntry.targetEditorID, static_cast<uint8_t>(enrichedEntry.blockType));
-                    
-                    // For soft blocks (1) and SkyrimNet blocks (3), also blacklist individual dialogue topics
-                    // Hard blocks (2) use phase conditions and don't need individual topic blocking
-                    if (enrichedEntry.blockType == BlockType::Soft || enrichedEntry.blockType == BlockType::SkyrimNet) {
-                        spdlog::info("[DialogueDB] Soft/SkyrimNet blocking scene {} - extracting dialogue topics", enrichedEntry.targetEditorID);
-                        auto topics = TopicResponseExtractor::ExtractDialogueTopicsFromScene(enrichedEntry.targetEditorID);
-                        
-                        for (const auto& topicInfo : topics) {
-                            if (topicInfo.editorID.empty()) {
-                                spdlog::warn("[DialogueDB] Skipping topic with empty EditorID (FormID: 0x{:08X})", topicInfo.formID);
-                                continue;
-                            }
-                            
-                            // Create a blacklist entry for this topic
-                            BlacklistEntry topicEntry;
-                            topicEntry.targetType = BlacklistTarget::Topic;
-                            topicEntry.targetFormID = topicInfo.formID;
-                            topicEntry.targetEditorID = topicInfo.editorID;
-                            topicEntry.blockType = enrichedEntry.blockType;
-                            topicEntry.addedTimestamp = enrichedEntry.addedTimestamp;
-                            topicEntry.notes = "Auto-added from scene: " + enrichedEntry.targetEditorID;
-                            topicEntry.responseText = "";  // Will be enriched if topic fires
-                            topicEntry.subtype = 14;  // Scene subtype
-                            topicEntry.subtypeName = "Scene";
-                            topicEntry.filterCategory = enrichedEntry.filterCategory;
-                            topicEntry.sourcePlugin = topicInfo.sourcePlugin;
-                            
-                            // Set granular blocking options based on block type
-                            if (enrichedEntry.blockType == BlockType::SkyrimNet) {
-                                topicEntry.blockAudio = false;
-                                topicEntry.blockSubtitles = false;
-                                topicEntry.blockSkyrimNet = true;
-                            } else {  // Soft
-                                topicEntry.blockAudio = true;
-                                topicEntry.blockSubtitles = true;
-                                topicEntry.blockSkyrimNet = true;
-                            }
-                            
-                            // Add to blacklist (skip enrichment to avoid recursion and improve performance)
-                            if (AddToBlacklist(topicEntry, true)) {
-                                spdlog::debug("[DialogueDB] Auto-blocked topic {} from scene {}", topicInfo.editorID, enrichedEntry.targetEditorID);
-                            } else {
-                                spdlog::warn("[DialogueDB] Failed to auto-block topic {} from scene {}", topicInfo.editorID, enrichedEntry.targetEditorID);
-                            }
-                        }
-                        
-                        spdlog::info("[DialogueDB] Soft/SkyrimNet blocked {} dialogue topics from scene {}", topics.size(), enrichedEntry.targetEditorID);
-                    }
                 } else if (enrichedEntry.targetType == BlacklistTarget::Topic) {
                     // Only update scene conditions if topic has an EditorID
                     // Topics with empty EditorIDs can't be reliably matched to scene dialogue actions
@@ -1346,7 +1298,7 @@ namespace DialogueDB
             return success;
         } else {
             // Insert new entry
-            spdlog::info("[DialogueDB] Inserting new blacklist entry: {} (FormID: 0x{:08X}, Type: {}, FilterCategory: '{}')", 
+            spdlog::debug("[DialogueDB] Inserting new blacklist entry: {} (FormID: 0x{:08X}, Type: {}, FilterCategory: '{}')", 
                 enrichedEntry.targetEditorID, enrichedEntry.targetFormID, static_cast<int>(enrichedEntry.targetType), enrichedEntry.filterCategory);
             
             if (!insertBlacklistStmt_) {
@@ -1383,7 +1335,7 @@ namespace DialogueDB
             }
 
             int64_t newId = sqlite3_last_insert_rowid(db_);
-            spdlog::info("[DialogueDB] Successfully inserted blacklist entry (id={})", newId);
+            spdlog::debug("[DialogueDB] Successfully inserted blacklist entry (id={})", newId);
             
             // VERIFICATION: Read back actor filters to ensure both columns were written
             if (!enrichedEntry.actorFilterFormIDs.empty() || !enrichedEntry.actorFilterNames.empty()) {
@@ -1424,58 +1376,9 @@ namespace DialogueDB
             }
             
             // Update scene conditions at runtime based on BlockType
-            // Only Hard blocks (2) prevent scenes from starting
             if (enrichedEntry.targetType == BlacklistTarget::Scene) {
                 // Scene was directly blocked
                 SceneHook::UpdateSceneConditions(enrichedEntry.targetEditorID, static_cast<uint8_t>(enrichedEntry.blockType));
-                
-                // For soft blocks (1) and SkyrimNet blocks (3), also blacklist individual dialogue topics
-                // Hard blocks (2) use phase conditions and don't need individual topic blocking
-                if (enrichedEntry.blockType == BlockType::Soft || enrichedEntry.blockType == BlockType::SkyrimNet) {
-                    spdlog::info("[DialogueDB] Soft/SkyrimNet blocking scene {} - extracting dialogue topics", enrichedEntry.targetEditorID);
-                    auto topics = TopicResponseExtractor::ExtractDialogueTopicsFromScene(enrichedEntry.targetEditorID);
-                    
-                    for (const auto& topicInfo : topics) {
-                        if (topicInfo.editorID.empty()) {
-                            spdlog::warn("[DialogueDB] Skipping topic with empty EditorID (FormID: 0x{:08X})", topicInfo.formID);
-                            continue;
-                        }
-                        
-                        // Create a blacklist entry for this topic
-                        BlacklistEntry topicEntry;
-                        topicEntry.targetType = BlacklistTarget::Topic;
-                        topicEntry.targetFormID = topicInfo.formID;
-                        topicEntry.targetEditorID = topicInfo.editorID;
-                        topicEntry.blockType = enrichedEntry.blockType;
-                        topicEntry.addedTimestamp = enrichedEntry.addedTimestamp;
-                        topicEntry.notes = "Auto-added from scene: " + enrichedEntry.targetEditorID;
-                        topicEntry.responseText = "";  // Will be enriched if topic fires
-                        topicEntry.subtype = 14;  // Scene subtype
-                        topicEntry.subtypeName = "Scene";
-                        topicEntry.filterCategory = enrichedEntry.filterCategory;
-                        topicEntry.sourcePlugin = topicInfo.sourcePlugin;
-                        
-                        // Set granular blocking options based on block type
-                        if (enrichedEntry.blockType == BlockType::SkyrimNet) {
-                            topicEntry.blockAudio = false;
-                            topicEntry.blockSubtitles = false;
-                            topicEntry.blockSkyrimNet = true;
-                        } else {  // Soft
-                            topicEntry.blockAudio = true;
-                            topicEntry.blockSubtitles = true;
-                            topicEntry.blockSkyrimNet = true;
-                        }
-                        
-                        // Add to blacklist (skip enrichment to avoid recursion and improve performance)
-                        if (AddToBlacklist(topicEntry, true)) {
-                            spdlog::debug("[DialogueDB] Auto-blocked topic {} from scene {}", topicInfo.editorID, enrichedEntry.targetEditorID);
-                        } else {
-                            spdlog::warn("[DialogueDB] Failed to auto-block topic {} from scene {}", topicInfo.editorID, enrichedEntry.targetEditorID);
-                        }
-                    }
-                    
-                    spdlog::info("[DialogueDB] Soft/SkyrimNet blocked {} dialogue topics from scene {}", topics.size(), enrichedEntry.targetEditorID);
-                }
             } else if (enrichedEntry.targetType == BlacklistTarget::Topic) {
                 // Topic was blocked - update any scenes containing this topic
                 // Only update scene conditions if topic has an EditorID
@@ -1490,7 +1393,7 @@ namespace DialogueDB
 
     bool Database::RemoveFromBlacklist(int64_t id)
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
 
         if (!db_) return false;
         
@@ -1529,22 +1432,7 @@ namespace DialogueDB
                 // Scene was directly unblocked - remove scene conditions
                 SceneHook::UpdateSceneConditions(targetEditorID, 1);  // 1=Soft (removes conditions)
                 
-                // Also remove any auto-added topics from soft/skyrimnet blocks
-                std::string notePattern = "Auto-added from scene: " + targetEditorID;
-                const char* deleteSql = "DELETE FROM blacklist WHERE target_type = 1 AND notes = ?;";
-                sqlite3_stmt* deleteStmt = nullptr;
-                
-                if (sqlite3_prepare_v2(db_, deleteSql, -1, &deleteStmt, nullptr) == SQLITE_OK) {
-                    sqlite3_bind_text(deleteStmt, 1, notePattern.c_str(), -1, SQLITE_TRANSIENT);
-                    int deletedCount = 0;
-                    if (sqlite3_step(deleteStmt) == SQLITE_DONE) {
-                        deletedCount = sqlite3_changes(db_);
-                    }
-                    sqlite3_finalize(deleteStmt);
-                    if (deletedCount > 0) {
-                        spdlog::info("[DialogueDB] Removed {} auto-added topics when unblocking scene {}", deletedCount, targetEditorID);
-                    }
-                }
+                // (no cache to rebuild - scene lookup is done at query time in Config::ShouldSoftBlock)
             } else if (targetType == BlacklistTarget::Topic) {
                 // Topic was unblocked - remove scene conditions from affected scenes
                 // Only update scene conditions if topic has an EditorID
@@ -1559,7 +1447,7 @@ namespace DialogueDB
 
     void Database::BeginTransaction()
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         if (db_) {
             sqlite3_exec(db_, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
         }
@@ -1567,7 +1455,7 @@ namespace DialogueDB
 
     void Database::CommitTransaction()
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         if (db_) {
             sqlite3_exec(db_, "COMMIT;", nullptr, nullptr, nullptr);
         }
@@ -1575,7 +1463,7 @@ namespace DialogueDB
 
     void Database::RollbackTransaction()
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         if (db_) {
             sqlite3_exec(db_, "ROLLBACK;", nullptr, nullptr, nullptr);
         }
@@ -1585,7 +1473,7 @@ namespace DialogueDB
     {
         if (entries.empty()) return 0;
         
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         
         if (!db_) return 0;
         
@@ -1732,7 +1620,7 @@ namespace DialogueDB
     {
         if (ids.empty()) return 0;
         
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         
         if (!db_) return 0;
         
@@ -1826,7 +1714,7 @@ namespace DialogueDB
 
     int Database::ClearBlacklist()
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
 
         if (!db_) return 0;
 
@@ -1870,7 +1758,7 @@ namespace DialogueDB
 
     int64_t Database::GetBlacklistEntryId(uint32_t formID, const std::string& editorID)
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
 
         if (!db_) return -1;
 
@@ -1899,7 +1787,7 @@ namespace DialogueDB
 
     std::vector<BlacklistEntry> Database::GetBlacklist()
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         std::vector<BlacklistEntry> results;
 
         if (!db_) return results;
@@ -2000,7 +1888,7 @@ namespace DialogueDB
 
     bool Database::AddToWhitelist(const BlacklistEntry& entry, bool skipEnrichment)
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
 
         if (!db_) return false;
 
@@ -2139,7 +2027,7 @@ namespace DialogueDB
 
     bool Database::RemoveFromWhitelist(int64_t id)
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
 
         if (!db_) return false;
 
@@ -2161,7 +2049,7 @@ namespace DialogueDB
     {
         if (ids.empty()) return 0;
         
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         
         if (!db_) return 0;
         
@@ -2198,7 +2086,7 @@ namespace DialogueDB
 
     int Database::ClearWhitelist()
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
 
         if (!db_) return 0;
 
@@ -2236,7 +2124,7 @@ namespace DialogueDB
 
     int64_t Database::GetWhitelistEntryId(uint32_t formID, const std::string& editorID)
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
 
         if (!db_) return -1;
 
@@ -2263,7 +2151,7 @@ namespace DialogueDB
 
     std::vector<BlacklistEntry> Database::GetWhitelist()
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         std::vector<BlacklistEntry> results;
 
         if (!db_) return results;
@@ -2352,7 +2240,7 @@ namespace DialogueDB
 
     bool Database::IsWhitelisted(BlacklistTarget targetType, uint32_t formID, const std::string& editorID, uint32_t actorFormID, const std::string& actorName)
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
 
         if (!db_) return false;
 
@@ -2412,7 +2300,7 @@ namespace DialogueDB
 
     bool Database::IsWhitelisted(BlacklistTarget targetType, uint32_t formID, const std::string& editorID, uint32_t actorFormID, const std::string& actorName, RE::TESObjectREFR* actorRef)
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         if (!db_) return false;
 
         // Select actor, name, and faction filters
@@ -2465,7 +2353,7 @@ namespace DialogueDB
 
     bool Database::IsPluginWhitelisted(const std::string& pluginName)
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
 
         if (!db_ || pluginName.empty()) return false;
 
@@ -2488,7 +2376,7 @@ namespace DialogueDB
 
     void Database::CleanupOldEntries(int daysToKeep)
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
 
         if (!db_) return;
 
@@ -2510,7 +2398,7 @@ namespace DialogueDB
 
     int64_t Database::GetTotalEntries()
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
 
         if (!db_) return 0;
 
@@ -2581,7 +2469,7 @@ namespace DialogueDB
         const char* checkSql = "SELECT COUNT(*) FROM blacklist WHERE target_type = 4;";
         sqlite3_stmt* checkStmt = nullptr;
         
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         if (!db_) return false;
         
         if (sqlite3_prepare_v2(db_, checkSql, -1, &checkStmt, nullptr) == SQLITE_OK) {
@@ -2602,7 +2490,7 @@ namespace DialogueDB
     {
         if (targetEditorID.empty() || responseText.empty()) return;
         
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         if (!db_) return;
         
         // Check if entry exists
@@ -2666,7 +2554,7 @@ namespace DialogueDB
     {
         if (targetEditorID.empty() || allResponses.empty()) return;
         
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         if (!db_) return;
         
         // Check if entry exists
@@ -2740,7 +2628,7 @@ namespace DialogueDB
     {
         if (topicInfoFormIDs.empty()) return;
         
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         if (!db_) return;
         
         // Build UPDATE statement with IN clause
@@ -2778,7 +2666,7 @@ namespace DialogueDB
 
     bool Database::ShouldSoftBlock(uint32_t formID, const std::string& editorID, uint32_t actorFormID, const std::string& actorName, RE::TESObjectREFR* actorRef)
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         
         if (!db_) return false;
         
@@ -2812,14 +2700,14 @@ namespace DialogueDB
                 
                 if (!hasActorFilter && !hasFactionFilter) {
                     // No filters - whitelist applies to everyone
-                    spdlog::info("[DialogueDB] ShouldSoftBlock: Whitelisted (no filter) -> DON'T BLOCK");
+                    spdlog::debug("[DialogueDB] ShouldSoftBlock: Whitelisted (no filter) -> DON'T BLOCK");
                     sqlite3_finalize(whitelistStmt);
                     return false;
                 } else if ((actorFormID > 0 || !actorName.empty() || actorRef) && 
                           (ActorMatchesFilter(actorFormID, actorName, filterFormIDs, filterNames) || 
                            FactionMatchesFilter(actorRef, factionFilter))) {
                     // Actor or faction matches whitelist filter
-                    spdlog::info("[DialogueDB] ShouldSoftBlock: Whitelisted for actor '{}' (0x{:08X}) OR faction -> DON'T BLOCK", actorName, actorFormID);
+                    spdlog::debug("[DialogueDB] ShouldSoftBlock: Whitelisted for actor '{}' (0x{:08X}) OR faction -> DON'T BLOCK", actorName, actorFormID);
                     sqlite3_finalize(whitelistStmt);
                     return false;
                 }
@@ -2863,7 +2751,7 @@ namespace DialogueDB
             std::vector<std::string> factionFilter = ParseFactionEditorIDsFromJson(factionEditorIDsStr);
             
             // Debug: Log what we're checking
-            spdlog::info("[DialogueDB] ShouldSoftBlock: FormID=0x{:08X}, speakerFormID=0x{:08X}, speakerName='{}', filterFormIDs.size()={}, filterNames.size()={}, factionFilter.size()={}", 
+            spdlog::debug("[DialogueDB] ShouldSoftBlock: FormID=0x{:08X}, speakerFormID=0x{:08X}, speakerName='{}', filterFormIDs.size()={}, filterNames.size()={}, factionFilter.size()={}", 
                 formID, actorFormID, actorName, filterFormIDs.size(), filterNames.size(), factionFilter.size());
             
             // Check if actor OR faction matches filter (if actor info provided AND filter exists)
@@ -2878,42 +2766,42 @@ namespace DialogueDB
                 
                 if (!actorMatches && !factionMatches) {
                     // Actor doesn't match actor filter AND doesn't match faction filter
-                    spdlog::info("[DialogueDB] ShouldSoftBlock: actor '{}' (0x{:08X}) not in actor filter and not in faction filter -> ALLOW", 
+                    spdlog::debug("[DialogueDB] ShouldSoftBlock: actor '{}' (0x{:08X}) not in actor filter and not in faction filter -> ALLOW", 
                         actorName, actorFormID);
                     sqlite3_finalize(stmt);
                     return false;
                 } else {
-                    spdlog::info("[DialogueDB] ShouldSoftBlock: actor '{}' (0x{:08X}) matches actor filter or faction filter -> checking block type", 
+                    spdlog::debug("[DialogueDB] ShouldSoftBlock: actor '{}' (0x{:08X}) matches actor filter or faction filter -> checking block type", 
                         actorName, actorFormID);
                 }
             } else if ((hasActorFilter || hasFactionFilter) && !actorInfoProvided) {
                 // Filter exists but no actor info provided - skip actor/faction-specific entries
-                spdlog::info("[DialogueDB] ShouldSoftBlock: Actor/Faction filter exists but no speaker info provided -> ALLOW");
+                spdlog::debug("[DialogueDB] ShouldSoftBlock: Actor/Faction filter exists but no speaker info provided -> ALLOW");
                 sqlite3_finalize(stmt);
                 return false;
             } else if (!hasActorFilter && !hasFactionFilter && actorInfoProvided) {
                 // No filter at all (both actor and faction filters empty) - block affects everyone
-                spdlog::info("[DialogueDB] ShouldSoftBlock: No actor or faction filter - affects all actors");
+                spdlog::debug("[DialogueDB] ShouldSoftBlock: No actor or faction filter - affects all actors");
             }
             
             // SkyrimNet-only blocks should never soft block (audio/subtitles still play)
             if (blockType == BlockType::SkyrimNet) {
                 shouldBlock = false;
-                spdlog::info("[DialogueDB] ShouldSoftBlock: FormID=0x{:08X}, EditorID='{}', SkyrimNet-only block -> ALLOW audio/subtitles", 
+                spdlog::debug("[DialogueDB] ShouldSoftBlock: FormID=0x{:08X}, EditorID='{}', SkyrimNet-only block -> ALLOW audio/subtitles", 
                     formID, editorID);
             } else if (!Config::IsFilterCategoryEnabled(filterCategory)) {
                 // Check if this entry's filterCategory toggle is enabled
                 shouldBlock = false;  // Toggle disabled, don't block
-                spdlog::info("[DialogueDB] ShouldSoftBlock: FormID=0x{:08X}, EditorID='{}', category='{}' toggle DISABLED -> ALLOW", 
+                spdlog::debug("[DialogueDB] ShouldSoftBlock: FormID=0x{:08X}, EditorID='{}', category='{}' toggle DISABLED -> ALLOW", 
                     formID, editorID, filterCategory);
             } else {
                 // Toggle enabled - both hard and soft blocks always soft-block (audio + subtitles)
                 shouldBlock = true;
-                spdlog::info("[DialogueDB] ShouldSoftBlock: Found {} block for FormID=0x{:08X}, EditorID='{}', category='{}' -> BLOCK audio+subtitles", 
+                spdlog::debug("[DialogueDB] ShouldSoftBlock: Found {} block for FormID=0x{:08X}, EditorID='{}', category='{}' -> BLOCK audio+subtitles", 
                     blockType == BlockType::Hard ? "HARD" : "soft", formID, editorID, filterCategory);
             }
         } else {
-            spdlog::info("[DialogueDB] ShouldSoftBlock: No entry found for FormID=0x{:08X}, EditorID='{}'", formID, editorID);
+            spdlog::debug("[DialogueDB] ShouldSoftBlock: No entry found for FormID=0x{:08X}, EditorID='{}'", formID, editorID);
         }
         
         sqlite3_finalize(stmt);
@@ -2922,7 +2810,7 @@ namespace DialogueDB
     
     bool Database::ShouldBlockSkyrimNet(uint32_t formID, const std::string& editorID, uint32_t actorFormID, const std::string& actorName)
     {
-        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         
         if (!db_) return false;
         

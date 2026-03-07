@@ -13,6 +13,7 @@
 namespace Config
 {
     static Settings g_settings;
+    static bool s_skyrimNetLoaded = false;
     
     // No cache - database lookups are fast enough and avoid cache invalidation issues
     
@@ -145,11 +146,6 @@ topics:
   # - WICastMagicNonHostileSpellStealthTopic
   # - AnnoyingDialogueTopic
   
-plugins:
-  # Block ALL dialogue from specific plugins (use with extreme caution!)
-  # Example:
-  # - "AnnoyingMod.esp"
-  
 scenes:
   # Block entire scenes (HARD BLOCK - may break quests!)
   # Examples:
@@ -160,12 +156,6 @@ quests:
   # Block all dialogue topics referenced by a quest
   # Example:
   # - DA07MuseumScenes
-  
-quest_patterns:
-  # Use * wildcard to match multiple quests with similar names
-  # EditorIDs only
-  # Example:
-  # - "DialogueGeneric*"
 )";
                 file.close();
                 spdlog::info("[Config] Generated default STFU_Blacklist.yaml");
@@ -218,12 +208,6 @@ quests:
   # Examples:
   # - DLC2MQ05
   # - ImportantQuestWithDialogue
-  
-quest_patterns:
-  # Use * wildcard to protect multiple quests
-  # EditorIDs only
-  # Example:
-  # - "MainQuest*"
 )";
                 file.close();
                 spdlog::info("[Config] Generated default STFU_Whitelist.yaml");
@@ -743,16 +727,14 @@ overrides:
             return;
         }
         
-        // Helper to look up global by EditorID - iterate all globals for robust lookup
-        auto lookupGlobal = [dataHandler](const char* editorID) -> RE::TESGlobal* {
-            for (auto* global : dataHandler->GetFormArray<RE::TESGlobal>()) {
-                if (global) {
-                    const char* formEditorID = global->GetFormEditorID();
-                    if (formEditorID && _stricmp(formEditorID, editorID) == 0) {
-                        spdlog::debug("Found global '{}' with value {}", editorID, global->value);
-                        return global;
-                    }
-                }
+        // Helper to look up global by EditorID
+        // Use LookupByEditorID which goes through the editor ID map directly,
+        // as GetFormEditorID() may return null in CommonLibVR 4.5.0
+        auto lookupGlobal = [](const char* editorID) -> RE::TESGlobal* {
+            auto* global = RE::TESForm::LookupByEditorID<RE::TESGlobal>(editorID);
+            if (global) {
+                spdlog::debug("Found global '{}' with value {}", editorID, global->value);
+                return global;
             }
             spdlog::warn("Global '{}' not found in loaded ESPs", editorID);
             return nullptr;
@@ -1024,7 +1006,30 @@ overrides:
         const char* topicEditorID = topic->GetFormEditorID();
         std::string editorIDStr = topicEditorID ? topicEditorID : "";
         
-        return db->ShouldBlockSkyrimNet(topicFormID, editorIDStr);
+        if (db->ShouldBlockSkyrimNet(topicFormID, editorIDStr)) {
+            return true;
+        }
+        // Check if topic belongs to a SkyrimNet-blocked scene
+        if (quest) {
+            for (auto* scene : quest->scenes) {
+                if (!scene) continue;
+                bool foundInScene = false;
+                for (auto* action : scene->actions) {
+                    if (!action || action->GetType() != RE::BGSSceneAction::Type::kDialogue) continue;
+                    auto* da = static_cast<RE::BGSSceneActionDialogue*>(action);
+                    if (da && da->topic == topic) {
+                        const char* sceneEditorID = scene->GetFormEditorID();
+                        if (sceneEditorID && db->ShouldBlockSkyrimNet(scene->GetFormID(), sceneEditorID)) {
+                            return true;
+                        }
+                        foundInScene = true;
+                        break;
+                    }
+                }
+                if (foundInScene) break;
+            }
+        }
+        return false;
     }
     
     void InvalidateTopicCache(uint32_t topicFormID)
@@ -1803,6 +1808,28 @@ namespace Config
             if (db->ShouldSoftBlock(topicFormID, editorIDStr, speakerFormID, speakerName ? speakerName : "", speakerRef)) {
                 return true;
             }
+            // If topic isn't directly blocked, check if it belongs to a blacklisted scene.
+            // Traverse the quest's scene list to find which scene owns this topic, then
+            // check if that scene is blacklisted.
+            if (quest) {
+                for (auto* scene : quest->scenes) {
+                    if (!scene) continue;
+                    bool foundInScene = false;
+                    for (auto* action : scene->actions) {
+                        if (!action || action->GetType() != RE::BGSSceneAction::Type::kDialogue) continue;
+                        auto* da = static_cast<RE::BGSSceneActionDialogue*>(action);
+                        if (da && da->topic == topic) {
+                            const char* sceneEditorID = scene->GetFormEditorID();
+                            if (sceneEditorID && db->ShouldSoftBlock(scene->GetFormID(), sceneEditorID)) {
+                                return true;
+                            }
+                            foundInScene = true;
+                            break;
+                        }
+                    }
+                    if (foundInScene) break;
+                }
+            }
         }
 
         // WHITELIST OVERRIDE: Check if this topic/quest is explicitly whitelisted for this actor or faction.
@@ -1867,4 +1894,15 @@ namespace Config
         }
         
         return false;
-    }}  // namespace Config
+    }
+
+    void SetSkyrimNetLoaded(bool loaded)
+    {
+        s_skyrimNetLoaded = loaded;
+    }
+
+    bool IsSkyrimNetLoaded()
+    {
+        return s_skyrimNetLoaded;
+    }
+}  // namespace Config

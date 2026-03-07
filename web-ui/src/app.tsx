@@ -99,11 +99,9 @@ export const App = () => {
     
     // Subscribe to history updates from SKSE
     SKSE_API.subscribe('updateHistory', (jsonData: string) => {
-      log('[App] updateHistory received');
       try {
         const entries = JSON.parse(jsonData) as DialogueEntry[];
         useHistoryStore.getState().setEntries(entries);
-        log(`[App] Parsed ${entries.length} history entries`);
       } catch (error) {
         log(`[App] ERROR parsing history data: ${error}`);
       }
@@ -111,11 +109,9 @@ export const App = () => {
 
     // Subscribe to blacklist updates from SKSE
     SKSE_API.subscribe('updateBlacklist', (jsonData: string) => {
-      log('[App] updateBlacklist received');
       try {
         const entries = JSON.parse(jsonData) as BlacklistEntry[];
         useBlacklistStore.getState().setEntries(entries);
-        log(`[App] Parsed ${entries.length} blacklist entries`);
       } catch (error) {
         log(`[App] ERROR parsing blacklist data: ${error}`);
       }
@@ -123,11 +119,9 @@ export const App = () => {
 
     // Subscribe to whitelist updates from SKSE
     SKSE_API.subscribe('updateWhitelist', (jsonData: string) => {
-      log('[App] updateWhitelist received');
       try {
         const entries = JSON.parse(jsonData) as BlacklistEntry[];
         useWhitelistStore.getState().setEntries(entries);
-        log(`[App] Parsed ${entries.length} whitelist entries`);
       } catch (error) {
         log(`[App] ERROR parsing whitelist data: ${error}`);
       }
@@ -135,11 +129,9 @@ export const App = () => {
 
     // Subscribe to settings updates from SKSE
     SKSE_API.subscribe('updateSettings', (jsonData: string) => {
-      log('[App] updateSettings received');
       try {
         const data = JSON.parse(jsonData);
         useSettingsStore.getState().setSettings(data);
-        log('[App] Updated settings from C++');
       } catch (error) {
         log(`[App] ERROR parsing settings data: ${error}`);
       }
@@ -159,11 +151,6 @@ export const App = () => {
     SKSE_API.sendToSKSE('requestHistory');
     SKSE_API.sendToSKSE('requestBlacklist');
     SKSE_API.sendToSKSE('requestSettings', '');
-    
-    // Poll for settings updates every second (to catch MCM changes)
-    const settingsInterval = setInterval(() => {
-      SKSE_API.sendToSKSE('requestSettings', '');
-    }, 1000);
 
     // ESC key handler to close menu
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -182,7 +169,6 @@ export const App = () => {
       SKSE_API.unsubscribe('updateBlacklist');
       SKSE_API.unsubscribe('updateWhitelist');
       SKSE_API.unsubscribe('updateSettings');
-      clearInterval(settingsInterval);
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
@@ -196,6 +182,9 @@ export const App = () => {
       } else if (activeTab === 'blacklist') {
         log('[App] Switching to blacklist tab - requesting refresh');
         SKSE_API.requestBlacklistRefresh();
+      } else if (activeTab === 'settings') {
+        log('[App] Switching to settings tab - requesting refresh');
+        SKSE_API.sendToSKSE('requestSettings', '');
       }
       prevTabRef.current = activeTab;
     }

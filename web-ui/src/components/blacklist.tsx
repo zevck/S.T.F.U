@@ -190,8 +190,8 @@ export const Blacklist = () => {
   const handleDelete = useCallback((entry: BlacklistEntry) => {
     log(`[Blacklist] handleDelete called for entry ${entry.id}: ${entry.topicEditorID}`);
     SKSE_API.deleteBlacklistEntry(entry.id);
-    // Remove from selection if it was selected
     setSelectedEntries(selectedEntries.filter(e => e.id !== entry.id));
+    setTimeout(() => SKSE_API.requestHistoryRefresh(), 150);
   }, [selectedEntries, setSelectedEntries]);
   
   const handleDeleteSelected = useCallback(() => {
@@ -205,7 +205,7 @@ export const Blacklist = () => {
     } else {
       SKSE_API.deleteBlacklistBatch(ids);
     }
-    
+    setTimeout(() => SKSE_API.requestHistoryRefresh(), 150);
     setSelectedEntries([]);
     setLastClickedIndex(-1);
   }, [selectedEntries]);

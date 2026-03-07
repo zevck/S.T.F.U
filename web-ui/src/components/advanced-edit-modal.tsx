@@ -327,6 +327,7 @@ export const AdvancedEditModal = memo(({ isOpen, onClose, onSave, entry }: Advan
     } else {
       SKSE_API.deleteBlacklistEntry(entry.id);
     }
+    setTimeout(() => SKSE_API.requestHistoryRefresh(), 150);
     onClose();
   };
   

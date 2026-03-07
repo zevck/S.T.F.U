@@ -3,9 +3,15 @@
 #include "DialogueDatabase.h"
 #include "../include/PCH.h"
 #include <spdlog/spdlog.h>
+#include <mutex>
+#include <unordered_set>
 
 namespace SceneHook
 {
+    // Scenes that were skipped at runtime because they were playing.
+    // PatchDeferredScenes() drains this after the next load screen.
+    static std::mutex g_deferredMutex;
+    static std::unordered_set<std::string> g_deferredScenes;
     // Create a condition that checks if a global == 0 (disabled)
     // When the MCM toggle is OFF (0), this condition will be TRUE, blocking the scene
     // When the MCM toggle is ON (1), this condition will be FALSE, allowing the scene
@@ -227,6 +233,46 @@ namespace SceneHook
         }
     }
     
+    void PatchDeferredScenes()
+    {
+        std::unordered_set<std::string> pending;
+        {
+            std::lock_guard<std::mutex> lock(g_deferredMutex);
+            pending.swap(g_deferredScenes);
+        }
+
+        if (pending.empty()) return;
+
+        spdlog::info("[SCENE UPDATE] PatchDeferredScenes: patching {} scene(s) queued from previous session", pending.size());
+
+        auto* controllingGlobal = Config::GetScenesGlobal();
+        if (!controllingGlobal) {
+            spdlog::error("[SCENE UPDATE] STFU_Scenes global not found - deferred scenes not patched");
+            return;
+        }
+
+        for (const auto& sceneEditorID : pending) {
+            auto* scene = RE::TESForm::LookupByEditorID<RE::BGSScene>(sceneEditorID);
+            if (!scene) {
+                spdlog::warn("[SCENE UPDATE] Deferred scene not found: {}", sceneEditorID);
+                continue;
+            }
+            RemoveConditionsFromScene(scene);
+            int phasesPatched = 0;
+            for (auto* phase : scene->phases) {
+                if (!phase) continue;
+                auto* cond = CreateGlobalDisabledCondition(controllingGlobal);
+                if (cond) {
+                    cond->next = phase->startConditions.head;
+                    cond->data.flags.isOR = false;
+                    phase->startConditions.head = cond;
+                    phasesPatched++;
+                }
+            }
+            spdlog::info("[SCENE UPDATE] Patched deferred scene {} ({} phases)", sceneEditorID, phasesPatched);
+        }
+    }
+
     void UpdateSceneConditions(const std::string& sceneEditorID, uint8_t blockType)
     {
         auto* taskInterface = SKSE::GetTaskInterface();
@@ -248,10 +294,15 @@ namespace SceneHook
             const uint8_t HARD_BLOCK = 2;
             
             if (blockType == HARD_BLOCK) {
-                // SAFETY CHECK: Don't add conditions to running scenes - this would softlock NPCs
+                // SAFETY CHECK: Don't add conditions to running scenes - this would softlock NPCs.
+                // Queue the scene so PatchDeferredScenes() handles it after the next load screen.
                 if (targetScene->isPlaying) {
-                    spdlog::warn("[SCENE UPDATE] Scene {} is currently running! Skipping condition addition to prevent NPC softlock", 
+                    spdlog::warn("[SCENE UPDATE] Scene {} is currently running - queuing for next load screen", 
                         sceneEditorID);
+                    {
+                        std::lock_guard<std::mutex> lock(g_deferredMutex);
+                        g_deferredScenes.insert(sceneEditorID);
+                    }
                     return;
                 }
                 
@@ -275,13 +326,13 @@ namespace SceneHook
                     }
                 }
                 
-                spdlog::info("[SCENE UPDATE] Added blocking conditions to scene {} ({} phases) - Hard block", 
+                spdlog::debug("[SCENE UPDATE] Added blocking conditions to scene {} ({} phases) - Hard block", 
                     sceneEditorID, phasesPatched);
             } else {
                 // Remove blocking conditions for Soft/SkyrimNet blocks
                 // Safe to do even if scene is running - just removes preventive conditions
                 RemoveConditionsFromScene(targetScene);
-                spdlog::info("[SCENE UPDATE] Removed blocking conditions from scene {} - Soft/SkyrimNet block", 
+                spdlog::debug("[SCENE UPDATE] Removed blocking conditions from scene {} - Soft/SkyrimNet block", 
                     sceneEditorID);
             }
         });
@@ -339,10 +390,15 @@ namespace SceneHook
                 const char* sceneEditorID = scene->GetFormEditorID();
                 
                 if (blockType == HARD_BLOCK) {
-                    // SAFETY CHECK: Don't add conditions to running scenes - this would softlock NPCs
+                    // SAFETY CHECK: Don't add conditions to running scenes - this would softlock NPCs.
+                    // Queue the scene so PatchDeferredScenes() handles it after the next load screen.
                     if (scene->isPlaying) {
-                        spdlog::warn("[SCENE UPDATE] Scene {} is currently running! Skipping condition addition to prevent NPC softlock", 
+                        spdlog::warn("[SCENE UPDATE] Scene {} is currently running - queuing for next load screen", 
                             sceneEditorID ? sceneEditorID : "(unknown)");
+                        if (sceneEditorID && *sceneEditorID) {
+                            std::lock_guard<std::mutex> lock(g_deferredMutex);
+                            g_deferredScenes.insert(sceneEditorID);
+                        }
                         skippedRunningScenes++;
                         continue;
                     }

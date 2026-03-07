@@ -2,7 +2,6 @@
 #include "PopulateTopicInfoHook.h"
 #include "Config.h"
 #include "DialogueDatabase.h"
-#include "STFUMenu.h"
 #include "../include/PCH.h"
 #include <spdlog/spdlog.h>
 #include <cstring>
@@ -30,12 +29,12 @@ namespace ConstructResponseHook
     // Hook SetSubtitle to remove subtitles for blocked dialogue
     char* Hook_SetSubtitle(RE::DialogueResponse* a_response, char* a_text, int32_t a_unk)
     {
-        spdlog::info("[SetSubtitle] Called with text='{}', g_shouldBlockCurrent={}", 
+        spdlog::debug("[SetSubtitle] Called with text='{}', g_shouldBlockCurrent={}", 
             a_text ? a_text : "(null)", g_shouldBlockCurrent);
         
         if (g_shouldBlockCurrent) {
             // For soft blocking, block subtitles
-            spdlog::info("[SetSubtitle] BLOCKING subtitle (soft block)");
+            spdlog::debug("[SetSubtitle] BLOCKING subtitle (soft block)");
             static char empty[] = "";
             return _SetSubtitle(a_response, empty, a_unk);
         }
@@ -49,7 +48,7 @@ namespace ConstructResponseHook
     {
         g_shouldBlockCurrent = shouldBlock;
         if (shouldBlock) {
-            spdlog::info("[ConstructResponse] Early flag set by PopulateTopicInfo: g_shouldBlockCurrent=true");
+            spdlog::debug("[ConstructResponse] Early flag set by PopulateTopicInfo: g_shouldBlockCurrent=true");
         }
     }
     
@@ -59,7 +58,8 @@ namespace ConstructResponseHook
         g_shouldSoftBlock = shouldSoftBlock;
         g_shouldBlockSkyrimNet = shouldBlockSkyrimNet;
         g_wasEvaluated = true;
-        spdlog::info("[ConstructResponse] Blocking decision set by PopulateTopicInfo: soft={}, skyrimNet={}", 
+        g_shouldBlockCurrent = shouldSoftBlock;  // propagate immediately so SetSubtitle sees it before Hook_ConstructResponse fires (VR order)
+        spdlog::debug("[ConstructResponse] Blocking decision set by PopulateTopicInfo: soft={}, skyrimNet={}", 
             shouldSoftBlock, shouldBlockSkyrimNet);
     }
     
@@ -69,7 +69,8 @@ namespace ConstructResponseHook
         g_shouldSoftBlock = false;
         g_shouldBlockSkyrimNet = false;
         g_wasEvaluated = false;
-        spdlog::info("[ConstructResponse] Blocking decision cleared for new dialogue");
+        g_shouldBlockCurrent = false;  // reset immediately so SetSubtitle sees it before Hook_ConstructResponse fires (VR order)
+        spdlog::debug("[ConstructResponse] Blocking decision cleared for new dialogue");
     }
     
     // Get cached soft block decision (for duplicate handling in PopulateTopicInfo)
@@ -109,7 +110,7 @@ namespace ConstructResponseHook
 
     // Function signature for ConstructResponse
     using ConstructResponseType = bool(*)(
-        RE::TESTopicInfo::ResponseData* a_response,
+        RE::TESTopicInfo::TESResponse* a_response,
         char* a_filePath,
         RE::BGSVoiceType* a_voiceType,
         RE::TESTopic* a_topic,
@@ -120,7 +121,7 @@ namespace ConstructResponseHook
 
     // Our hook function
     bool Hook_ConstructResponse(
-        RE::TESTopicInfo::ResponseData* a_response,
+        RE::TESTopicInfo::TESResponse* a_response,
         char* a_filePath,
         RE::BGSVoiceType* a_voiceType,
         RE::TESTopic* a_topic,
@@ -130,7 +131,7 @@ namespace ConstructResponseHook
         if (a_topic && a_topicInfo) {
             const char* topicEditorID = a_topic->GetFormEditorID();
             uint16_t subtype = Config::GetAccurateSubtype(a_topic);
-            spdlog::info("[CONSTRUCT ENTRY] Topic: {}, TopicInfo: 0x{:08X}, Subtype: {}",
+            spdlog::debug("[CONSTRUCT ENTRY] Topic: {}, TopicInfo: 0x{:08X}, Subtype: {}",
                 topicEditorID ? topicEditorID : "(none)",
                 a_topicInfo->GetFormID(),
                 Config::GetSubtypeName(subtype));
@@ -150,7 +151,7 @@ namespace ConstructResponseHook
             // Use cached decision from PopulateTopicInfo (has full actor context)
             shouldSoftBlock = g_shouldSoftBlock;
             shouldBlockSkyrimNet = g_shouldBlockSkyrimNet;
-            spdlog::info("[ConstructResponse] Using cached decision from PopulateTopicInfo: soft={}, skyrimNet={}", 
+            spdlog::debug("[ConstructResponse] Using cached decision from PopulateTopicInfo: soft={}, skyrimNet={}", 
                 shouldSoftBlock, shouldBlockSkyrimNet);
         } else if (a_topic) {
             // Fallback: PopulateTopicInfo didn't evaluate (rare - menu evaluation case)
@@ -161,24 +162,16 @@ namespace ConstructResponseHook
             const char* topicEditorID = a_topic->GetFormEditorID();
             uint32_t topicFormID = a_topic->GetFormID();
             
-            spdlog::info("[ConstructResponse] No cached decision - evaluating: {} (FormID: 0x{:08X}, subtype: {})", 
+            spdlog::debug("[ConstructResponse] No cached decision - evaluating: {} (FormID: 0x{:08X}, subtype: {})", 
                 topicEditorID ? topicEditorID : "(none)", topicFormID, subtype);
             
-            if (subtype == 14) {
-                // Scene dialogue - check database
-                auto db = DialogueDB::GetDatabase();
-                if (db && topicEditorID) {
-                    std::string editorIDStr = topicEditorID;
-                    shouldSoftBlock = db->ShouldSoftBlock(0, editorIDStr);
-                }
-            } else {
-                // Regular dialogue - use Config wrapper (no actor context available here)
-                shouldSoftBlock = Config::ShouldSoftBlock(quest, a_topic, nullptr, nullptr);
-                if (STFUMenu::IsSkyrimNetLoaded()) {
-                    shouldBlockSkyrimNet = Config::ShouldBlockSkyrimNet(quest, a_topic, nullptr);
-                }
+            // Use Config::ShouldSoftBlock for all subtypes - it now traverses scene
+            // actions to find the parent scene for subtype-14 topics.
+            shouldSoftBlock = Config::ShouldSoftBlock(quest, a_topic, nullptr, nullptr);
+            if (Config::IsSkyrimNetLoaded()) {
+                shouldBlockSkyrimNet = Config::ShouldBlockSkyrimNet(quest, a_topic, nullptr);
             }
-            spdlog::info("[ConstructResponse] Fallback evaluation: softBlock={}, skyrimNet={}", 
+            spdlog::debug("[ConstructResponse] Fallback evaluation: softBlock={}, skyrimNet={}", 
                 shouldSoftBlock, shouldBlockSkyrimNet);
         }
         
@@ -203,49 +196,12 @@ namespace ConstructResponseHook
                 bool scenesEnabled = Config::ShouldBlockScenes();
                 bool bardSongsEnabled = Config::ShouldBlockBardSongs();
                 
-                // Check granular scene blocking flags from database
-                // For scenes, check unified blacklist (target_type=4, formID=0)
-                // Need to find the scene EditorID, not the topic EditorID
-                auto db = DialogueDB::GetDatabase();
-                bool shouldBlockSceneAudio = false;
-                bool shouldBlockSceneSubtitles = false;
-                
-                if (db && quest && a_topic) {
-                    // Find the scene that contains this topic
-                    std::string sceneEditorID;
-                    auto& scenesArray = quest->scenes;
-                    
-                    for (auto* scene : scenesArray) {
-                        if (!scene) continue;
-                        for (auto* action : scene->actions) {
-                            if (!action || action->GetType() != RE::BGSSceneAction::Type::kDialogue) continue;
-                            auto* dialogueAction = static_cast<RE::BGSSceneActionDialogue*>(action);
-                            if (dialogueAction && dialogueAction->topic == a_topic) {
-                                const char* scnEditorID = scene->GetFormEditorID();
-                                sceneEditorID = scnEditorID ? scnEditorID : "";
-                                break;
-                            }
-                        }
-                        if (!sceneEditorID.empty()) break;
-                    }
-                    
-                    if (!sceneEditorID.empty()) {
-                        bool shouldSoftBlockScene = db->ShouldSoftBlock(0, sceneEditorID);
-                        shouldBlockSceneAudio = shouldSoftBlockScene;
-                        shouldBlockSceneSubtitles = shouldSoftBlockScene;
-                    }
-                }
-                
-                // Full scene blocking (stops the scene entirely) for hard blocks or if both audio and subtitles are blocked
-                // TESTING: Disabled hardcoded scene blocking - only block database entries
+                // DB-blacklisted scenes are soft-blocked via shouldSoftBlock (set by PopulateTopicInfo
+                // → Config::ShouldSoftBlock which traverses scene actions at query time).
+                // Hard-stopping a running scene (scene->isPlaying = false) freezes NPCs, so we
+                // only do that for bard songs which have no deferred patching path.
                 bool shouldHardBlockScene = false;
-                
-                if ((shouldBlockSceneAudio && shouldBlockSceneSubtitles) && scenesEnabled) {
-                    shouldHardBlockScene = true;
-                    spdlog::debug("[SCENE BLOCK] Blocking blacklisted scene: {} (quest: {})",
-                        topicEditorID ? topicEditorID : "(none)",
-                        questEditorID ? questEditorID : "(unknown)");
-                }
+
                 if (isBardSong && bardSongsEnabled) {
                     shouldHardBlockScene = true;
                     spdlog::debug("[SCENE BLOCK] Blocking bard song: {} (quest: {})",
@@ -309,27 +265,43 @@ namespace ConstructResponseHook
                 spdlog::debug("[SOFT BLOCK] Silencing audio + subtitles for topic: {} (subtype: {})", 
                     topicEditorID ? topicEditorID : "(none)", subtype);
                 
-                // Block audio - clear file path
-                *a_filePath = '\0';
-                
-                // Re-set flag after calling original to ensure it stays set for any subsequent calls
                 g_shouldBlockCurrent = true;
                 
-                // Clear ResponseData text and animation fields to prevent jerky turns
+                if (subtype == 14) {
+                    // Scene dialogue: redirect audio to a silent .fuz so the engine's
+                    // audio-complete callback fires and the scene action advances normally.
+                    // Clearing the path or returning false prevents the callback from ever
+                    // registering, causing an indefinite hang in the scene state machine.
+                    auto* response = a_response;
+                    while (response) {
+                        response->responseText = "";
+                        response = response->next;
+                    }
+                    // Overwrite path with our silent audio; engine plays ~0.1s silence,
+                    // fires the audio-complete callback, and the scene advances cleanly.
+                    static constexpr const char kSilentPath[] = "Sound\\STFU\\silent.fuz";
+                    std::strcpy(a_filePath, kSilentPath);
+                    return true;
+                }
+                
+                // Regular dialogue: clear audio path and all animation/text fields
+                // to prevent jerky head-turns and visible subtitles.
+                *a_filePath = '\0';
+                
                 auto* response = a_response;
                 while (response) {
                     response->responseText = "";
                     response->speakerIdle = nullptr;
                     response->listenerIdle = nullptr;
-                    response->emotionType = RE::TESTopicInfo::ResponseData::EmotionType::kNeutral;
+                    response->emotionType = RE::TESTopicInfo::TESResponse::EmotionType::kNeutral;
                     response->emotionValue = 0;
-                    response->flags = RE::TESTopicInfo::ResponseData::Flag::kNone;
+                    response->flags = RE::TESTopicInfo::TESResponse::Flag::kNone;
                     response = response->next;
                 }
             }
             // SKYRIMNET-ONLY BLOCKING: Let everything work naturally, text will be cleared in DialogueItem::Ctor
             else if (shouldBlockSkyrimNet) {
-                spdlog::info("[SKYRIMNET-ONLY BLOCK] Allowing natural audio/subtitles/animations, will clear text in Ctor for topic: {} (subtype: {})",
+                spdlog::debug("[SKYRIMNET-ONLY BLOCK] Allowing natural audio/subtitles/animations, will clear text in Ctor for topic: {} (subtype: {})",
                     topicEditorID ? topicEditorID : "(none)", subtype);
                 
                 // DON'T clear anything here - let DialogueResponse objects be created with full text
@@ -345,7 +317,7 @@ namespace ConstructResponseHook
     {
         auto& trampoline = SKSE::GetTrampoline();
         
-        REL::Relocation<std::uintptr_t> target{ RELOCATION_ID(34429, 35249) };
+        REL::Relocation<std::uintptr_t> target{ REL::VariantID(34429, 35249, 0x573B70) };
         
         // Hook SetSubtitle at call site
         _SetSubtitle = trampoline.write_call<5>(

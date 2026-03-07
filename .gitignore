@@ -652,3 +652,5 @@ DialogueInterceptor/external/Detours/tests/test_module_api.cpp
 DialogueInterceptor/external/Detours/vc/Detours.sln
 DialogueInterceptor/external/Detours/vc/Detours.vcxproj
 DialogueInterceptor/external/Detours/vc/Detours.vcxproj.filters
+stfu_silent.wav
+CHANGELOG.md
