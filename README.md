@@ -108,13 +108,3 @@ overrides:
   DLC2PillarBlockingTopic: Idle
 ```
 
-## Finding Dialogue to Block
-If you hear something you want to silence but don't know what it's called, there are three ways to track it down:
-
-**Dialogue Log** — the easiest option. The log at `Data/SKSE/Plugins/STFU/STFU_DialogueLog.txt` records every line as it plays with its EditorID. Search for something you heard and copy the ID straight into your config.
-
-**In-game History tab** — if you have the in-game UI open, you can see lines as they happen and add them to the blacklist with one click.
-
-
-
-
