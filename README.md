@@ -34,7 +34,7 @@ The dialogue or scene is stopped from running at all. Scripts do **not** execute
 **Whitelist** — mark topics, scenes, quests, or plugins as protected so they are *never* blocked, even if they match a blacklist rule. Use this to punch exceptions through broad filters.
 
 ## In-Game Interface
-Open the S.T.F.U menu with the **Insert** key (configurable in the MCM). Requires [SkyrimNet Prisma Dashboard](https://www.nexusmods.com/skyrimspecialedition/mods/148718).
+Open the S.T.F.U menu with the **Insert** key (configurable in the MCM). Requires [PrismaUI](https://www.nexusmods.com/skyrimspecialedition/mods/148718).
 
 <p align="center">
   <img src="images/stfumenu.jpg">
