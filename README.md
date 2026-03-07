@@ -7,7 +7,7 @@ Skyrim Talk Filter Utility gives you full control over what dialogue you hear in
 - Skyrim Special Edition (1.5.97 or AE) or Skyrim VR
 - [SKSE64](https://skse.silverlock.org/)
 - [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444)
-- [SkyrimNet Prisma Dashboard](https://www.nexusmods.com/skyrimspecialedition/mods/148718) *(for the in-game interface)*
+- [PrismaUI](https://www.nexusmods.com/skyrimspecialedition/mods/148718) *(for the in-game interface)*
 
 (Install it like any other mod)
 
