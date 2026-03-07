@@ -107,4 +107,4 @@ If a topic is miscategorized (assigned the wrong subtype by the game), you can m
 overrides:
   DLC2PillarBlockingTopic: Idle
 ```
-
+*After editing YAMLs you need to click "Import from YAML" in the settings tab or MCM. No need to restart the game.

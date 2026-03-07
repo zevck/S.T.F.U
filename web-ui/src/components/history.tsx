@@ -468,41 +468,6 @@ export const History = () => {
                   <div className="text-sm text-gray-400 text-center pt-2 border-t border-gray-700 mt-2">
                     Hint: Press DEL key to delete selected entries
                   </div>
-
-                  {/* Quick action buttons for multi-selection */}
-                  <div className="space-y-2 border-t border-gray-700 pt-4 mt-2">
-                    <div className="text-sm text-gray-400 font-medium mb-1">Blacklist Selected</div>
-                    <button
-                      onClick={() => {
-                        SKSE_API.addToBlacklist(selectedEntries, 'Soft');
-                        setSelectedEntries([]);
-                        setLastClickedIndex(-1);
-                      }}
-                      className="w-full px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors"
-                    >
-                      Soft Block
-                    </button>
-                    <button
-                      onClick={() => {
-                        SKSE_API.addToBlacklist(selectedEntries, 'Hard');
-                        setSelectedEntries([]);
-                        setLastClickedIndex(-1);
-                      }}
-                      className="w-full px-4 py-2 bg-red-800 hover:bg-red-900 text-white rounded-lg transition-colors"
-                    >
-                      Hard Block
-                    </button>
-                    <button
-                      onClick={() => {
-                        SKSE_API.addToWhitelist(selectedEntries);
-                        setSelectedEntries([]);
-                        setLastClickedIndex(-1);
-                      }}
-                      className="w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg transition-colors font-medium"
-                    >
-                      Add to Whitelist
-                    </button>
-                  </div>
                 </>
               ) : (
                 <>

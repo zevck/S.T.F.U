@@ -1,7 +1,7 @@
 import { useState, useMemo, memo, useCallback, useRef, useEffect } from 'react';
 import { useBlacklistStore } from '../stores/blacklist';
 import { BlacklistEntry } from '../types';
-import { Search, Trash2, X, Save, Plus, Settings } from 'lucide-react';
+import { Search, Trash2, X, Plus, Settings } from 'lucide-react';
 import { SKSE_API, log } from '../lib/skse-api';
 import { ResponsesModal } from './responses-modal';
 import { ManualEntryModal } from './manual-entry-modal';
@@ -116,8 +116,6 @@ export const Blacklist = () => {
   // For single-item detail panel (first selected item)
   const selectedEntry = selectedEntries.length > 0 ? selectedEntries[0] : null;
   
-  const [bulkFilterCategory, setBulkFilterCategory] = useState<string>('Blacklist'); // For bulk edit
-
   // Memoized filtering logic - only recalculates when dependencies change
   const filteredEntries = useMemo(() => {
     return entries.filter((entry) => {
@@ -210,43 +208,6 @@ export const Blacklist = () => {
     setLastClickedIndex(-1);
   }, [selectedEntries]);
   
-  const handleBulkSetBlockType = useCallback((blockType: string) => {
-    if (selectedEntries.length === 0) return;
-    
-    log(`[Blacklist] handleBulkSetBlockType called for ${selectedEntries.length} entries, blockType=${blockType}`);
-    
-    selectedEntries.forEach(entry => {
-      const filterCategory = entry.filterCategory || 'Blacklist';
-      const notes = entry.note || '';
-      SKSE_API.updateBlacklistEntry(entry.id, blockType, filterCategory, notes);
-    });
-    
-    // Refresh after bulk update
-    setTimeout(() => {
-      SKSE_API.refreshBlacklist();
-    }, 100);
-  }, [selectedEntries]);
-  
-  const handleBulkSetFilterCategory = useCallback((filterCategory: string) => {
-    if (selectedEntries.length === 0) return;
-    
-    log(`[Blacklist] handleBulkSetFilterCategory called for ${selectedEntries.length} entries, filterCategory=${filterCategory}`);
-    
-    selectedEntries.forEach(entry => {
-      const blockType = entry.blockType === 'Soft Block' ? 'Soft' 
-                      : entry.blockType === 'Hard Block' ? 'Hard'
-                      : entry.blockType === 'SkyrimNet Block' ? 'SkyrimNet'
-                      : 'Soft';
-      const notes = entry.note || '';
-      SKSE_API.updateBlacklistEntry(entry.id, blockType, filterCategory, notes);
-    });
-    
-    // Refresh after bulk update
-    setTimeout(() => {
-      SKSE_API.refreshBlacklist();
-    }, 100);
-  }, [selectedEntries]);
-  
   const handleResetFilters = useCallback(() => {
     setSearchQuery('');
     setTypeFilter('All');
@@ -257,13 +218,6 @@ export const Blacklist = () => {
   }, [setSearchQuery]);
   
   
-  // Sync bulk filter category when multiple entries selected
-  useEffect(() => {
-    if (selectedEntries.length > 1) {
-      setBulkFilterCategory(selectedEntries[0].filterCategory || 'Blacklist');
-    }
-  }, [selectedEntries]);
-
   // Keep selectedEntries pointing to fresh objects after store updates (e.g. after saves)
   useEffect(() => {
     if (selectedEntries.length === 0) return;
@@ -333,40 +287,6 @@ export const Blacklist = () => {
     setShowResponsesModal(true);
   }, [selectedEntry]);
   
-  // Bulk filter categories - only available if all selected entries are compatible
-  const bulkFilterCategories = useMemo(() => {
-    if (selectedEntries.length <= 1) return null;
-    
-    // Check if all entries are scenes
-    const allScenes = selectedEntries.every(e => e.targetType === 'Scene');
-    if (allScenes) {
-      return ['Blacklist', 'Scene', 'BardSongs', 'FollowerCommentary'];
-    }
-    
-    // Check if all entries are topics (not scenes)
-    const allTopics = selectedEntries.every(e => e.targetType === 'Topic');
-    if (allTopics) {
-      return [
-        'Blacklist',
-        'AcceptYield', 'ActorCollideWithActor', 'Agree', 'AlertIdle', 'AlertToCombat', 'AlertToNormal',
-        'AllyKilled', 'Assault', 'AssaultNC', 'Attack', 'AvoidThreat', 'BarterExit', 'Bash',
-        'Bleedout', 'Block', 'CombatToLost', 'CombatToNormal', 'Death', 'DestroyObject',
-        'DetectFriendDie', 'ExitFavorState', 'Flee', 'Goodbye', 'Hello', 'Hit', 'Idle',
-        'KnockOverObject', 'LockedObject', 'LostIdle', 'LostToCombat', 'LostToNormal',
-        'MoralRefusal', 'Murder', 'MurderNC', 'NormalToAlert', 'NormalToCombat', 'NoticeCorpse',
-        'ObserveCombat', 'PickpocketCombat', 'PickpocketNC', 'PickpocketTopic',
-        'PlayerCastProjectileSpell', 'PlayerCastSelfSpell', 'PlayerInIronSights', 'PlayerShout',
-        'PowerAttack', 'PursueIdleTopic', 'Refuse', 'ShootBow', 'Show', 'StandOnFurniture', 'Steal',
-        'StealFromNC', 'SwingMeleeWeapon', 'Taunt', 'TimeToGo', 'TrainingExit', 'Trespass',
-        'TrespassAgainstNC', 'VoicePowerEndLong', 'VoicePowerEndShort', 'VoicePowerStartLong',
-        'VoicePowerStartShort', 'WerewolfTransformCrime', 'Yield', 'ZKeyObject'
-      ];
-    }
-    
-    // Mixed types - no bulk edit available
-    return null;
-  }, [selectedEntries]);
-
   return (
     <div className="flex flex-col h-full">
       {/* Filter Panel */}
@@ -493,54 +413,6 @@ export const Blacklist = () => {
                         </li>
                       ))}
                     </ul>
-                  </div>
-                  
-                  {/* Bulk edit buttons */}
-                  <div className="space-y-2 border-t border-gray-700 pt-4">
-                    <div className="text-base text-gray-400 font-medium mb-2">Bulk Edit All Selected</div>
-                    <button
-                      onClick={() => handleBulkSetBlockType('Soft')}
-                      className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
-                    >
-                      <Save size={18} />
-                      Set All to Soft Block
-                    </button>
-                    <button
-                      onClick={() => handleBulkSetBlockType('Hard')}
-                      className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
-                    >
-                      <Save size={18} />
-                      Set All to Hard Block
-                    </button>
-                    
-                    {/* Filter category dropdown - only if all entries are compatible */}
-                    {bulkFilterCategories && (
-                      <div className="mt-3">
-                        <div className="text-sm text-gray-400 mb-2">Filter Category (applies to all)</div>
-                        <div className="flex gap-2">
-                          <select
-                            value={bulkFilterCategory}
-                            onChange={(e) => setBulkFilterCategory(e.target.value)}
-                            className="flex-1 px-3 py-2 text-base bg-gray-700 text-white rounded border border-gray-600 focus:outline-none focus:border-blue-500"
-                          >
-                            {bulkFilterCategories.map(cat => (
-                              <option key={cat} value={cat}>{cat}</option>
-                            ))}
-                          </select>
-                          <button
-                            onClick={() => handleBulkSetFilterCategory(bulkFilterCategory)}
-                            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
-                          >
-                            <Save size={18} />
-                          </button>
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          {selectedEntries[0]?.targetType === 'Scene'
-                            ? 'All selected entries are Scenes'
-                            : 'All selected entries are Topics'}
-                        </div>
-                      </div>
-                    )}
                   </div>
                   
                   {/* Multi-delete button */}
