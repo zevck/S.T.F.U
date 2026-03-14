@@ -148,7 +148,11 @@ namespace Config
     
     // Import YAML blacklist into database
     int ImportYAMLToDatabase();
-    
+
+    // Track whether SkyrimNet.esp is loaded (set at kDataLoaded time)
+    void SetSkyrimNetLoaded(bool loaded);
+    bool IsSkyrimNetLoaded();
+
     // Parse form identifier (supports 0x format, FormKey format, or EditorID)
     // Returns pair of (formID, editorID) - formID is 0 if EditorID, editorID is empty if FormID
     std::pair<uint32_t, std::string> ParseFormIdentifier(const std::string& value);
