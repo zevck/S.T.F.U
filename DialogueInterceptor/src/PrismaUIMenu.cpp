@@ -6,6 +6,62 @@
 #include <sstream>
 #include <iomanip>
 
+namespace
+{
+    std::string escapeJSON(const std::string& str)
+    {
+        std::string result;
+        result.reserve(str.size());
+
+        for (unsigned char byte : str) {
+            switch (byte) {
+                case '"': result += "\\\""; break;
+                case '\\': result += "\\\\"; break;
+                case '\b': result += "\\b"; break;
+                case '\f': result += "\\f"; break;
+                case '\n': result += "\\n"; break;
+                case '\r': result += "\\r"; break;
+                case '\t': result += "\\t"; break;
+                default:
+                    if (byte < 0x20) {
+                        char buf[8];
+                        snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned int>(byte));
+                        result += buf;
+                    } else {
+                        result += static_cast<char>(byte);
+                    }
+                    break;
+            }
+        }
+
+        return result;
+    }
+
+    std::string EscapeSingleQuotedJSString(const std::string& str)
+    {
+        std::string result;
+        result.reserve(str.size());
+
+        for (unsigned char byte : str) {
+            switch (byte) {
+                case '\'': result += "\\'"; break;
+                case '\\': result += "\\\\"; break;
+                case '\n': result += "\\n"; break;
+                case '\r': result += "\\r"; break;
+                case '\t': result += "\\t"; break;
+                default: result += static_cast<char>(byte); break;
+            }
+        }
+
+        return result;
+    }
+
+    std::string BuildSKSEUpdateScript(const std::string& eventName, const std::string& jsonData)
+    {
+        return "window.SKSE_API?.call('" + eventName + "', '" + EscapeSingleQuotedJSString(jsonData) + "')";
+    }
+}
+
 PRISMA_UI_API::IVPrismaUI1* PrismaUIMenu::prismaUI_ = nullptr;
 PrismaView PrismaUIMenu::view_ = 0;
 bool PrismaUIMenu::initialized_ = false;
@@ -430,22 +486,7 @@ void PrismaUIMenu::SendHistoryData()
         std::string jsonData = SerializeHistoryToJSON();
         spdlog::info("[PrismaUIMenu] Sending {} bytes of history data", jsonData.size());
         
-        // Escape the JSON string for JavaScript string literal context
-        std::string escapedJSON;
-        for (char c : jsonData) {
-            switch (c) {
-                case '\'': escapedJSON += "\\'"; break;
-                case '\\': escapedJSON += "\\\\"; break;
-                case '\n': escapedJSON += "\\n"; break;
-                case '\r': escapedJSON += "\\r"; break;
-                case '\t': escapedJSON += "\\t"; break;
-                default: escapedJSON += c; break;
-            }
-        }
-        
-        // Call JavaScript function with JSON data as a string
-        std::string jsCode = "window.SKSE_API?.call('updateHistory', '" + escapedJSON + "')";
-        
+        std::string jsCode = BuildSKSEUpdateScript("updateHistory", jsonData);
         prismaUI_->Invoke(view_, jsCode.c_str());
         
         spdlog::debug("[PrismaUIMenu] Successfully invoked updateHistory");
@@ -672,33 +713,6 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
         if (!first) json << ",";
         first = false;
         
-        // Helper to escape JSON strings
-        auto escapeJSON = [](const std::string& str) -> std::string {
-            std::string result;
-            result.reserve(str.size());
-            for (char c : str) {
-                switch (c) {
-                    case '"': result += "\\\""; break;
-                    case '\\': result += "\\\\"; break;
-                    case '\b': result += "\\b"; break;
-                    case '\f': result += "\\f"; break;
-                    case '\n': result += "\\n"; break;
-                    case '\r': result += "\\r"; break;
-                    case '\t': result += "\\t"; break;
-                    default:
-                        if (c < 0x20) {
-                            char buf[8];
-                            snprintf(buf, sizeof(buf), "\\u%04x", (int)c);
-                            result += buf;
-                        } else {
-                            result += c;
-                        }
-                        break;
-                }
-            }
-            return result;
-        };
-        
         // Convert status enum to string
         std::string statusStr;
         switch (entry.blockedStatus) {
@@ -803,22 +817,7 @@ void PrismaUIMenu::SendBlacklistData()
         std::string jsonData = SerializeBlacklistToJSON();
         spdlog::info("[PrismaUIMenu] Sending {} bytes of blacklist data", jsonData.size());
         
-        // Escape the JSON string for JavaScript string literal context
-        std::string escapedJSON;
-        for (char c : jsonData) {
-            switch (c) {
-                case '\'': escapedJSON += "\\'"; break;
-                case '\\': escapedJSON += "\\\\"; break;
-                case '\n': escapedJSON += "\\n"; break;
-                case '\r': escapedJSON += "\\r"; break;
-                case '\t': escapedJSON += "\\t"; break;
-                default: escapedJSON += c; break;
-            }
-        }
-        
-        // Call JavaScript function with JSON data
-        std::string jsCode = "window.SKSE_API?.call('updateBlacklist', '" + escapedJSON + "')";
-        
+        std::string jsCode = BuildSKSEUpdateScript("updateBlacklist", jsonData);
         prismaUI_->Invoke(view_, jsCode.c_str());
         
         spdlog::debug("[PrismaUIMenu] Successfully invoked updateBlacklist");
@@ -844,32 +843,6 @@ std::string PrismaUIMenu::SerializeBlacklistToJSON()
     for (const auto& entry : blacklist) {
         if (!first) json << ",";
         first = false;
-        
-        // Helper to escape JSON strings
-        auto escapeJSON = [](const std::string& str) -> std::string {
-            std::string result;
-            for (char c : str) {
-                switch (c) {
-                    case '"': result += "\\\""; break;
-                    case '\\': result += "\\\\"; break;
-                    case '\b': result += "\\b"; break;
-                    case '\f': result += "\\f"; break;
-                    case '\n': result += "\\n"; break;
-                    case '\r': result += "\\r"; break;
-                    case '\t': result += "\\t"; break;
-                    default:
-                        if (c < 0x20) {
-                            char buf[8];
-                            snprintf(buf, sizeof(buf), "\\u%04x", (int)c);
-                            result += buf;
-                        } else {
-                            result += c;
-                        }
-                        break;
-                }
-            }
-            return result;
-        };
         
         json << "{";
         json << "\"id\":" << entry.id << ",";
@@ -1567,7 +1540,7 @@ void PrismaUIMenu::OnToggleSubtypeFilter(const char* data)
             // Refresh history to show updated statuses
             std::string historyJSON = SerializeHistoryToJSON();
             if (prismaUI_ && view_) {
-                std::string jsCall = "window.SKSE_API.call('updateHistory', '" + historyJSON + "')";
+                std::string jsCall = BuildSKSEUpdateScript("updateHistory", historyJSON);
                 prismaUI_->Invoke(view_, jsCall.c_str());
             }
         } else {
@@ -2726,22 +2699,7 @@ void PrismaUIMenu::SendWhitelistData()
         std::string jsonData = SerializeWhitelistToJSON();
         spdlog::info("[PrismaUIMenu] Sending {} bytes of whitelist data", jsonData.size());
         
-        // Escape the JSON string for JavaScript string literal context
-        std::string escapedJSON;
-        for (char c : jsonData) {
-            switch (c) {
-                case '\'': escapedJSON += "\\'"; break;
-                case '\\': escapedJSON += "\\\\"; break;
-                case '\n': escapedJSON += "\\n"; break;
-                case '\r': escapedJSON += "\\r"; break;
-                case '\t': escapedJSON += "\\t"; break;
-                default: escapedJSON += c; break;
-            }
-        }
-        
-        // Call JavaScript function with JSON data
-        std::string jsCode = "window.SKSE_API?.call('updateWhitelist', '" + escapedJSON + "')";
-        
+        std::string jsCode = BuildSKSEUpdateScript("updateWhitelist", jsonData);
         prismaUI_->Invoke(view_, jsCode.c_str());
         
         spdlog::debug("[PrismaUIMenu] Successfully invoked updateWhitelist");
@@ -2767,32 +2725,6 @@ std::string PrismaUIMenu::SerializeWhitelistToJSON()
     for (const auto& entry : whitelist) {
         if (!first) json << ",";
         first = false;
-        
-        // Helper to escape JSON strings
-        auto escapeJSON = [](const std::string& str) -> std::string {
-            std::string result;
-            for (char c : str) {
-                switch (c) {
-                    case '"': result += "\\\""; break;
-                    case '\\': result += "\\\\"; break;
-                    case '\b': result += "\\b"; break;
-                    case '\f': result += "\\f"; break;
-                    case '\n': result += "\\n"; break;
-                    case '\r': result += "\\r"; break;
-                    case '\t': result += "\\t"; break;
-                    default:
-                        if (c < 0x20) {
-                            char buf[8];
-                            snprintf(buf, sizeof(buf), "\\u%04x", (int)c);
-                            result += buf;
-                        } else {
-                            result += c;
-                        }
-                        break;
-                }
-            }
-            return result;
-        };
         
         json << "{";
         json << "\"id\":" << entry.id << ",";
