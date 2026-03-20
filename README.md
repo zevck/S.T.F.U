@@ -8,6 +8,7 @@ Skyrim Talk Filter Utility gives you full control over what dialogue you hear in
 - [SKSE64](https://skse.silverlock.org/)
 - [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444)
 - [PrismaUI](https://www.nexusmods.com/skyrimspecialedition/mods/148718) *(for the in-game interface)*
+- [Native EditorID Fix](https://www.nexusmods.com/skyrimspecialedition/mods/85260)
 
 (Install it like any other mod)
 
