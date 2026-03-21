@@ -150,6 +150,7 @@ export const App = () => {
     // Request initial data
     SKSE_API.sendToSKSE('requestHistory');
     SKSE_API.sendToSKSE('requestBlacklist');
+    SKSE_API.sendToSKSE('requestWhitelist', '');
     SKSE_API.sendToSKSE('requestSettings', '');
 
     // ESC key handler to close menu
@@ -182,6 +183,9 @@ export const App = () => {
       } else if (activeTab === 'blacklist') {
         log('[App] Switching to blacklist tab - requesting refresh');
         SKSE_API.requestBlacklistRefresh();
+      } else if (activeTab === 'whitelist') {
+        log('[App] Switching to whitelist tab - requesting refresh');
+        SKSE_API.requestWhitelistRefresh();
       } else if (activeTab === 'settings') {
         log('[App] Switching to settings tab - requesting refresh');
         SKSE_API.sendToSKSE('requestSettings', '');

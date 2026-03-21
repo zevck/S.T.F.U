@@ -100,6 +100,10 @@ export const Blacklist = () => {
     setShowTopics,
     showScenes,
     setShowScenes,
+    showActors,
+    setShowActors,
+    showFactions,
+    setShowFactions,
     selectedEntries,
     setSelectedEntries
   } = useBlacklistStore();
@@ -130,7 +134,9 @@ export const Blacklist = () => {
           entry.topicEditorID?.toLowerCase().includes(query) ||
           entry.topicFormID?.toLowerCase().includes(query) ||
           entry.sourcePlugin?.toLowerCase().includes(query) ||
-          entry.note?.toLowerCase().includes(query)
+          entry.note?.toLowerCase().includes(query) ||
+          entry.actorFilterNames?.some(n => n.toLowerCase().includes(query)) ||
+          entry.factionFilterEditorIDs?.some(f => f.toLowerCase().includes(query))
         );
         if (!matches) return false;
       }
@@ -148,13 +154,15 @@ export const Blacklist = () => {
       );
       if (!blockTypeMatches) return false;
       
-      // Target type filter (Topics/Scenes)
+      // Target type filter (Topics/Scenes/Actors/Factions)
       if (!showTopics && entry.targetType === 'Topic') return false;
       if (!showScenes && entry.targetType === 'Scene') return false;
+      if (!showActors && entry.targetType === 'Actor') return false;
+      if (!showFactions && entry.targetType === 'Faction') return false;
       
       return true;
     });
-  }, [entries, searchQuery, typeFilter, blockSoft, blockHard, showTopics, showScenes]);
+  }, [entries, searchQuery, typeFilter, blockSoft, blockHard, showTopics, showScenes, showActors, showFactions]);
 
   // Lazy loading with IntersectionObserver
   useEffect(() => {
@@ -178,7 +186,7 @@ export const Blacklist = () => {
   // Reset display count when filters change
   useEffect(() => {
     setDisplayCount(100);
-  }, [searchQuery, typeFilter, blockSoft, blockHard, showTopics, showScenes]);
+  }, [searchQuery, typeFilter, blockSoft, blockHard, showTopics, showScenes, showActors, showFactions]);
 
   // Slice entries for lazy loading
   const displayedEntries = useMemo(() => {
@@ -215,6 +223,8 @@ export const Blacklist = () => {
     setBlockHard(true);
     setShowTopics(true);
     setShowScenes(true);
+    setShowActors(true);
+    setShowFactions(true);
   }, [setSearchQuery]);
   
   
@@ -342,6 +352,24 @@ export const Blacklist = () => {
               className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 cursor-pointer"
             />
             <span className="text-base text-white">Scenes</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showActors}
+              onChange={(e) => setShowActors(e.target.checked)}
+              className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 cursor-pointer"
+            />
+            <span className="text-base text-white">Actors</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showFactions}
+              onChange={(e) => setShowFactions(e.target.checked)}
+              className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 cursor-pointer"
+            />
+            <span className="text-base text-white">Factions</span>
           </label>
           <button
             onClick={handleResetFilters}

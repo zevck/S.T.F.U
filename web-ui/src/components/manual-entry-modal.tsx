@@ -7,11 +7,14 @@ interface ManualEntryModalProps {
   onClose: () => void;
   isWhitelist?: boolean;
   prefillIdentifier?: string;
+  prefillSpeakerFormID?: string;
+  prefillSpeakerName?: string;
 }
 
 interface DetectionResult {
-  type: 'topic' | 'scene' | 'plugin';
+  type: 'topic' | 'scene' | 'plugin' | 'actor' | 'faction' | 'unknown';
   categories: string[];
+  displayName?: string;
 }
 
 interface Actor {
@@ -20,11 +23,13 @@ interface Actor {
   lastSeen: number;
 }
 
-export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false, prefillIdentifier }: ManualEntryModalProps) => {
+export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false, prefillIdentifier, prefillSpeakerFormID, prefillSpeakerName }: ManualEntryModalProps) => {
   const [identifier, setIdentifier] = useState('');
+  const [filterSpeaker, setFilterSpeaker] = useState(false);
   const [blockType, setBlockType] = useState<'Soft' | 'Hard'>('Soft');
   const [notes, setNotes] = useState('');
-  const [detectedType, setDetectedType] = useState<'topic' | 'scene' | 'plugin'>('topic');
+  const [detectedType, setDetectedType] = useState<'topic' | 'scene' | 'plugin' | 'actor' | 'faction' | 'unknown' | null>(null);
+  const [detectedDisplayName, setDetectedDisplayName] = useState<string>('');
   const [categories, setCategories] = useState<string[]>(['Blacklist']);
   const [selectedCategory, setSelectedCategory] = useState('Blacklist');
   const [actorFilterNames, setActorFilterNames] = useState<string[]>([]);
@@ -34,6 +39,7 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false, pr
   const [showActorDropdown, setShowActorDropdown] = useState(false);
   const [nearbyActors, setNearbyActors] = useState<Actor[]>([]);
   const detectionTimeoutRef = useRef<number | null>(null);
+  const detectionFallbackRef = useRef<number | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   
   const historyEntries = useHistoryStore(state => state.entries);
@@ -82,14 +88,14 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false, pr
     
     // Add nearby actors first (higher priority)
     nearbyActors.forEach(actor => {
-      if (actor.formID && actor.formID !== '0x0') {
+      if (actor.formID && actor.formID !== '0x00000000') {
         actorMap.set(actor.formID.toUpperCase(), actor);
       }
     });
     
     // Add recent actors (won't overwrite if FormID already exists)
     actors.forEach(actor => {
-      if (actor.formID && actor.formID !== '0x0' && !actorMap.has(actor.formID.toUpperCase())) {
+      if (actor.formID && actor.formID !== '0x00000000' && !actorMap.has(actor.formID.toUpperCase())) {
         actorMap.set(actor.formID.toUpperCase(), actor);
       }
     });
@@ -118,7 +124,12 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false, pr
     (window as any).handleIdentifierDetection = (result: DetectionResult) => {
       log(`[ManualEntry] Detection result: type=${result.type}, categories=${result.categories.length}`);
       setDetectedType(result.type);
+      setDetectedDisplayName(result.displayName || '');
       setCategories(result.categories);
+      // Actor/faction only support soft blocking
+      if (result.type === 'actor' || result.type === 'faction') {
+        setBlockType('Soft');
+      }
       
       // Reset to "Blacklist" if current selection is not in new categories
       if (!result.categories.includes(selectedCategory)) {
@@ -145,13 +156,20 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false, pr
     }
 
     if (identifier.trim()) {
+      setDetectedType(null);
       detectionTimeoutRef.current = window.setTimeout(() => {
         log(`[ManualEntry] Detecting type for: ${identifier}`);
         SKSE_API.sendToSKSE('detectIdentifierType', JSON.stringify({ identifier }));
       }, 300); // 300ms debounce
+      // Fallback: if no response within 2s, show unknown
+      if (detectionFallbackRef.current) clearTimeout(detectionFallbackRef.current);
+      detectionFallbackRef.current = window.setTimeout(() => {
+        setDetectedType(prev => prev === null ? 'unknown' : prev);
+      }, 2000);
     } else {
       // Reset to default when empty
-      setDetectedType('topic');
+      setDetectedType(null);
+      setDetectedDisplayName('');
       setCategories(['Blacklist']);
       setSelectedCategory('Blacklist');
     }
@@ -159,6 +177,9 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false, pr
     return () => {
       if (detectionTimeoutRef.current) {
         clearTimeout(detectionTimeoutRef.current);
+      }
+      if (detectionFallbackRef.current) {
+        clearTimeout(detectionFallbackRef.current);
       }
     };
   }, [identifier]);
@@ -168,12 +189,23 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false, pr
     if (isOpen) {
       log('[ManualEntry] Modal opened, requesting nearby actors');
       SKSE_API.requestNearbyActors();
+      setFilterSpeaker(false);
       if (prefillIdentifier) {
         log(`[ManualEntry] Prefilling identifier: ${prefillIdentifier}`);
         setIdentifier(prefillIdentifier);
       }
     }
   }, [isOpen, prefillIdentifier]);
+
+  // When filterSpeaker checkbox changes, swap identifier between topic and speaker FormID
+  useEffect(() => {
+    if (!isOpen) return;
+    if (filterSpeaker && prefillSpeakerFormID) {
+      setIdentifier(prefillSpeakerFormID);
+    } else if (!filterSpeaker && prefillIdentifier) {
+      setIdentifier(prefillIdentifier);
+    }
+  }, [filterSpeaker]);
   
   // Reset form when modal closes
   useEffect(() => {
@@ -181,7 +213,9 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false, pr
       setIdentifier('');
       setNotes('');
       setBlockType('Soft');
-      setDetectedType('topic');
+      setFilterSpeaker(false);
+      setDetectedType(null);
+      setDetectedDisplayName('');
       setCategories(['Blacklist']);
       setSelectedCategory('Blacklist');
       setActorFilterNames([]);
@@ -336,11 +370,29 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false, pr
               className="w-full px-4 py-2.5 text-base bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
               autoFocus
             />
-            <div className="text-sm text-gray-400 mt-1">
+            <div className="text-sm text-gray-400 mt-1 min-h-[20px]">
+              {(detectedType === null || detectedType === 'unknown') && !identifier.trim() && (isWhitelist ? 'Supports: Topic, Scene, Quest, Actor, Faction, Plugin' : 'Supports: Topic, Scene, Quest, Actor, Faction')}
+              {detectedType === null && identifier.trim() && 'Detecting...'}
+              {detectedType === 'unknown' && identifier.trim() && 'Could not detect type'}
               {detectedType === 'scene' && '🎬 Detected as Scene'}
               {detectedType === 'topic' && '💬 Detected as Topic'}
               {detectedType === 'plugin' && '📦 Detected as Plugin'}
+              {detectedType === 'actor' && `🧑 Detected as Actor${detectedDisplayName ? `: ${detectedDisplayName}` : ''}`}
+              {detectedType === 'faction' && `⚔️ Detected as Faction${detectedDisplayName ? `: ${detectedDisplayName}` : ''}`}
             </div>
+            {prefillSpeakerFormID && prefillSpeakerFormID !== '0x00000000' && (
+              <label className="flex items-center gap-2 mt-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={filterSpeaker}
+                  onChange={(e) => setFilterSpeaker(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-500 text-purple-500 focus:ring-purple-500 cursor-pointer"
+                />
+                <span className="text-sm text-purple-300">
+                  {isWhitelist ? 'Whitelist speaker' : 'Block speaker'}{prefillSpeakerName ? ` (${prefillSpeakerName})` : ''} instead of this topic
+                </span>
+              </label>
+            )}
           </div>
 
           {/* Block Type - only for blacklist */}
@@ -360,6 +412,7 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false, pr
                 />
                 <span className="text-base text-white">Soft Block</span>
               </label>
+              {detectedType !== 'actor' && detectedType !== 'faction' && (
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="radio"
@@ -370,9 +423,12 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false, pr
                 />
                 <span className="text-base text-white">Hard Block</span>
               </label>
+              )}
             </div>
             <div className="text-sm text-gray-400 mt-1">
-              Soft blocks mute audio and hide subtitles. Hard blocks prevent dialogue before it plays.
+              {detectedType === 'actor' || detectedType === 'faction'
+                ? 'Actor and faction blocks are always soft (mute audio and hide subtitles).'
+                : 'Soft blocks mute audio and hide subtitles. Hard blocks prevent dialogue before it plays.'}
             </div>
           </div>
           )}
@@ -400,7 +456,8 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false, pr
           </div>
           )}
 
-          {/* Actor & Faction Filtering */}
+          {/* Actor & Faction Filtering — hidden when the target itself is an actor/faction */}
+          {detectedType !== 'actor' && detectedType !== 'faction' && (
           <div>
             <label className="block text-base font-medium text-gray-300 mb-2">
               Actor & Faction Filters (Optional)
@@ -515,6 +572,7 @@ export const ManualEntryModal = memo(({ isOpen, onClose, isWhitelist = false, pr
               Actors (blue) from the dropdown. Unknown names become faction EditorID filters (purple).
             </div>
           </div>
+          )}
 
           {/* Notes */}
           <div>

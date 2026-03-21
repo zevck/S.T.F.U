@@ -2714,7 +2714,40 @@ namespace DialogueDB
             }
             sqlite3_finalize(whitelistStmt);
         }
-        
+
+        // Check Actor whitelist: if this specific NPC reference is whitelisted, don't block
+        if (actorFormID > 0) {
+            const char* actorWlSql = "SELECT id FROM whitelist WHERE target_type = 6 AND target_formid = ? LIMIT 1;";
+            sqlite3_stmt* actorWlStmt = nullptr;
+            if (sqlite3_prepare_v2(db_, actorWlSql, -1, &actorWlStmt, nullptr) == SQLITE_OK) {
+                sqlite3_bind_int(actorWlStmt, 1, actorFormID);
+                if (sqlite3_step(actorWlStmt) == SQLITE_ROW) {
+                    spdlog::debug("[DialogueDB] ShouldSoftBlock: Actor 0x{:08X} is whitelisted -> DON'T BLOCK", actorFormID);
+                    sqlite3_finalize(actorWlStmt);
+                    return false;
+                }
+                sqlite3_finalize(actorWlStmt);
+            }
+        }
+
+        // Check Faction whitelist: if any of this actor's factions are whitelisted, don't block
+        if (actorRef) {
+            auto actorFactions = GetActorFactionEditorIDs(actorRef);
+            for (const auto& factionEditorID : actorFactions) {
+                const char* factionWlSql = "SELECT id FROM whitelist WHERE target_type = 7 AND target_editorid = ? LIMIT 1;";
+                sqlite3_stmt* factionWlStmt = nullptr;
+                if (sqlite3_prepare_v2(db_, factionWlSql, -1, &factionWlStmt, nullptr) == SQLITE_OK) {
+                    sqlite3_bind_text(factionWlStmt, 1, factionEditorID.c_str(), -1, SQLITE_TRANSIENT);
+                    if (sqlite3_step(factionWlStmt) == SQLITE_ROW) {
+                        spdlog::debug("[DialogueDB] ShouldSoftBlock: Actor's faction '{}' is whitelisted -> DON'T BLOCK", factionEditorID);
+                        sqlite3_finalize(factionWlStmt);
+                        return false;
+                    }
+                    sqlite3_finalize(factionWlStmt);
+                }
+            }
+        }
+
         // SECOND: Check blacklist (only if not whitelisted)
         const char* sql = "SELECT block_type, filter_category, actor_filter_formids, actor_filter_names, faction_filter_editorids FROM blacklist WHERE ((target_formid = ? OR target_formid = 0) AND target_editorid = ?) OR (target_editorid = '' AND target_formid = ?) LIMIT 1;";
         sqlite3_stmt* stmt = nullptr;
@@ -2805,6 +2838,49 @@ namespace DialogueDB
         }
         
         sqlite3_finalize(stmt);
+
+        // If topic/quest/scene didn't match, check Actor blacklist
+        if (!shouldBlock && actorFormID > 0) {
+            const char* actorBlSql = "SELECT block_type, filter_category FROM blacklist WHERE target_type = 6 AND target_formid = ? LIMIT 1;";
+            sqlite3_stmt* actorBlStmt = nullptr;
+            if (sqlite3_prepare_v2(db_, actorBlSql, -1, &actorBlStmt, nullptr) == SQLITE_OK) {
+                sqlite3_bind_int(actorBlStmt, 1, actorFormID);
+                if (sqlite3_step(actorBlStmt) == SQLITE_ROW) {
+                    BlockType blockType = static_cast<BlockType>(sqlite3_column_int(actorBlStmt, 0));
+                    const char* filterCatC = reinterpret_cast<const char*>(sqlite3_column_text(actorBlStmt, 1));
+                    std::string filterCat = (filterCatC && filterCatC[0]) ? filterCatC : "Blacklist";
+                    if (blockType != BlockType::SkyrimNet && Config::IsFilterCategoryEnabled(filterCat)) {
+                        spdlog::debug("[DialogueDB] ShouldSoftBlock: Actor 0x{:08X} is blacklisted -> BLOCK", actorFormID);
+                        shouldBlock = true;
+                    }
+                }
+                sqlite3_finalize(actorBlStmt);
+            }
+        }
+
+        // If still not blocked, check Faction blacklist
+        if (!shouldBlock && actorRef) {
+            auto actorFactions = GetActorFactionEditorIDs(actorRef);
+            for (const auto& factionEditorID : actorFactions) {
+                if (shouldBlock) break;
+                const char* factionBlSql = "SELECT block_type, filter_category FROM blacklist WHERE target_type = 7 AND target_editorid = ? LIMIT 1;";
+                sqlite3_stmt* factionBlStmt = nullptr;
+                if (sqlite3_prepare_v2(db_, factionBlSql, -1, &factionBlStmt, nullptr) == SQLITE_OK) {
+                    sqlite3_bind_text(factionBlStmt, 1, factionEditorID.c_str(), -1, SQLITE_TRANSIENT);
+                    if (sqlite3_step(factionBlStmt) == SQLITE_ROW) {
+                        BlockType blockType = static_cast<BlockType>(sqlite3_column_int(factionBlStmt, 0));
+                        const char* filterCatC = reinterpret_cast<const char*>(sqlite3_column_text(factionBlStmt, 1));
+                        std::string filterCat = (filterCatC && filterCatC[0]) ? filterCatC : "Blacklist";
+                        if (blockType != BlockType::SkyrimNet && Config::IsFilterCategoryEnabled(filterCat)) {
+                            spdlog::debug("[DialogueDB] ShouldSoftBlock: Actor's faction '{}' is blacklisted -> BLOCK", factionEditorID);
+                            shouldBlock = true;
+                        }
+                    }
+                    sqlite3_finalize(factionBlStmt);
+                }
+            }
+        }
+
         return shouldBlock;
     }
     

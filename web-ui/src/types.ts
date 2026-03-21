@@ -18,6 +18,12 @@ export interface DialogueEntry {
   isBardSong: boolean;
   sceneEditorID: string;
   allResponses?: string[];
+  isActorBlocked?: boolean;
+  blockingFactionEditorID?: string;
+  isActorWhitelisted?: boolean;
+  whitelistFactionEditorID?: string;
+  isSubtypeFiltered?: boolean;
+  isSubtypeToggledOff?: boolean;
 }
 
 export interface BlacklistEntry {

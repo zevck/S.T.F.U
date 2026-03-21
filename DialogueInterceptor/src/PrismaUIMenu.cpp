@@ -585,6 +585,50 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
                         }
                     }
                 }
+
+                // Check Actor whitelist (target_type=6) - always check regardless of topic whitelist
+                if (entry.speakerFormID != 0) {
+                    for (const auto& wlEntry : whitelist) {
+                        if (wlEntry.targetType == DialogueDB::BlacklistTarget::Actor &&
+                            wlEntry.targetFormID == entry.speakerFormID) {
+                            entry.blockedStatus = DialogueDB::BlockedStatus::Whitelisted;
+                            entry.isActorWhitelisted = true;
+                            foundInWhitelist = true;
+                            break;
+                        }
+                    }
+                }
+
+                // Check Faction whitelist (target_type=7) - always check regardless of actor whitelist
+                if (entry.speakerBaseFormID != 0) {
+                    auto* npcBase = RE::TESForm::LookupByID<RE::TESNPC>(entry.speakerBaseFormID);
+                    if (npcBase) {
+                        bool foundFactionWl = false;
+                        for (const auto& wlEntry : whitelist) {
+                            if (foundFactionWl) break;
+                            if (wlEntry.targetType == DialogueDB::BlacklistTarget::Faction &&
+                                (!wlEntry.targetEditorID.empty() || wlEntry.targetFormID != 0)) {
+                                for (auto& factionInfo : npcBase->factions) {
+                                    if (!factionInfo.faction) continue;
+                                    bool match = (wlEntry.targetFormID != 0 && factionInfo.faction->GetFormID() == wlEntry.targetFormID);
+                                    if (!match && !wlEntry.targetEditorID.empty()) {
+                                        const char* edID = factionInfo.faction->GetFormEditorID();
+                                        match = (edID && wlEntry.targetEditorID == edID);
+                                    }
+                                    if (match) {
+                                        entry.blockedStatus = DialogueDB::BlockedStatus::Whitelisted;
+                                        entry.whitelistFactionEditorID = !wlEntry.targetEditorID.empty()
+                                            ? wlEntry.targetEditorID
+                                            : "";
+                                        foundFactionWl = true;
+                                        foundInWhitelist = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
             
             // If not whitelisted, check blacklist and filters
@@ -637,6 +681,7 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
                                 // Check faction filter using base form (always in memory, unlike placed references)
                                 bool hasFactionFilter = !blEntry.factionFilterEditorIDs.empty();
                                 bool factionFilterMatches = false;
+                                std::string matchedFactionEditorID;
                                 if (hasFactionFilter && entry.speakerBaseFormID != 0) {
                                     auto* npcBase = RE::TESForm::LookupByID<RE::TESNPC>(entry.speakerBaseFormID);
                                     if (npcBase) {
@@ -648,6 +693,7 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
                                             for (const auto& filterFaction : blEntry.factionFilterEditorIDs) {
                                                 if (filterFaction == editorID) {
                                                     factionFilterMatches = true;
+                                                    matchedFactionEditorID = filterFaction;
                                                     break;
                                                 }
                                             }
@@ -674,6 +720,10 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
                                     } else {
                                         entry.blockedStatus = DialogueDB::BlockedStatus::SoftBlock;
                                     }
+                                    // Record faction that triggered filter (for UI indicator)
+                                    if (hasFactionFilter && factionFilterMatches) {
+                                        entry.blockingFactionEditorID = matchedFactionEditorID;
+                                    }
                                 } else {
                                     // Actor doesn't match filter - treat as if not blacklisted
                                     if (Config::IsFilteredByMCM(entry.topicFormID, entry.topicSubtype)) {
@@ -688,13 +738,111 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
                             }
                         }
                     } else {
-                        // Not blacklisted - check if filtered by MCM
-                        if (Config::IsFilteredByMCM(entry.topicFormID, entry.topicSubtype)) {
-                            entry.blockedStatus = DialogueDB::BlockedStatus::FilteredByConfig;
-                        } else if (Config::HasDisabledSubtypeToggle(entry.topicSubtype)) {
-                            entry.blockedStatus = DialogueDB::BlockedStatus::ToggledOff;
-                        } else {
-                            entry.blockedStatus = DialogueDB::BlockedStatus::Normal;
+                        // Not blacklisted by topic - check Actor/Faction blacklist
+                        // Run both checks independently so both flags are captured even when both match
+                        bool foundActorFactionBl = false;
+                        if (entry.speakerFormID != 0) {
+                            for (const auto& blEntry : blacklist) {
+                                if (blEntry.targetType == DialogueDB::BlacklistTarget::Actor &&
+                                    blEntry.targetFormID == entry.speakerFormID) {
+                                    // Actor blocks are always soft
+                                    if (blEntry.blockType == DialogueDB::BlockType::SkyrimNet) {
+                                        entry.blockedStatus = DialogueDB::BlockedStatus::SkyrimNetBlock;
+                                    } else {
+                                        entry.blockedStatus = DialogueDB::BlockedStatus::SoftBlock;
+                                    }
+                                    entry.isActorBlocked = true;
+                                    foundActorFactionBl = true;
+                                    break;
+                                }
+                            }
+                        }
+                        // Always check faction regardless of whether actor matched
+                        bool foundFactionBl = false;
+                        if (entry.speakerBaseFormID != 0) {
+                            auto* npcBase = RE::TESForm::LookupByID<RE::TESNPC>(entry.speakerBaseFormID);
+                            if (npcBase) {
+                                for (const auto& blEntry : blacklist) {
+                                    if (foundFactionBl) break;
+                                    if (blEntry.targetType == DialogueDB::BlacklistTarget::Faction &&
+                                        (!blEntry.targetEditorID.empty() || blEntry.targetFormID != 0)) {
+                                        for (auto& factionInfo : npcBase->factions) {
+                                            if (!factionInfo.faction) continue;
+                                            bool match = (blEntry.targetFormID != 0 && factionInfo.faction->GetFormID() == blEntry.targetFormID);
+                                            if (!match && !blEntry.targetEditorID.empty()) {
+                                                const char* edID = factionInfo.faction->GetFormEditorID();
+                                                match = (edID && blEntry.targetEditorID == edID);
+                                            }
+                                            if (match) {
+                                                // Faction blocks are always soft
+                                                if (blEntry.blockType == DialogueDB::BlockType::SkyrimNet) {
+                                                    entry.blockedStatus = DialogueDB::BlockedStatus::SkyrimNetBlock;
+                                                } else {
+                                                    entry.blockedStatus = DialogueDB::BlockedStatus::SoftBlock;
+                                                }
+                                                // Capture which faction entry caused the block (for UI)
+                                                entry.blockingFactionEditorID = !blEntry.targetEditorID.empty()
+                                                    ? blEntry.targetEditorID
+                                                    : "";
+                                                foundFactionBl = true;
+                                                foundActorFactionBl = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (!foundActorFactionBl) {
+                            // Check if filtered by MCM
+                            if (Config::IsFilteredByMCM(entry.topicFormID, entry.topicSubtype)) {
+                                entry.blockedStatus = DialogueDB::BlockedStatus::FilteredByConfig;
+                            } else if (Config::HasDisabledSubtypeToggle(entry.topicSubtype)) {
+                                entry.blockedStatus = DialogueDB::BlockedStatus::ToggledOff;
+                            } else {
+                                entry.blockedStatus = DialogueDB::BlockedStatus::Normal;
+                            }
+                        }
+                    }
+                }
+            }
+            // Even when whitelisted, detect actor/faction blacklist for UI indicator flags
+            if (foundInWhitelist && !entry.isScene && !entry.isBardSong) {
+                // Check actor blacklist indicator
+                if (entry.speakerFormID != 0) {
+                    for (const auto& blEntry : blacklist) {
+                        if (blEntry.targetType == DialogueDB::BlacklistTarget::Actor &&
+                            blEntry.targetFormID == entry.speakerFormID) {
+                            entry.isActorBlocked = true;
+                            break;
+                        }
+                    }
+                }
+                // Check faction blacklist indicator
+                if (entry.speakerBaseFormID != 0 && entry.blockingFactionEditorID.empty()) {
+                    auto* npcBase = RE::TESForm::LookupByID<RE::TESNPC>(entry.speakerBaseFormID);
+                    if (npcBase) {
+                        bool found = false;
+                        for (const auto& blEntry : blacklist) {
+                            if (found) break;
+                            if (blEntry.targetType == DialogueDB::BlacklistTarget::Faction &&
+                                (!blEntry.targetEditorID.empty() || blEntry.targetFormID != 0)) {
+                                for (auto& factionInfo : npcBase->factions) {
+                                    if (!factionInfo.faction) continue;
+                                    bool match = (blEntry.targetFormID != 0 && factionInfo.faction->GetFormID() == blEntry.targetFormID);
+                                    if (!match && !blEntry.targetEditorID.empty()) {
+                                        const char* edID = factionInfo.faction->GetFormEditorID();
+                                        match = (edID && blEntry.targetEditorID == edID);
+                                    }
+                                    if (match) {
+                                        entry.blockingFactionEditorID = !blEntry.targetEditorID.empty()
+                                            ? blEntry.targetEditorID
+                                            : "";
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -754,13 +902,9 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
         json << "\"speaker\":\"" << escapeJSON(entry.speakerName) << "\",";
         
         // Add speaker FormID for actor filtering
-        char speakerFormIDHex[16];
-        sprintf_s(speakerFormIDHex, "%08X", entry.speakerFormID);
-        const char* strippedSpeaker = speakerFormIDHex;
-        while (*strippedSpeaker == '0' && *(strippedSpeaker + 1) != '\0') {
-            strippedSpeaker++;
-        }
-        json << "\"speakerFormID\":\"0" << strippedSpeaker << "\",";
+        char speakerFormIDHex[20];
+        sprintf_s(speakerFormIDHex, "0x%08X", entry.speakerFormID);
+        json << "\"speakerFormID\":\"" << speakerFormIDHex << "\",";
         
         json << "\"text\":\"" << escapeJSON(entry.responseText) << "\",";
         json << "\"questName\":\"" << escapeJSON(entry.questName) << "\",";
@@ -798,6 +942,13 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
         } else {
             json << "[]";
         }
+        json << ",";
+        json << "\"isActorBlocked\":" << (entry.isActorBlocked ? "true" : "false") << ",";
+        json << "\"blockingFactionEditorID\":\"" << escapeJSON(entry.blockingFactionEditorID) << "\",";
+        json << "\"isActorWhitelisted\":" << (entry.isActorWhitelisted ? "true" : "false") << ",";
+        json << "\"whitelistFactionEditorID\":\"" << escapeJSON(entry.whitelistFactionEditorID) << "\",";
+        json << "\"isSubtypeFiltered\":" << (Config::IsFilteredByMCM(entry.topicFormID, entry.topicSubtype) ? "true" : "false") << ",";
+        json << "\"isSubtypeToggledOff\":" << (Config::HasDisabledSubtypeToggle(entry.topicSubtype) ? "true" : "false") << "";
         json << "}";
     }
     
@@ -855,6 +1006,8 @@ std::string PrismaUIMenu::SerializeBlacklistToJSON()
             case DialogueDB::BlacklistTarget::Subtype: targetTypeStr = "Subtype"; break;
             case DialogueDB::BlacklistTarget::Scene: targetTypeStr = "Scene"; break;
             case DialogueDB::BlacklistTarget::Plugin: targetTypeStr = "Plugin"; break;
+            case DialogueDB::BlacklistTarget::Actor: targetTypeStr = "Actor"; break;
+            case DialogueDB::BlacklistTarget::Faction: targetTypeStr = "Faction"; break;
             default: targetTypeStr = "Unknown"; break;
         }
         json << "\"targetType\":\"" << targetTypeStr << "\",";
@@ -1692,15 +1845,17 @@ void PrismaUIMenu::OnDetectIdentifierType(const char* data)
         }
         
         // Detect type (matching STFUMenu logic from lines 5224-5243)
-        int detectedType = 0; // 0 = Topic, 1 = Scene, 2 = Plugin
+        int detectedType = 0; // 0 = Topic, 1 = Scene, 2 = Plugin, 3 = Actor, 4 = Faction
+        std::string detectedName;  // actor name or faction EditorID for display
         std::string lowerIdentifier = identifier;
         std::transform(lowerIdentifier.begin(), lowerIdentifier.end(), lowerIdentifier.begin(), ::tolower);
         
         if (lowerIdentifier.ends_with(".esp") || lowerIdentifier.ends_with(".esm") || lowerIdentifier.ends_with(".esl")) {
             detectedType = 2; // Plugin
         } else {
-            // Check if it's a FormID (0x format)
-            bool isFormID = (identifier.find("0x") == 0);
+            // Check if it's a FormID (0x prefix, or bare hex digits like A2C94)
+            bool isFormID = (identifier.find("0x") == 0) ||
+                            (!identifier.empty() && identifier.find_first_not_of("0123456789abcdefABCDEF") == std::string::npos);
             
             if (isFormID) {
                 // Parse FormID and look up the form
@@ -1709,24 +1864,33 @@ void PrismaUIMenu::OnDetectIdentifierType(const char* data)
                     auto* form = RE::TESForm::LookupByID(formID);
                     
                     if (form) {
-                        // Check if it's a scene
-                        auto* scene = form->As<RE::BGSScene>();
-                        if (scene) {
-                            detectedType = 1; // Scene
-                            spdlog::info("[PrismaUIMenu::OnDetectIdentifierType] FormID detected as Scene: {}", identifier);
+                        // Check if it's an actor (reference)
+                        auto* actor = form->As<RE::Actor>();
+                        if (actor) {
+                            detectedType = 3; // Actor
+                            const char* name = actor->GetName();
+                            detectedName = name ? name : "";
+                            spdlog::info("[PrismaUIMenu::OnDetectIdentifierType] FormID detected as Actor: {} ({})", identifier, detectedName);
                         } else {
-                            // Check if it's a topic
-                            auto* topic = form->As<RE::TESTopic>();
-                            if (topic) {
-                                detectedType = 0; // Topic
-                                spdlog::info("[PrismaUIMenu::OnDetectIdentifierType] FormID detected as Topic: {}", identifier);
+                            // Check if it's a scene
+                            auto* scene = form->As<RE::BGSScene>();
+                            if (scene) {
+                                detectedType = 1; // Scene
+                                spdlog::info("[PrismaUIMenu::OnDetectIdentifierType] FormID detected as Scene: {}", identifier);
                             } else {
-                                detectedType = 0; // Default to topic if unknown
-                                spdlog::warn("[PrismaUIMenu::OnDetectIdentifierType] FormID is neither Scene nor Topic: {}", identifier);
+                                // Check if it's a topic
+                                auto* topic = form->As<RE::TESTopic>();
+                                if (topic) {
+                                    detectedType = 0; // Topic
+                                    spdlog::info("[PrismaUIMenu::OnDetectIdentifierType] FormID detected as Topic: {}", identifier);
+                                } else {
+                                    detectedType = 5; // Unknown form type
+                                    spdlog::warn("[PrismaUIMenu::OnDetectIdentifierType] FormID is neither Actor/Scene/Topic: {}", identifier);
+                                }
                             }
                         }
                     } else {
-                        detectedType = 0; // Default to topic if form not found
+                        detectedType = 5; // Form not found
                         spdlog::warn("[PrismaUIMenu::OnDetectIdentifierType] FormID not found: {}", identifier);
                     }
                 } catch (...) {
@@ -1734,14 +1898,27 @@ void PrismaUIMenu::OnDetectIdentifierType(const char* data)
                     spdlog::warn("[PrismaUIMenu::OnDetectIdentifierType] Failed to parse FormID: {}", identifier);
                 }
             } else {
-                // EditorID - try to detect if it's a scene
-                auto* scene = Config::SafeLookupForm<RE::BGSScene>(identifier.c_str());
-                if (scene) {
-                    detectedType = 1; // Scene
-                    spdlog::info("[PrismaUIMenu::OnDetectIdentifierType] EditorID detected as Scene: {}", identifier);
+                // EditorID - try faction first, then scene, then topic
+                auto* faction = RE::TESForm::LookupByEditorID<RE::TESFaction>(identifier.c_str());
+                if (faction) {
+                    detectedType = 4; // Faction
+                    detectedName = identifier;
+                    spdlog::info("[PrismaUIMenu::OnDetectIdentifierType] EditorID detected as Faction: {}", identifier);
                 } else {
-                    detectedType = 0; // Topic (default)
-                    spdlog::info("[PrismaUIMenu::OnDetectIdentifierType] EditorID detected as Topic: {}", identifier);
+                    auto* scene = Config::SafeLookupForm<RE::BGSScene>(identifier.c_str());
+                    if (scene) {
+                        detectedType = 1; // Scene
+                        spdlog::info("[PrismaUIMenu::OnDetectIdentifierType] EditorID detected as Scene: {}", identifier);
+                    } else {
+                        auto* topic = Config::SafeLookupForm<RE::TESTopic>(identifier.c_str());
+                        if (topic) {
+                            detectedType = 0; // Topic
+                            spdlog::info("[PrismaUIMenu::OnDetectIdentifierType] EditorID detected as Topic: {}", identifier);
+                        } else {
+                            detectedType = 5; // Unknown/unresolved
+                            spdlog::info("[PrismaUIMenu::OnDetectIdentifierType] EditorID unresolved: {}", identifier);
+                        }
+                    }
                 }
             }
         }
@@ -1753,6 +1930,9 @@ void PrismaUIMenu::OnDetectIdentifierType(const char* data)
         if (detectedType == 1) {
             // Scene categories
             categoriesJson << "\"Blacklist\",\"Scene\",\"BardSongs\",\"FollowerCommentary\"";
+        } else if (detectedType == 3 || detectedType == 4) {
+            // Actor / Faction - just Blacklist
+            categoriesJson << "\"Blacklist\"";
         } else {
             // Topic categories
             categoriesJson << "\"Blacklist\",";
@@ -1773,8 +1953,15 @@ void PrismaUIMenu::OnDetectIdentifierType(const char* data)
         categoriesJson << "]";
         
         // Build response JSON
-        std::string typeStr = (detectedType == 1) ? "scene" : (detectedType == 2) ? "plugin" : "topic";
-        std::string response = "{\"type\":\"" + typeStr + "\",\"categories\":" + categoriesJson.str() + "}";
+        std::string typeStr;
+        if (detectedType == 1) typeStr = "scene";
+        else if (detectedType == 2) typeStr = "plugin";
+        else if (detectedType == 3) typeStr = "actor";
+        else if (detectedType == 4) typeStr = "faction";
+        else if (detectedType == 5) typeStr = "unknown";
+        else typeStr = "topic";
+
+        std::string response = "{\"type\":\"" + typeStr + "\",\"displayName\":\"" + detectedName + "\",\"categories\":" + categoriesJson.str() + "}";
         
         spdlog::info("[PrismaUIMenu::OnDetectIdentifierType] Response: {}", response);
         
@@ -1942,7 +2129,16 @@ void PrismaUIMenu::OnCreateManualEntry(const char* data)
                 
                 auto* form = RE::TESForm::LookupByID(parsedFormID);
                 if (form) {
-                    // Get EditorID from form
+                    // Check if it's an actor reference first
+                    auto* actor = form->As<RE::Actor>();
+                    if (actor) {
+                        entry.targetType = DialogueDB::BlacklistTarget::Actor;
+                        entry.targetFormID = actor->GetFormID();
+                        const char* name = actor->GetName();
+                        entry.targetEditorID = name ? name : "";  // Store display name (not EditorID)
+                        spdlog::info("[PrismaUIMenu::OnCreateManualEntry] FormID is Actor: {} (Name: {})", identifier, entry.targetEditorID);
+                    } else {
+                    // Get EditorID from form (for non-actor types)
                     const char* editorID = form->GetFormEditorID();
                     entry.targetEditorID = editorID ? editorID : "";
                     
@@ -2051,7 +2247,8 @@ void PrismaUIMenu::OnCreateManualEntry(const char* data)
                             entry.targetType = DialogueDB::BlacklistTarget::Topic;
                             spdlog::warn("[PrismaUIMenu::OnCreateManualEntry] FormID type unknown, defaulting to Topic: {}", identifier);
                         }
-                    }
+                    }  // end non-actor branch
+                    }  // end actor else
                 } else {
                     // Form not found - still create entry but without enrichment
                     entry.targetType = DialogueDB::BlacklistTarget::Topic;
@@ -2078,6 +2275,14 @@ void PrismaUIMenu::OnCreateManualEntry(const char* data)
                 entry.targetFormID = 0;
                 spdlog::info("[PrismaUIMenu::OnCreateManualEntry] EditorID is Plugin: {}", identifier);
             } else {
+                // Try faction first (EditorID lookup)
+                auto* faction = RE::TESForm::LookupByEditorID<RE::TESFaction>(identifier.c_str());
+                if (faction) {
+                    entry.targetType = DialogueDB::BlacklistTarget::Faction;
+                    entry.targetFormID = 0;
+                    entry.targetEditorID = identifier;
+                    spdlog::info("[PrismaUIMenu::OnCreateManualEntry] EditorID is Faction: {}", identifier);
+                } else {
                 // Try to look up as scene first
                 auto* scene = Config::SafeLookupForm<RE::BGSScene>(identifier.c_str());
                 if (scene) {
@@ -2186,12 +2391,16 @@ void PrismaUIMenu::OnCreateManualEntry(const char* data)
                         spdlog::warn("[PrismaUIMenu::OnCreateManualEntry] EditorID not found in game data: {}", identifier);
                     }
                 }
+                }  // end faction else
             }
         }
         
         // Set block type and granular flags
+        // Actor and Faction targets only support soft blocking (hard block would be game-breaking)
+        bool isActorOrFaction = (entry.targetType == DialogueDB::BlacklistTarget::Actor ||
+                                  entry.targetType == DialogueDB::BlacklistTarget::Faction);
         DialogueDB::BlockType blockType;
-        if (blockTypeStr == "Hard") {
+        if (!isActorOrFaction && blockTypeStr == "Hard") {
             blockType = DialogueDB::BlockType::Hard;
         } else {
             blockType = DialogueDB::BlockType::Soft;
@@ -2507,6 +2716,14 @@ void PrismaUIMenu::OnCreateAdvancedEntry(const char* data)
                     const char* editorID = form->GetFormEditorID();
                     entry.targetEditorID = editorID ? editorID : "";
                     
+                    auto* actor = form->As<RE::Actor>();
+                    if (actor) {
+                        entry.targetType = DialogueDB::BlacklistTarget::Actor;
+                        const char* name = actor->GetName();
+                        entry.targetEditorID = name ? name : "";
+                        spdlog::info("[PrismaUIMenu::OnCreateAdvancedEntry] FormID is Actor: {} (0x{:08X})",
+                            entry.targetEditorID, parsedFormID);
+                    } else {
                     auto* scene = form->As<RE::BGSScene>();
                     if (scene) {
                         entry.targetType = DialogueDB::BlacklistTarget::Scene;
@@ -2568,6 +2785,7 @@ void PrismaUIMenu::OnCreateAdvancedEntry(const char* data)
                             }
                         }
                     }
+                    }  // end actor else
                 }
             } catch (...) {
                 spdlog::error("[PrismaUIMenu::OnCreateAdvancedEntry] Failed to parse FormID: {}", identifier);
@@ -2582,6 +2800,14 @@ void PrismaUIMenu::OnCreateAdvancedEntry(const char* data)
                 entry.targetType = DialogueDB::BlacklistTarget::Plugin;
                 entry.sourcePlugin = parsedEditorID;
             } else {
+                // Try faction first (EditorID lookup)
+                auto* faction = RE::TESForm::LookupByEditorID<RE::TESFaction>(parsedEditorID.c_str());
+                if (faction) {
+                    entry.targetType = DialogueDB::BlacklistTarget::Faction;
+                    entry.targetFormID = faction->GetFormID();  // Store FormID for reliable matching
+                    entry.targetEditorID = parsedEditorID;
+                    spdlog::info("[PrismaUIMenu::OnCreateAdvancedEntry] EditorID is Faction: {}", parsedEditorID);
+                } else {
                 // Try to find scene first
                 auto* handler = RE::TESDataHandler::GetSingleton();
                 if (handler) {
@@ -2627,17 +2853,21 @@ void PrismaUIMenu::OnCreateAdvancedEntry(const char* data)
                         }
                     }
                 }
+                }  // end faction else
             }
         }
         
         // Set block type
-        if (blockTypeStr == "Soft") {
+        // Actor and Faction targets only support soft blocking (hard block would be game-breaking)
+        bool isActorOrFaction = (entry.targetType == DialogueDB::BlacklistTarget::Actor ||
+                                  entry.targetType == DialogueDB::BlacklistTarget::Faction);
+        if (!isActorOrFaction && blockTypeStr == "Soft") {
             entry.blockType = DialogueDB::BlockType::Soft;
             entry.blockAudio = true;
             entry.blockSubtitles = true;
             entry.blockSkyrimNet = true;
             entry.filterCategory = !category.empty() ? category : "Blacklist";
-        } else if (blockTypeStr == "Hard") {
+        } else if (!isActorOrFaction && blockTypeStr == "Hard") {
             entry.blockType = DialogueDB::BlockType::Hard;
             entry.blockAudio = true;
             entry.blockSubtitles = true;
@@ -2647,6 +2877,13 @@ void PrismaUIMenu::OnCreateAdvancedEntry(const char* data)
             entry.blockType = DialogueDB::BlockType::SkyrimNet;
             entry.blockAudio = false;
             entry.blockSubtitles = false;
+            entry.blockSkyrimNet = true;
+            entry.filterCategory = !category.empty() ? category : "Blacklist";
+        } else {
+            // Actor/Faction (or default fallback): always Soft
+            entry.blockType = DialogueDB::BlockType::Soft;
+            entry.blockAudio = true;
+            entry.blockSubtitles = true;
             entry.blockSkyrimNet = true;
             entry.filterCategory = !category.empty() ? category : "Blacklist";
         }
@@ -2737,6 +2974,8 @@ std::string PrismaUIMenu::SerializeWhitelistToJSON()
             case DialogueDB::BlacklistTarget::Subtype: targetTypeStr = "Subtype"; break;
             case DialogueDB::BlacklistTarget::Scene: targetTypeStr = "Scene"; break;
             case DialogueDB::BlacklistTarget::Plugin: targetTypeStr = "Plugin"; break;
+            case DialogueDB::BlacklistTarget::Actor: targetTypeStr = "Actor"; break;
+            case DialogueDB::BlacklistTarget::Faction: targetTypeStr = "Faction"; break;
             default: targetTypeStr = "Unknown"; break;
         }
         json << "\"targetType\":\"" << targetTypeStr << "\",";

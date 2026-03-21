@@ -7,7 +7,13 @@ import { SKSE_API, log } from '@/lib/skse-api';
 import { ResponsesModal } from './responses-modal';
 import { ManualEntryModal } from './manual-entry-modal';
 import { AdvancedEditModal } from './advanced-edit-modal';
-import { Search, Plus, Settings } from 'lucide-react';
+import { Search, Plus, Settings, Trash2, ShieldAlert, UserX } from 'lucide-react';
+
+// Parse a hex FormID string (with or without 0x prefix) to a number for comparison
+const parseFormID = (id: string | undefined): number => {
+  if (!id) return 0;
+  try { return parseInt(id.replace(/^0x/i, ''), 16); } catch { return 0; }
+};
 
 const getStatusColor = (status: DialogueEntry['status']): string => {
   switch (status) {
@@ -111,6 +117,10 @@ const HistoryItem = memo(({
       <span className="text-green-300">{entry.speaker}</span>
       {entry.isScene && <span className="ml-2 text-cyan-400">[Scene]</span>}
       {entry.skyrimNetBlockable && <span className="ml-2 text-purple-400">[Menu]</span>}
+      {entry.isActorBlocked && <span className="ml-2 inline-flex" title={`Actor blocked: ${entry.speaker}`}><UserX size={16} className="text-red-400 flex-shrink-0" /></span>}
+      {entry.blockingFactionEditorID && <span className="ml-2 inline-flex" title={`Faction blocked: ${entry.blockingFactionEditorID}`}><ShieldAlert size={16} className="text-orange-400 flex-shrink-0" /></span>}
+      {entry.isActorWhitelisted && <span className="ml-2 inline-flex" title={`Actor whitelisted: ${entry.speaker}`}><UserX size={16} className="text-white flex-shrink-0" /></span>}
+      {entry.whitelistFactionEditorID && <span className="ml-2 inline-flex" title={`Faction whitelisted: ${entry.whitelistFactionEditorID}`}><ShieldAlert size={16} className="text-white flex-shrink-0" /></span>}
     </div>
     <div className="text-lg text-gray-300 truncate">{entry.text}</div>
   </div>
@@ -152,6 +162,15 @@ export const History = () => {
     ) ?? null;
   }, [selectedEntry, blacklistEntries]);
 
+  // Actor-level blacklist entry for the speaker of the selected dialogue entry
+  const actorBlacklistEntry = useMemo(() => {
+    if (!selectedEntry?.speakerFormID || parseFormID(selectedEntry.speakerFormID) === 0) return null;
+    const speakerID = parseFormID(selectedEntry.speakerFormID);
+    return blacklistEntries.find(bl =>
+      bl.targetType === 'Actor' && parseFormID(bl.topicFormID) === speakerID
+    ) ?? null;
+  }, [selectedEntry, blacklistEntries]);
+
   const whitelistEntry = useMemo(() => {
     if (!selectedEntry) return null;
     return whitelistEntries.find(wl =>
@@ -159,6 +178,31 @@ export const History = () => {
       (wl.topicEditorID && wl.topicEditorID === selectedEntry.topicEditorID) ||
       // For scene entries: the whitelist stores the sceneEditorID in topicEditorID (from targetEditorID)
       (selectedEntry.isScene && wl.topicEditorID && wl.topicEditorID === selectedEntry.sceneEditorID)
+    ) ?? null;
+  }, [selectedEntry, whitelistEntries]);
+
+  // Actor-level whitelist entry for the speaker of the selected dialogue entry
+  const actorWhitelistEntry = useMemo(() => {
+    if (!selectedEntry?.speakerFormID || parseFormID(selectedEntry.speakerFormID) === 0) return null;
+    const speakerID = parseFormID(selectedEntry.speakerFormID);
+    return whitelistEntries.find(wl =>
+      wl.targetType === 'Actor' && parseFormID(wl.topicFormID) === speakerID
+    ) ?? null;
+  }, [selectedEntry, whitelistEntries]);
+
+  // Faction-level blacklist entry that caused this entry to be blocked
+  const factionBlacklistEntry = useMemo(() => {
+    if (!selectedEntry?.blockingFactionEditorID) return null;
+    return blacklistEntries.find(bl =>
+      bl.targetType === 'Faction' && bl.topicEditorID === selectedEntry.blockingFactionEditorID
+    ) ?? null;
+  }, [selectedEntry, blacklistEntries]);
+
+  // Faction-level whitelist entry that caused this entry to be whitelisted
+  const factionWhitelistEntry = useMemo(() => {
+    if (!selectedEntry?.whitelistFactionEditorID) return null;
+    return whitelistEntries.find(wl =>
+      wl.targetType === 'Faction' && wl.topicEditorID === selectedEntry.whitelistFactionEditorID
     ) ?? null;
   }, [selectedEntry, whitelistEntries]);
 
@@ -190,7 +234,16 @@ export const History = () => {
       // Only update if entries actually changed (not just selection changed)
       const hasChanges = updatedSelected.some((updated, idx) => {
         const current = selectedEntries[idx];
-        return current && (updated.status !== current.status || updated.topicSubtype !== current.topicSubtype);
+        return current && (
+          updated.status !== current.status ||
+          updated.topicSubtype !== current.topicSubtype ||
+          updated.isSubtypeFiltered !== current.isSubtypeFiltered ||
+          updated.isSubtypeToggledOff !== current.isSubtypeToggledOff ||
+          updated.isActorBlocked !== current.isActorBlocked ||
+          updated.blockingFactionEditorID !== current.blockingFactionEditorID ||
+          updated.isActorWhitelisted !== current.isActorWhitelisted ||
+          updated.whitelistFactionEditorID !== current.whitelistFactionEditorID
+        );
       });
       
       if (hasChanges && updatedSelected.length > 0) {
@@ -520,6 +573,7 @@ export const History = () => {
               
               {/* Action Buttons */}
               <div className="space-y-2 border-t border-gray-700 pt-4 mt-4">
+                <h4 className="text-sm font-medium text-gray-400">{selectedEntry.isScene ? 'Scene entries' : 'Topic entries'}</h4>
                 {!blacklistEntry ? (
                   <button
                     onClick={() => setShowManualEntryBlacklistModal(true)}
@@ -556,8 +610,63 @@ export const History = () => {
                 )}
               </div>
 
-              {/* Subtype Filter Toggle - only show for entries filtered by MCM or toggled off */}
-              {(selectedEntry.status === 'Filter' || selectedEntry.status === 'Toggled Off') && (
+              {/* Actor / Faction list entries for this speaker */}
+              {(actorBlacklistEntry || actorWhitelistEntry || factionBlacklistEntry || factionWhitelistEntry) && (
+                <div className="space-y-2 border-t border-gray-700 pt-4 mt-4">
+                  <h4 className="text-sm font-medium text-gray-400">Actor & Faction entries</h4>
+                  {actorBlacklistEntry && (
+                    <button
+                      onClick={() => {
+                        SKSE_API.deleteBlacklistEntry(actorBlacklistEntry.id);
+                        setTimeout(() => SKSE_API.requestHistoryRefresh(), 150);
+                      }}
+                      className="w-full px-4 py-2 bg-red-700 hover:bg-red-800 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
+                    >
+                      <Trash2 size={18} className="flex-shrink-0" />
+                      <span className="truncate">Remove {selectedEntry.speaker}</span>
+                    </button>
+                  )}
+                  {actorWhitelistEntry && (
+                    <button
+                      onClick={() => {
+                        SKSE_API.removeFromWhitelist(actorWhitelistEntry.id);
+                        setTimeout(() => SKSE_API.requestHistoryRefresh(), 150);
+                      }}
+                      className="w-full px-4 py-2 bg-gray-300 hover:bg-gray-200 text-gray-800 rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
+                    >
+                      <Trash2 size={18} className="flex-shrink-0" />
+                      <span className="truncate">Remove {selectedEntry.speaker}</span>
+                    </button>
+                  )}
+                  {factionBlacklistEntry && (
+                    <button
+                      onClick={() => {
+                        SKSE_API.deleteBlacklistEntry(factionBlacklistEntry.id);
+                        setTimeout(() => SKSE_API.requestHistoryRefresh(), 150);
+                      }}
+                      className="w-full px-4 py-2 bg-red-700 hover:bg-red-800 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
+                    >
+                      <Trash2 size={18} className="flex-shrink-0" />
+                      <span className="truncate">Remove {selectedEntry.blockingFactionEditorID}</span>
+                    </button>
+                  )}
+                  {factionWhitelistEntry && (
+                    <button
+                      onClick={() => {
+                        SKSE_API.removeFromWhitelist(factionWhitelistEntry.id);
+                        setTimeout(() => SKSE_API.requestHistoryRefresh(), 150);
+                      }}
+                      className="w-full px-4 py-2 bg-gray-300 hover:bg-gray-200 text-gray-800 rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
+                    >
+                      <Trash2 size={18} className="flex-shrink-0" />
+                      <span className="truncate">Remove {selectedEntry.whitelistFactionEditorID}</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Subtype Filter Toggle - show when subtype is MCM-filtered or toggled off */}
+              {(selectedEntry.status === 'Filter' || selectedEntry.status === 'Toggled Off' || selectedEntry.isSubtypeFiltered || selectedEntry.isSubtypeToggledOff) && (
                 <div className="space-y-2 border-t border-gray-700 pt-4 mt-4">
                   <div className="text-base text-gray-400 font-medium mb-2">
                     Subtype Filter
@@ -566,7 +675,7 @@ export const History = () => {
                   <button
                     onClick={handleToggleSubtypeFilter}
                     className={`w-full px-4 py-2 text-white rounded-lg transition-colors ${
-                      selectedEntry.status === 'Toggled Off'
+                      selectedEntry.isSubtypeToggledOff || selectedEntry.status === 'Toggled Off'
                         ? 'bg-cyan-600 hover:bg-cyan-700'
                         : 'bg-yellow-600 hover:bg-yellow-700'
                     }`}
@@ -603,6 +712,8 @@ export const History = () => {
         onClose={() => setShowManualEntryBlacklistModal(false)}
         isWhitelist={false}
         prefillIdentifier={selectedEntry ? (selectedEntry.isScene ? selectedEntry.sceneEditorID : selectedEntry.topicEditorID || selectedEntry.topicFormID) : undefined}
+        prefillSpeakerFormID={selectedEntry?.speakerFormID}
+        prefillSpeakerName={selectedEntry?.speaker}
       />
 
       {/* Add to Whitelist Modal (prefilled from selected entry) */}
@@ -611,6 +722,8 @@ export const History = () => {
         onClose={() => setShowManualEntryWhitelistModal(false)}
         isWhitelist={true}
         prefillIdentifier={selectedEntry ? (selectedEntry.isScene ? selectedEntry.sceneEditorID : selectedEntry.topicEditorID || selectedEntry.topicFormID) : undefined}
+        prefillSpeakerFormID={selectedEntry?.speakerFormID}
+        prefillSpeakerName={selectedEntry?.speaker}
       />
       
       {/* Advanced Edit Modal for Blacklist */}

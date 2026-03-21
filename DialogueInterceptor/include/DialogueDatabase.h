@@ -33,7 +33,9 @@ namespace DialogueDB
         Quest = 2,
         Subtype = 3,
         Scene = 4,
-        Plugin = 5
+        Plugin = 5,
+        Actor = 6,    // Reference FormID (specific NPC instance); name stored in targetEditorID
+        Faction = 7   // Faction EditorID stored in targetEditorID
     };
 
     enum class BlockType : uint8_t
@@ -87,6 +89,14 @@ namespace DialogueDB
         
         // SkyrimNet compatibility
         bool skyrimNetBlockable = false;  // True if confirmed menu-based (Hello subtype or appeared in PopulateTopicInfo)
+
+        // Block source info (populated when an Actor or Faction blacklist entry caused the block)
+        bool isActorBlocked = false;           // True when an Actor-type blacklist entry matched
+        std::string blockingFactionEditorID;   // EditorID of the faction that triggered the block
+
+        // Whitelist source info (populated when an Actor or Faction whitelist entry matched)
+        bool isActorWhitelisted = false;       // True when an Actor-type whitelist entry matched
+        std::string whitelistFactionEditorID;  // EditorID of the faction that triggered the whitelist
     };
 
     struct BlacklistEntry

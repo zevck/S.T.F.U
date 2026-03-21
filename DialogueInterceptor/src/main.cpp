@@ -342,6 +342,7 @@ namespace
             for (auto* event = *a_event; event; event = event->next) {
                 if (event->eventType != RE::INPUT_EVENT_TYPE::kButton) continue;
                 const auto* button = static_cast<const RE::ButtonEvent*>(event);
+                if (button->GetDevice() != RE::INPUT_DEVICE::kKeyboard) continue;
                 if (!button->IsDown()) continue;
                 const auto keyCode = button->GetIDCode();
                 const auto& settings = Config::GetSettings();

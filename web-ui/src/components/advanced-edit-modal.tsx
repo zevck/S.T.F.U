@@ -394,8 +394,8 @@ export const AdvancedEditModal = memo(({ isOpen, onClose, onSave, entry }: Advan
             </div>
           </div>
 
-          {/* Block Type — hidden for whitelist entries */}
-          {entry?.filterCategory !== 'Whitelist' && (
+          {/* Block Type — hidden for whitelist entries and Actor/Faction targets (soft-only) */}
+          {entry?.filterCategory !== 'Whitelist' && entry?.targetType !== 'Actor' && entry?.targetType !== 'Faction' && (
             <div>
               <label className="block text-base font-medium text-gray-300 mb-2">
                 Block Type
@@ -425,8 +425,8 @@ export const AdvancedEditModal = memo(({ isOpen, onClose, onSave, entry }: Advan
             </div>
           )}
 
-          {/* Filter Category — hidden for whitelist entries */}
-          {entry?.filterCategory !== 'Whitelist' && (
+          {/* Filter Category — hidden for whitelist entries and Actor/Faction targets */}
+          {entry?.filterCategory !== 'Whitelist' && entry?.targetType !== 'Actor' && entry?.targetType !== 'Faction' && (
             <div>
               <label className="block text-base font-medium text-gray-300 mb-2">
                 Filter Category
@@ -445,7 +445,8 @@ export const AdvancedEditModal = memo(({ isOpen, onClose, onSave, entry }: Advan
             </div>
           )}
 
-          {/* Actor & Faction Filters */}
+          {/* Actor & Faction Filters — hidden for Actor/Faction targets (they ARE the target, sub-filtering makes no sense) */}
+          {entry?.targetType !== 'Actor' && entry?.targetType !== 'Faction' && (
           <div>
             <label className="block text-base font-medium text-gray-300 mb-2">
               Actor & Faction Filters
@@ -550,6 +551,7 @@ export const AdvancedEditModal = memo(({ isOpen, onClose, onSave, entry }: Advan
               Actors (blue) from the dropdown. Unknown names become faction EditorID filters (purple).
             </div>
           </div>
+          )}
 
           {/* Notes */}
           <div>

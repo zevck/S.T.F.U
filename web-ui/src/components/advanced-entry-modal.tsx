@@ -10,7 +10,7 @@ interface AdvancedEntryModalProps {
 }
 
 interface DetectionResult {
-  type: 'topic' | 'scene' | 'plugin';
+  type: 'topic' | 'scene' | 'plugin' | 'unknown';
   categories: string[];
 }
 
@@ -25,7 +25,7 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null }
   const [isWhitelist, setIsWhitelist] = useState(false);
   const [blockType, setBlockType] = useState<'Soft' | 'Hard'>('Soft');
   const [notes, setNotes] = useState('');
-  const [detectedType, setDetectedType] = useState<'topic' | 'scene' | 'plugin'>('topic');
+  const [detectedType, setDetectedType] = useState<'topic' | 'scene' | 'plugin' | 'unknown' | null>(null);
   const [categories, setCategories] = useState<string[]>(['Blacklist']);
   const [selectedCategory, setSelectedCategory] = useState('Blacklist');
   const [actorFilterNames, setActorFilterNames] = useState<string[]>([]);
@@ -36,6 +36,7 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null }
   const [showActorDropdown, setShowActorDropdown] = useState(false);
   const [nearbyActors, setNearbyActors] = useState<Actor[]>([]);
   const detectionTimeoutRef = useRef<number | null>(null);
+  const detectionFallbackRef = useRef<number | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   
   const historyEntries = useHistoryStore(state => state.entries);
@@ -142,12 +143,17 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null }
     }
 
     if (identifier.trim()) {
+      setDetectedType(null);
       detectionTimeoutRef.current = window.setTimeout(() => {
         log(`[AdvancedEntry] Detecting type for: ${identifier}`);
         SKSE_API.sendToSKSE('detectIdentifierType', JSON.stringify({ identifier }));
       }, 300);
+      if (detectionFallbackRef.current) clearTimeout(detectionFallbackRef.current);
+      detectionFallbackRef.current = window.setTimeout(() => {
+        setDetectedType(prev => prev === null ? 'unknown' : prev);
+      }, 2000);
     } else {
-      setDetectedType('topic');
+      setDetectedType(null);
       setCategories(['Blacklist']);
       setSelectedCategory('Blacklist');
     }
@@ -155,6 +161,9 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null }
     return () => {
       if (detectionTimeoutRef.current) {
         clearTimeout(detectionTimeoutRef.current);
+      }
+      if (detectionFallbackRef.current) {
+        clearTimeout(detectionFallbackRef.current);
       }
     };
   }, [identifier]);
@@ -195,7 +204,7 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null }
       setIsWhitelist(false);
       setNotes('');
       setBlockType('Soft');
-      setDetectedType('topic');
+      setDetectedType(null);
       setCategories(['Blacklist']);
       setSelectedCategory('Blacklist');
       setActorFilterNames([]);
@@ -411,7 +420,10 @@ export const AdvancedEntryModal = memo(({ isOpen, onClose, prefillEntry = null }
               className="w-full px-4 py-2.5 text-base bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
               autoFocus
             />
-            <div className="text-sm text-gray-400 mt-1">
+            <div className="text-sm text-gray-400 mt-1 min-h-[20px]">
+              {detectedType === null && !identifier.trim() && (isWhitelist ? 'Supports: Topic, Scene, Plugin' : 'Supports: Topic, Scene')}
+              {detectedType === null && identifier.trim() && 'Detecting...'}
+              {detectedType === 'unknown' && identifier.trim() && 'Could not detect type'}
               {detectedType === 'scene' && '🎬 Detected as Scene'}
               {detectedType === 'topic' && '💬 Detected as Topic'}
               {detectedType === 'plugin' && '📦 Detected as Plugin'}

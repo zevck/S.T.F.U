@@ -92,6 +92,10 @@ export const Whitelist = () => {
     setShowTopics,
     showScenes,
     setShowScenes,
+    showActors,
+    setShowActors,
+    showFactions,
+    setShowFactions,
     selectedEntries,
     setSelectedEntries
   } = useWhitelistStore();
@@ -124,18 +128,22 @@ export const Whitelist = () => {
           entry.topicEditorID?.toLowerCase().includes(query) ||
           entry.topicFormID?.toLowerCase().includes(query) ||
           entry.sourcePlugin?.toLowerCase().includes(query) ||
-          entry.note?.toLowerCase().includes(query)
+          entry.note?.toLowerCase().includes(query) ||
+          entry.actorFilterNames?.some(n => n.toLowerCase().includes(query)) ||
+          entry.factionFilterEditorIDs?.some(f => f.toLowerCase().includes(query))
         );
         if (!matches) return false;
       }
       
-      // Topic/Scene checkboxes
+      // Topic/Scene/Actor/Faction checkboxes
       if (!showTopics && entry.targetType === 'Topic') return false;
       if (!showScenes && entry.targetType === 'Scene') return false;
+      if (!showActors && entry.targetType === 'Actor') return false;
+      if (!showFactions && entry.targetType === 'Faction') return false;
       
       return true;
     });
-  }, [entries, searchQuery, showTopics, showScenes]);
+  }, [entries, searchQuery, showTopics, showScenes, showActors, showFactions]);
 
   // Virtual scrolling: only render visible + buffer entries
   const displayedEntries = useMemo(() => {
@@ -244,7 +252,9 @@ export const Whitelist = () => {
     setSearchQuery('');
     setShowTopics(true);
     setShowScenes(true);
-  }, [setSearchQuery, setShowTopics, setShowScenes]);
+    setShowActors(true);
+    setShowFactions(true);
+  }, [setSearchQuery, setShowTopics, setShowScenes, setShowActors, setShowFactions]);
 
   return (
     <div className="flex flex-col h-full">
@@ -282,6 +292,24 @@ export const Whitelist = () => {
               className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 cursor-pointer"
             />
             <span className="text-base text-white">Scenes</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showActors}
+              onChange={(e) => setShowActors(e.target.checked)}
+              className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 cursor-pointer"
+            />
+            <span className="text-base text-white">Actors</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showFactions}
+              onChange={(e) => setShowFactions(e.target.checked)}
+              className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 cursor-pointer"
+            />
+            <span className="text-base text-white">Factions</span>
           </label>
           <button
             onClick={handleResetFilters}
