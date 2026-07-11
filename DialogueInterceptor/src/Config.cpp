@@ -1259,36 +1259,60 @@ overrides:
         
         // Check for 0x format: "0xFormID"
         if (value.length() > 2 && (value.substr(0, 2) == "0x" || value.substr(0, 2) == "0X")) {
-            try {
-                uint32_t formID = std::stoul(value, nullptr, 16);
-                return {formID, ""};
-            } catch (const std::exception& e) {
-                spdlog::error("[Config] Failed to parse hex FormID: {} (error: {})", value, e.what());
+            std::string hexPart = value.substr(2);
+            // Strip leading zeros so over-padded strings (e.g. an extra "0" prepended
+            // upstream) don't push past 8 hex chars and overflow uint32_t.
+            size_t firstNonZero = hexPart.find_first_not_of('0');
+            if (firstNonZero == std::string::npos) {
+                return {0, ""};  // all zeros => FormID 0
             }
-        }
-        
-        // Check if it's a hex string without "0x" prefix (e.g., "02707A" or "ABC12")
-        // FormIDs are typically 6-8 hex digits, but we'll accept 1-8 for flexibility
-        if (!value.empty() && value.length() <= 8) {
-            bool isAllHex = true;
-            for (char c : value) {
-                if (!std::isxdigit(static_cast<unsigned char>(c))) {
-                    isAllHex = false;
-                    break;
+            hexPart.erase(0, firstNonZero);
+
+            if (hexPart.length() <= 8) {
+                bool isAllHex = std::all_of(hexPart.begin(), hexPart.end(),
+                    [](char c) { return std::isxdigit(static_cast<unsigned char>(c)) != 0; });
+                if (isAllHex) {
+                    try {
+                        // Use stoull to safely cover any width on the way to uint32_t.
+                        uint64_t parsed = std::stoull(hexPart, nullptr, 16);
+                        if (parsed <= 0xFFFFFFFFull) {
+                            return {static_cast<uint32_t>(parsed), ""};
+                        }
+                    } catch (const std::exception& e) {
+                        spdlog::error("[Config] Failed to parse hex FormID: {} (error: {})", value, e.what());
+                    }
                 }
             }
-            
+        }
+
+        // Check if it's a hex string without "0x" prefix (e.g., "02707A" or "ABC12").
+        // Strip leading zeros first so an over-padded 9-char "067400023" still parses
+        // as the underlying 8-char FormID 0x67400023.
+        if (!value.empty()) {
+            bool isAllHex = std::all_of(value.begin(), value.end(),
+                [](char c) { return std::isxdigit(static_cast<unsigned char>(c)) != 0; });
+
             if (isAllHex) {
-                try {
-                    uint32_t formID = std::stoul(value, nullptr, 16);
-                    spdlog::info("[Config] Parsed bare hex string as FormID: {} -> 0x{:08X}", value, formID);
-                    return {formID, ""};
-                } catch (const std::exception& e) {
-                    spdlog::error("[Config] Failed to parse bare hex FormID: {} (error: {})", value, e.what());
+                size_t firstNonZero = value.find_first_not_of('0');
+                std::string stripped = (firstNonZero == std::string::npos)
+                    ? std::string("0")
+                    : value.substr(firstNonZero);
+
+                if (stripped.length() <= 8) {
+                    try {
+                        uint64_t parsed = std::stoull(stripped, nullptr, 16);
+                        if (parsed <= 0xFFFFFFFFull) {
+                            uint32_t formID = static_cast<uint32_t>(parsed);
+                            spdlog::info("[Config] Parsed bare hex string as FormID: {} -> 0x{:08X}", value, formID);
+                            return {formID, ""};
+                        }
+                    } catch (const std::exception& e) {
+                        spdlog::error("[Config] Failed to parse bare hex FormID: {} (error: {})", value, e.what());
+                    }
                 }
             }
         }
-        
+
         // Otherwise treat as EditorID
         return {0, value};
     }

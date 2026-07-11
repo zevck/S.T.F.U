@@ -911,14 +911,14 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
         json << "\"questEditorID\":\"" << escapeJSON(entry.questEditorID) << "\",";
         json << "\"topicEditorID\":\"" << escapeJSON(entry.topicEditorID) << "\",";
         
-        // Format FormID with one leading zero
+        // Always emit FormID as "0x" + 8 fixed hex chars to match speakerFormID.
+        // The previous "strip leading zeros then prepend one 0" logic produced 9-char
+        // strings (e.g. "067400023") for FormIDs with a high byte >= 0x10, which then
+        // overflowed Config::ParseFormIdentifier's 8-char limit and was silently
+        // stored as an EditorID with FormID=0 — breaking blacklist matching.
         char formIDHex[16];
-        sprintf_s(formIDHex, "%08X", entry.topicFormID);
-        const char* stripped = formIDHex;
-        while (*stripped == '0' && *(stripped + 1) != '\0') {
-            stripped++;
-        }
-        json << "\"topicFormID\":\"0" << stripped << "\",";
+        sprintf_s(formIDHex, "0x%08X", entry.topicFormID);
+        json << "\"topicFormID\":\"" << formIDHex << "\",";
         
         json << "\"sourcePlugin\":\"" << escapeJSON(entry.sourcePlugin) << "\",";
         json << "\"subtypeName\":\"" << escapeJSON(entry.topicSubtypeName) << "\",";
@@ -1022,15 +1022,13 @@ std::string PrismaUIMenu::SerializeBlacklistToJSON()
         }
         json << "\"blockType\":\"" << blockTypeStr << "\",";
         
-        // Format FormID with one leading zero (if present)
+        // Emit FormID as "0x" + 8 fixed hex chars. See the corresponding comment
+        // in the history serializer for why the previous "leading zero" logic
+        // was broken.
         if (entry.targetFormID != 0) {
             char formIDHex[16];
-            sprintf_s(formIDHex, "%08X", entry.targetFormID);
-            const char* stripped = formIDHex;
-            while (*stripped == '0' && *(stripped + 1) != '\0') {
-                stripped++;
-            }
-            json << "\"topicFormID\":\"0" << stripped << "\",";
+            sprintf_s(formIDHex, "0x%08X", entry.targetFormID);
+            json << "\"topicFormID\":\"" << formIDHex << "\",";
         } else {
             json << "\"topicFormID\":null,";
         }
@@ -2983,15 +2981,13 @@ std::string PrismaUIMenu::SerializeWhitelistToJSON()
         // Whitelist entries show as "Allowed" instead of block type
         json << "\"blockType\":\"Allowed\",";
         
-        // Format FormID with one leading zero (if present)
+        // Emit FormID as "0x" + 8 fixed hex chars. See the corresponding comment
+        // in the history serializer for why the previous "leading zero" logic
+        // was broken.
         if (entry.targetFormID != 0) {
             char formIDHex[16];
-            sprintf_s(formIDHex, "%08X", entry.targetFormID);
-            const char* stripped = formIDHex;
-            while (*stripped == '0' && *(stripped + 1) != '\0') {
-                stripped++;
-            }
-            json << "\"topicFormID\":\"0" << stripped << "\",";
+            sprintf_s(formIDHex, "0x%08X", entry.targetFormID);
+            json << "\"topicFormID\":\"" << formIDHex << "\",";
         } else {
             json << "\"topicFormID\":null,";
         }
@@ -4216,14 +4212,14 @@ void PrismaUIMenu::OnGetNearbyActors(const char* data)
             }
             json << "\",";
             
-            // Format FormID as hex
+            // Format FormID as "0x" + fixed 8 hex chars, consistent with every
+            // other FormID emitted to the UI (speakerFormID, actorFilterFormIDs,
+            // topicFormID). The old strip-leading-zeros form produced variable
+            // width for no benefit — JS parses either, but uniform width keeps
+            // string-equality comparisons on the UI side reliable.
             char formIDHex[16];
-            sprintf_s(formIDHex, "%08X", formID);
-            const char* strippedFormID = formIDHex;
-            while (*strippedFormID == '0' && *(strippedFormID + 1) != '\0') {
-                strippedFormID++;
-            }
-            json << "\"formID\":\"0x" << strippedFormID << "\",";
+            sprintf_s(formIDHex, "0x%08X", formID);
+            json << "\"formID\":\"" << formIDHex << "\",";
             json << "\"distance\":" << static_cast<int>(distance);
             json << "}";
         }

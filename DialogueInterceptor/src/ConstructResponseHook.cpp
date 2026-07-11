@@ -16,6 +16,10 @@ namespace ConstructResponseHook
     thread_local static bool g_shouldSoftBlock = false;
     thread_local static bool g_shouldBlockSkyrimNet = false;
     thread_local static bool g_wasEvaluated = false;
+    // DIAGNOSTIC: the TopicInfo the cached decision above was computed for.
+    // If Hook_ConstructResponse blocks a DIFFERENT TopicInfo using this cache,
+    // it's a stale-decision leak (a line inheriting another line's block).
+    thread_local static RE::FormID g_evaluatedTopicInfoFormID = 0;
     
     // Track current dialogue to detect duplicates (same TopicInfo + Speaker within 5 seconds)
     thread_local static RE::FormID g_lastTopicInfoFormID = 0;
@@ -29,16 +33,16 @@ namespace ConstructResponseHook
     // Hook SetSubtitle to remove subtitles for blocked dialogue
     char* Hook_SetSubtitle(RE::DialogueResponse* a_response, char* a_text, int32_t a_unk)
     {
-        spdlog::debug("[SetSubtitle] Called with text='{}', g_shouldBlockCurrent={}", 
+        spdlog::debug("[SetSubtitle] Called with text='{}', g_shouldBlockCurrent={}",
             a_text ? a_text : "(null)", g_shouldBlockCurrent);
-        
+
         if (g_shouldBlockCurrent) {
             // For soft blocking, block subtitles
             spdlog::debug("[SetSubtitle] BLOCKING subtitle (soft block)");
             static char empty[] = "";
             return _SetSubtitle(a_response, empty, a_unk);
         }
-        
+
         // Normal dialogue - let subtitles work naturally
         return _SetSubtitle(a_response, a_text, a_unk);
     }
@@ -53,22 +57,24 @@ namespace ConstructResponseHook
     }
     
     // PopulateTopicInfo sets blocking decision (single evaluation point with full actor context)
-    void SetBlockingDecision(bool shouldSoftBlock, bool shouldBlockSkyrimNet)
+    void SetBlockingDecision(bool shouldSoftBlock, bool shouldBlockSkyrimNet, RE::FormID topicInfoFormID)
     {
         g_shouldSoftBlock = shouldSoftBlock;
         g_shouldBlockSkyrimNet = shouldBlockSkyrimNet;
         g_wasEvaluated = true;
+        g_evaluatedTopicInfoFormID = topicInfoFormID;  // DIAGNOSTIC: bind decision to its TopicInfo
         g_shouldBlockCurrent = shouldSoftBlock;  // propagate immediately so SetSubtitle sees it before Hook_ConstructResponse fires (VR order)
-        spdlog::debug("[ConstructResponse] Blocking decision set by PopulateTopicInfo: soft={}, skyrimNet={}", 
-            shouldSoftBlock, shouldBlockSkyrimNet);
+        spdlog::debug("[ConstructResponse] Blocking decision set by PopulateTopicInfo: soft={}, skyrimNet={}, topicInfo=0x{:08X}",
+            shouldSoftBlock, shouldBlockSkyrimNet, topicInfoFormID);
     }
-    
+
     // Clear blocking decision when new dialogue is detected
     void ClearBlockingDecision()
     {
         g_shouldSoftBlock = false;
         g_shouldBlockSkyrimNet = false;
         g_wasEvaluated = false;
+        g_evaluatedTopicInfoFormID = 0;
         g_shouldBlockCurrent = false;  // reset immediately so SetSubtitle sees it before Hook_ConstructResponse fires (VR order)
         spdlog::debug("[ConstructResponse] Blocking decision cleared for new dialogue");
     }
@@ -151,8 +157,19 @@ namespace ConstructResponseHook
             // Use cached decision from PopulateTopicInfo (has full actor context)
             shouldSoftBlock = g_shouldSoftBlock;
             shouldBlockSkyrimNet = g_shouldBlockSkyrimNet;
-            spdlog::debug("[ConstructResponse] Using cached decision from PopulateTopicInfo: soft={}, skyrimNet={}", 
-                shouldSoftBlock, shouldBlockSkyrimNet);
+
+            // DIAGNOSTIC: detect stale-cache leak — the cached decision was computed
+            // for a DIFFERENT TopicInfo than the one we're now constructing. If that
+            // stale decision is a block, we're about to silence the wrong line.
+            uint32_t curTI = a_topicInfo ? a_topicInfo->GetFormID() : 0;
+            if (g_evaluatedTopicInfoFormID != 0 && curTI != 0 && curTI != g_evaluatedTopicInfoFormID) {
+                uint16_t dsub = a_topic ? Config::GetAccurateSubtype(a_topic) : 0xFFFF;
+                spdlog::warn("[STALE CACHE] ConstructResponse for TopicInfo 0x{:08X} (subtype {}) is using a cached decision computed for a DIFFERENT TopicInfo 0x{:08X} — soft={}, skyrimNet={}. Blocking here would silence the wrong line.",
+                    curTI, dsub, g_evaluatedTopicInfoFormID, shouldSoftBlock, shouldBlockSkyrimNet);
+            }
+
+            spdlog::debug("[ConstructResponse] Using cached decision from PopulateTopicInfo: soft={}, skyrimNet={} (evaluatedFor=0x{:08X}, current=0x{:08X})",
+                shouldSoftBlock, shouldBlockSkyrimNet, g_evaluatedTopicInfoFormID, curTI);
         } else if (a_topic) {
             // Fallback: PopulateTopicInfo didn't evaluate (rare - menu evaluation case)
             // Re-evaluate without actor context
@@ -286,8 +303,15 @@ namespace ConstructResponseHook
                 
                 // Regular dialogue: clear audio path and all animation/text fields
                 // to prevent jerky head-turns and visible subtitles.
+                // DIAGNOSTIC: name every line whose audio/animation we wipe, with the
+                // TopicInfo it was evaluated for, so an unexpectedly-silenced greeting
+                // (subtype 79) is unmistakable in the log even if the decision was stale.
+                spdlog::warn("[AUDIO CLEARED] Wiping audio+animation for topic '{}' TopicInfo 0x{:08X} (subtype {}), decision evaluatedFor=0x{:08X}, g_shouldBlockCurrent={}",
+                    topicEditorID ? topicEditorID : "(none)",
+                    a_topicInfo ? a_topicInfo->GetFormID() : 0,
+                    subtype, g_evaluatedTopicInfoFormID, g_shouldBlockCurrent);
                 *a_filePath = '\0';
-                
+
                 auto* response = a_response;
                 while (response) {
                     response->responseText = "";

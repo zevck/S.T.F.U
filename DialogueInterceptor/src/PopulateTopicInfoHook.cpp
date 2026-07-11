@@ -21,11 +21,18 @@ namespace DialogueItemCtorHook {
 
 namespace PopulateTopicInfoHook
 {
+    // (The SkyrimNet caller-identity gate was reverted — see the note in
+    // DialogueItemCtorHook in main.cpp for the reason.)
+
     // Correlation with DialogueItem::Ctor: track (speaker + topicInfo) constructions
     // This distinguishes actual dialogue playback from menu evaluation
     struct DialogueConstruct {
         uint32_t speakerFormID;
         uint32_t topicInfoFormID;
+        uint32_t topicFormID;     // Parent Topic FormID — used by the candidate
+                                  // filter to detect the "engine picks one of
+                                  // several candidates within the same burst"
+                                  // scenario (follower commands like Wait).
         int64_t timestamp;
     };
     
@@ -402,7 +409,8 @@ namespace PopulateTopicInfoHook
             }
             
             // Set blocking decision for ConstructResponse (single evaluation point with full actor context)
-            ConstructResponseHook::SetBlockingDecision(shouldSoftBlock, shouldBlockSkyrimNet);
+            ConstructResponseHook::SetBlockingDecision(shouldSoftBlock, shouldBlockSkyrimNet,
+                a_topicInfo ? a_topicInfo->GetFormID() : 0);
             
             // Check if this is menu dialogue (not ambient/background dialogue)
             bool isMenuDialogue = false;
@@ -527,9 +535,14 @@ namespace PopulateTopicInfoHook
                 return result;
             }
             
-            // Cooldown: Skip if same (speaker + topicInfo) was just logged within 60 seconds
+            // Cooldown: Skip if same (speaker + topicInfo) was just logged within COOLDOWN_DURATION (see below)
             DialogueKey key{speakerFormID, topicInfoFormID};
-            const int64_t COOLDOWN_DURATION = 60000; // 60 seconds
+            const int64_t COOLDOWN_DURATION = 5000; // 5 seconds — long enough to
+                                                    // filter engine re-fires of the
+                                                    // same TopicInfo within one
+                                                    // dialogue exchange, short
+                                                    // enough that legit repeated
+                                                    // lines still log.
             
             spdlog::trace("[POPULATE COOLDOWN CHECK] Speaker: {} (0x{:08X}), TopicInfo: 0x{:08X}, Subtype: {}",
                 speakerName ? speakerName : "Unknown", speakerFormID, topicInfoFormID, Config::GetSubtypeName(subtype));
@@ -721,11 +734,12 @@ namespace PopulateTopicInfoHook
             entry.blockedStatus = blockedStatus;
             
             // SkyrimNet blockable: Check if this TopicInfo is in MenuTopicManager's dialogueList
-            // Only menu-based dialogue choices can be blocked from SkyrimNet without subtitle issues
+            // Only menu-based dialogue choices can be blocked from SkyrimNet without subtitle issues.
+            // Membership in dialogueList also marks this as the CHOSEN line (the one that plays),
+            // which the candidate-burst filter below relies on.
             entry.skyrimNetBlockable = false;
             auto* menuTopicManager = RE::MenuTopicManager::GetSingleton();
             if (menuTopicManager && menuTopicManager->dialogueList && a_topicInfo) {
-                // Walk the dialogueList to see if this TopicInfo appears in any dialogue entry
                 for (auto it = menuTopicManager->dialogueList->begin(); it != menuTopicManager->dialogueList->end(); ++it) {
                     auto* dialogue = *it;
                     if (dialogue && dialogue->parentTopicInfo == a_topicInfo) {
@@ -735,6 +749,42 @@ namespace PopulateTopicInfoHook
                         break;
                     }
                 }
+            }
+
+            // Candidate filter: follower commands like Wait / Follow / Trade
+            // trigger a "burst" — the engine constructs every valid response
+            // variant of the same parent Topic within a few ms and picks one to
+            // play. The chosen one lands in MenuTopicManager::dialogueList (which
+            // is exactly what set entry.skyrimNetBlockable above); the rejected
+            // candidates don't. We want the log to show what she actually said,
+            // not the rejected candidates.
+            //
+            // Burst membership is time-based: treat this as a candidate burst
+            // only when another ctor for the SAME parent Topic with a DIFFERENT
+            // TopicInfo fired within CANDIDATE_BURST_MS. That way separate
+            // greetings across menu opens (seconds apart) log normally, but the
+            // ~20ms Wait burst gets filtered. Within a burst, the chosen line
+            // (in dialogueList) is kept and the rest dropped.
+            constexpr int64_t CANDIDATE_BURST_MS = 100;
+            // topicFormID is the parent Topic's FormID (defined above; a_topic is
+            // non-null in this block). It's guaranteed != 0 for a real topic.
+            bool inCandidateBurst = false;
+            if (topicFormID != 0) {
+                std::lock_guard<std::mutex> lock(g_constructMutex);
+                for (const auto& c : g_recentConstructs) {
+                    if (c.topicFormID == topicFormID &&
+                        c.topicInfoFormID != topicInfoFormID &&
+                        (now - c.timestamp) <= CANDIDATE_BURST_MS) {
+                        inCandidateBurst = true;
+                        break;
+                    }
+                }
+            }
+            if (inCandidateBurst && !entry.skyrimNetBlockable) {
+                spdlog::debug("[POPULATE] Skipping unchosen candidate in burst (TopicInfo 0x{:08X}, Topic 0x{:08X}): '{}'",
+                    topicInfoFormID, topicFormID,
+                    entry.responseText.empty() ? "(no text)" : entry.responseText.substr(0, 100).c_str());
+                return result;
             }
             
             // Text-based deduplication: Skip if same speaker said same text within 5 seconds
@@ -955,18 +1005,18 @@ namespace PopulateTopicInfoHook
         spdlog::info("========================================");
     }
     
-    void RecordDialogueConstruct(uint32_t speakerFormID, uint32_t topicInfoFormID)
+    void RecordDialogueConstruct(uint32_t speakerFormID, uint32_t topicInfoFormID, uint32_t topicFormID)
     {
         std::lock_guard<std::mutex> lock(g_constructMutex);
-        
+
         int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
-        
-        g_recentConstructs.push_back({speakerFormID, topicInfoFormID, now});
-        
+
+        g_recentConstructs.push_back({speakerFormID, topicInfoFormID, topicFormID, now});
+
         // Log for diagnostics
-        spdlog::trace("[DIALOGUE_CTOR] Speaker: 0x{:08X} | TopicInfo: 0x{:08X} | Time: {}",
-            speakerFormID, topicInfoFormID, now);
+        spdlog::trace("[DIALOGUE_CTOR] Speaker: 0x{:08X} | TopicInfo: 0x{:08X} | Topic: 0x{:08X} | Time: {}",
+            speakerFormID, topicInfoFormID, topicFormID, now);
     }
     
     void RecordConstructResponse(uint32_t topicInfoFormID)

@@ -1,3 +1,4 @@
+#include "../include/PCH.h"
 #include "DialogueDatabase.h"
 #include "Config.h"
 #include "PopulateTopicInfoHook.h"
@@ -335,12 +336,16 @@ namespace DialogueDB
 
     void Database::Close()
     {
-        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
-        
+        // Drain the queue first, with no outer lock held. FlushQueue → ProcessQueue
+        // acquires queueMutex_ and dbMutex_ only briefly and never simultaneously
+        // (it swaps pendingEntries_ out under queueMutex_, then inserts under
+        // dbMutex_). Holding dbMutex_ across FlushQueue would break that invariant
+        // and AB-BA deadlock with a concurrent LogDialogue that holds queueMutex_
+        // while its ProcessQueue waits on dbMutex_.
         FlushQueue();
-        FinalizeStatements();
 
-        // Shutdown dialogue logger
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
+        FinalizeStatements();
         DialogueLogger::Shutdown();
 
         if (db_) {
@@ -434,8 +439,18 @@ namespace DialogueDB
             );
         )";
 
+        // Small key/value store used for one-shot flags ("has the X auto-import
+        // ever run?"). Decoupled from row counts so that removing scenes never
+        // triggers a re-import.
+        const char* createMetaTable = R"(
+            CREATE TABLE IF NOT EXISTS meta (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            );
+        )";
+
         // Settings table removed - settings now stored in STFU.ini
-        
+
         char* errMsg = nullptr;
         int rc = sqlite3_exec(db_, createDialogueTable, nullptr, nullptr, &errMsg);
         if (rc != SQLITE_OK) {
@@ -454,6 +469,13 @@ namespace DialogueDB
         rc = sqlite3_exec(db_, createWhitelistTable, nullptr, nullptr, &errMsg);
         if (rc != SQLITE_OK) {
             spdlog::error("[DialogueDB] Failed to create whitelist table: {}", errMsg);
+            sqlite3_free(errMsg);
+            return false;
+        }
+
+        rc = sqlite3_exec(db_, createMetaTable, nullptr, nullptr, &errMsg);
+        if (rc != SQLITE_OK) {
+            spdlog::error("[DialogueDB] Failed to create meta table: {}", errMsg);
             sqlite3_free(errMsg);
             return false;
         }
@@ -712,46 +734,78 @@ namespace DialogueDB
             entry.skyrimNetBlockable
         );
         
-        std::lock_guard<std::mutex> lock(queueMutex_);
-        pendingEntries_.push(entry);
+        bool shouldFlush = false;
+        {
+            std::lock_guard<std::mutex> lock(queueMutex_);
+            pendingEntries_.push(entry);
 
-        // Get current time for flush decision
-        auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()
-        ).count();
-        
-        // Auto-flush if either:
-        // 1. Queue has reached batch size (200 entries)
-        // 2. FLUSH_INTERVAL_MS (5 seconds) has passed since last flush
-        // This balances between batching efficiency and preventing queue buildup
-        bool sizeLimitReached = pendingEntries_.size() >= BATCH_SIZE;
-        bool timeLimitReached = (now - lastFlushTime_ >= FLUSH_INTERVAL_MS);
-        bool shouldFlush = sizeLimitReached || timeLimitReached;
-        
+            // Get current time for flush decision
+            auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()
+            ).count();
+
+            // Auto-flush if either:
+            // 1. Queue has reached batch size (200 entries)
+            // 2. FLUSH_INTERVAL_MS (5 seconds) has passed since last flush
+            bool sizeLimitReached = pendingEntries_.size() >= BATCH_SIZE;
+            bool timeLimitReached = (now - lastFlushTime_ >= FLUSH_INTERVAL_MS);
+            shouldFlush = sizeLimitReached || timeLimitReached;
+
+            if (shouldFlush) {
+                spdlog::trace("[DialogueDB] Auto-flushing: size={}, time={}, queue={}",
+                    sizeLimitReached, timeLimitReached, pendingEntries_.size());
+                lastFlushTime_ = now;
+            }
+        }
+
+        // ProcessQueue runs outside queueMutex_ — it re-acquires queueMutex_ briefly
+        // to swap the pending entries into a local queue, then processes that under
+        // dbMutex_ only. This guarantees queueMutex_ and dbMutex_ are never held
+        // simultaneously, eliminating any AB-BA deadlock between the two.
         if (shouldFlush) {
-            spdlog::trace("[DialogueDB] Auto-flushing: size={}, time={}, queue={}", 
-                sizeLimitReached, timeLimitReached, pendingEntries_.size());
             ProcessQueue();
-            lastFlushTime_ = now;
         }
     }
 
     void Database::ProcessQueue()
     {
+        // Cheap pre-check: if the DB is already torn down (Close ran), don't
+        // swap pendingEntries_ into a local — otherwise those entries would be
+        // silently dropped when we early-return below. Held briefly, then
+        // released before touching queueMutex_ so we keep the "queueMutex_ and
+        // dbMutex_ never held simultaneously" invariant.
+        {
+            std::lock_guard<std::recursive_mutex> dbCheck(dbMutex_);
+            if (!db_ || !insertDialogueStmt_) return;
+        }
+
+        // Hand off the pending entries under queueMutex_, then release it before
+        // taking dbMutex_. queueMutex_ and dbMutex_ must never be held at the
+        // same time — see Close() and LogDialogue() comments.
+        std::queue<DialogueEntry> localQueue;
+        {
+            std::lock_guard<std::mutex> queueLock(queueMutex_);
+            std::swap(pendingEntries_, localQueue);
+        }
+
+        if (localQueue.empty()) return;
+
         std::lock_guard<std::recursive_mutex> lock(dbMutex_);
-        
+
+        // Close can race in between the pre-check and here. If db_ has been
+        // nulled, the swapped-out entries get dropped — acceptable rare loss
+        // during shutdown, and safe because we hold dbMutex_ so sqlite state
+        // can't disappear underneath us.
         if (!db_ || !insertDialogueStmt_) return;
-        
-        size_t entriesCount = pendingEntries_.size();
-        if (entriesCount == 0) return;  // Nothing to process
-        
+
+        size_t entriesCount = localQueue.size();
         spdlog::debug("[DialogueDB] Flushing {} queued dialogue entries", entriesCount);
 
         // Begin transaction for batch insert
         sqlite3_exec(db_, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
 
-        while (!pendingEntries_.empty()) {
-            const auto& entry = pendingEntries_.front();
+        while (!localQueue.empty()) {
+            const auto& entry = localQueue.front();
 
             sqlite3_reset(insertDialogueStmt_);
             sqlite3_bind_int64(insertDialogueStmt_, 1, entry.timestamp);
@@ -795,7 +849,7 @@ namespace DialogueDB
                 spdlog::trace("[DialogueDB] Successfully inserted dialogue entry for TopicInfo 0x{:08X}", entry.topicInfoFormID);
             }
 
-            pendingEntries_.pop();
+            localQueue.pop();
         }
 
         // Commit transaction
@@ -838,19 +892,26 @@ namespace DialogueDB
             sqlite3_finalize(countStmt);
         }
         
-        // Notify UI to refresh if menu is open
-        if (PrismaUIMenu::IsOpen()) {
-            spdlog::trace("[DialogueDB] Menu is open, triggering UI refresh");
-            PrismaUIMenu::SendHistoryData();
+        // Defer UI refresh to the main thread via SKSE task interface so it
+        // runs after dbMutex_ is released. Invoking PrismaUI from inside a DB
+        // lock — especially from the audio thread under VR's threading model —
+        // can deadlock once PrismaUI VR support is active.
+        if (auto* tasks = SKSE::GetTaskInterface()) {
+            tasks->AddTask([] {
+                if (PrismaUIMenu::IsOpen()) {
+                    PrismaUIMenu::SendHistoryData();
+                }
+            });
         }
     }
 
     void Database::FlushQueue()
     {
-        std::lock_guard<std::mutex> lock(queueMutex_);
+        // ProcessQueue handles its own queueMutex_/dbMutex_ acquisition without
+        // overlap. Do not hold queueMutex_ across this call.
         ProcessQueue();
-        
-        // Reset flush timer after manual flush
+
+        std::lock_guard<std::mutex> lock(queueMutex_);
         lastFlushTime_ = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()
         ).count();
@@ -2463,24 +2524,49 @@ namespace DialogueDB
         }
         spdlog::info("[DialogueDB] Imported {} new scenes to unified blacklist (enrichment deferred)", sceneCount);
     }
-    
-    bool Database::HasScenesImported()
+
+    std::string Database::GetMetaValue(const std::string& key)
     {
-        const char* checkSql = "SELECT COUNT(*) FROM blacklist WHERE target_type = 4;";
-        sqlite3_stmt* checkStmt = nullptr;
-        
         std::lock_guard<std::recursive_mutex> lock(dbMutex_);
-        if (!db_) return false;
-        
-        if (sqlite3_prepare_v2(db_, checkSql, -1, &checkStmt, nullptr) == SQLITE_OK) {
-            if (sqlite3_step(checkStmt) == SQLITE_ROW) {
-                int64_t count = sqlite3_column_int64(checkStmt, 0);
-                sqlite3_finalize(checkStmt);
-                return count > 0;
+        std::string result;
+        if (!db_) return result;
+
+        const char* sql = "SELECT value FROM meta WHERE key = ? LIMIT 1;";
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, key.c_str(), -1, SQLITE_TRANSIENT);
+            if (sqlite3_step(stmt) == SQLITE_ROW) {
+                const char* val = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+                if (val) result = val;
             }
-            sqlite3_finalize(checkStmt);
+            sqlite3_finalize(stmt);
         }
-        return false;
+        return result;
+    }
+
+    void Database::SetMetaValue(const std::string& key, const std::string& value)
+    {
+        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
+        if (!db_) return;
+
+        const char* sql = "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?);";
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, key.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 2, value.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+            sqlite3_finalize(stmt);
+        }
+    }
+
+    bool Database::GetMetaFlag(const std::string& key)
+    {
+        return GetMetaValue(key) == "1";
+    }
+
+    void Database::SetMetaFlag(const std::string& key, bool value)
+    {
+        SetMetaValue(key, value ? "1" : "0");
     }
 
 

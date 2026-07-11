@@ -215,9 +215,14 @@ namespace DialogueDB
         
         // Helper to import hardcoded scenes (sets filterCategory="Scene" by default, targetType=Scene)
         void ImportHardcodedScenes(const std::vector<std::string>& sceneEditorIDs, const std::string& filterCategory = "Scene");
-        
-        // Check if scenes have already been imported
-        bool HasScenesImported();
+
+        // Key/value meta store for one-shot flags (see meta table). Used to gate
+        // automatic scene imports so removing scenes never causes them to be
+        // re-added on the next launch.
+        std::string GetMetaValue(const std::string& key);
+        void SetMetaValue(const std::string& key, const std::string& value);
+        bool GetMetaFlag(const std::string& key);
+        void SetMetaFlag(const std::string& key, bool value);
         
         // Runtime enrichment: Update blacklist entry with captured response text
         void EnrichBlacklistEntryAtRuntime(BlacklistTarget targetType, const std::string& targetEditorID, const std::string& responseText);

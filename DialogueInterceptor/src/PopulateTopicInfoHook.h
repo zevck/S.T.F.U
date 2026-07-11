@@ -15,8 +15,11 @@ namespace PopulateTopicInfoHook
     // Install the PopulateTopicInfo hook (called for ALL dialogue including combat barks)
     void Install();
     
-    // Called by DialogueItem::Ctor to record when dialogue is actually being constructed for playback
-    void RecordDialogueConstruct(uint32_t speakerFormID, uint32_t topicInfoFormID);
+    // Called by DialogueItem::Ctor to record when dialogue is actually being constructed for playback.
+    // topicFormID is the parent Topic's FormID; used to detect the follower-command
+    // candidate-burst pattern (multiple TopicInfos of one Topic ctor'd within a
+    // few ms so the engine can pick one).
+    void RecordDialogueConstruct(uint32_t speakerFormID, uint32_t topicInfoFormID, uint32_t topicFormID);
     
     // Called by ConstructResponse hook to record topics that can be executed
     void RecordConstructResponse(uint32_t topicInfoFormID);

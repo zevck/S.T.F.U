@@ -55,6 +55,16 @@ namespace DialogueItemCtorHook
 {
     using DialogueItemCtor_t = RE::DialogueItem* (*)(RE::DialogueItem*, RE::TESQuest*, RE::TESTopic*, RE::TESTopicInfo*, RE::Actor*);
     static DialogueItemCtor_t _DialogueItemCtor = nullptr;
+
+    // (The previous SkyrimNet caller-identity gate was reverted: SkyrimNet also
+    // detours DialogueItem::Ctor via MinHook, so every real-playback call passes
+    // through SkyrimNet.dll on its way to STFU's hook. _ReturnAddress() would
+    // then point inside SkyrimNet.dll on every real line, causing STFU to skip
+    // RecordDialogueConstruct and lose all history entries while SkyrimNet is
+    // loaded. The dialogue-extractor noise this guard tried to filter is a
+    // smaller problem than missing real history. To re-introduce filtering, ask
+    // the SkyrimNet author to expose IsVoiceSampleExtractionMode() via an
+    // extern "C" wrapper so we can resolve it with GetProcAddress.)
     
     // Track dialogues where we returned nullptr so PopulateTopicInfo can log them
     struct NullptrDialogueKey {
@@ -262,11 +272,12 @@ namespace DialogueItemCtorHook
         if (a_speaker && a_topicInfo) {
             uint32_t speakerID = a_speaker->GetFormID();
             uint32_t topicInfoID = a_topicInfo->GetFormID();
+            uint32_t topicID = a_topic ? a_topic->GetFormID() : 0;
             const char* speakerName = a_speaker->GetName();
-            
-            spdlog::trace("[CTOR RECORD] Recording construct: speaker={} (0x{:08X}), topicInfo=0x{:08X}", 
-                speakerName ? speakerName : "Unknown", speakerID, topicInfoID);
-            PopulateTopicInfoHook::RecordDialogueConstruct(speakerID, topicInfoID);
+
+            spdlog::trace("[CTOR RECORD] Recording construct: speaker={} (0x{:08X}), topicInfo=0x{:08X}, topic=0x{:08X}",
+                speakerName ? speakerName : "Unknown", speakerID, topicInfoID, topicID);
+            PopulateTopicInfoHook::RecordDialogueConstruct(speakerID, topicInfoID, topicID);
         }
         
         // Call original Dialogue Item constructor
@@ -416,18 +427,24 @@ namespace
                 if (!DialogueDB::GetDatabase()->Initialize(dbPath)) {
                     spdlog::error("Failed to initialize dialogue database!");
                 } else {
-                    // Import hardcoded scenes into database (one-time operation)
-                    if (!DialogueDB::GetDatabase()->HasScenesImported()) {
-                        spdlog::info("Importing hardcoded scenes...");
+                    // One-shot import gated by a persistent meta flag rather than a
+                    // row count. The old count-based check (HasScenesImported) would
+                    // re-import every scene if the user ever cleared the blacklist or
+                    // removed every scene — flag-based gating keeps user curation.
+                    // Explicit re-imports via MCM / Prisma UI buttons still work.
+                    auto* db = DialogueDB::GetDatabase();
+                    if (!db->GetMetaFlag("hardcoded_scenes_initialized")) {
+                        spdlog::info("Importing hardcoded scenes (first-run)...");
                         auto scenesList = Config::GetHardcodedScenesList();
-                        DialogueDB::GetDatabase()->ImportHardcodedScenes(scenesList);
-                        
-                        // Import follower commentary scenes with FollowerCommentary filter category
-                        spdlog::info("Importing follower commentary scenes...");
+                        db->ImportHardcodedScenes(scenesList);
+
+                        spdlog::info("Importing follower commentary scenes (first-run)...");
                         auto followerScenes = Config::GetFollowerCommentaryScenesList();
-                        DialogueDB::GetDatabase()->ImportHardcodedScenes(followerScenes, "FollowerCommentary");
+                        db->ImportHardcodedScenes(followerScenes, "FollowerCommentary");
+
+                        db->SetMetaFlag("hardcoded_scenes_initialized", true);
                     } else {
-                        spdlog::info("Scenes already imported, skipping scene import");
+                        spdlog::info("Hardcoded scenes already initialized, skipping auto-import");
                     }
                     
                     // Load persistent settings from database
@@ -509,7 +526,11 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_s
 {
     Logger::Setup();
 
-    SKSE::Init(a_skse);
+    // Pass a_log=false to keep SKSE::Init from wiping out our logger with its
+    // own file sink (also truncate=true) and its compile-time-locked level.
+    // Without this, Logger::Setup's pattern and debug-flag detection are
+    // silently overridden and the log is always info-level in Release builds.
+    SKSE::Init(a_skse, /*a_log=*/false);
 
     auto messaging = SKSE::GetMessagingInterface();
     if (!messaging->RegisterListener(MessageHandler)) {

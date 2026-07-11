@@ -73,9 +73,15 @@ namespace SceneMonitor
                 
                 spdlog::info("SceneMonitor: Initialized with {} bard quests", g_bardQuests.size());
                 
-                // Preemptively add all bard song scenes to the blacklist
+                // Preemptively add all bard song scenes to the blacklist. Gated
+                // on a persistent meta flag so we populate exactly once per DB.
+                // Without this gate the previous code re-added any scene the
+                // user had removed on every relaunch, since the existence check
+                // operates on the current blacklist contents.
                 auto db = DialogueDB::GetDatabase();
-                if (db) {
+                if (db && db->GetMetaFlag("bard_scenes_initialized")) {
+                    spdlog::info("SceneMonitor: bard scenes already initialized, skipping auto-population");
+                } else if (db) {
                     int scenesAdded = 0;
                     int scenesSkipped = 0;
                     int totalScenesFound = 0;
@@ -188,9 +194,10 @@ namespace SceneMonitor
                     }
                     
                     spdlog::info("SceneMonitor: Found {} total scenes, added {}, skipped {} (already existed)", totalScenesFound, scenesAdded, scenesSkipped);
+                    db->SetMetaFlag("bard_scenes_initialized", true);
                 }
             }
-            
+
             g_initialized = true;
             spdlog::info("[SceneMonitor] Initialization complete");
         }
