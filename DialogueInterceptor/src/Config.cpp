@@ -1211,7 +1211,29 @@ overrides:
     {
         return g_settings.mcm.blockBardSongsGlobal;
     }
-    
+
+    RE::TESGlobal* GetBlacklistGlobal()
+    {
+        return g_settings.blacklist.toggleGlobal;
+    }
+
+    RE::TESGlobal* GetFollowerCommentaryGlobal()
+    {
+        return g_settings.mcm.blockFollowerCommentaryGlobal;
+    }
+
+    RE::TESGlobal* GetSceneGateGlobalForCategory(const std::string& filterCategory)
+    {
+        // Which toggle controls this scene's hard-block depends on how it was
+        // categorized in the blacklist. User-added entries ("Blacklist") must
+        // follow the master blacklist toggle, not the pre-included scenes toggle.
+        if (filterCategory == "Blacklist")           return GetBlacklistGlobal();
+        if (filterCategory == "FollowerCommentary")  return GetFollowerCommentaryGlobal();
+        if (filterCategory == "BardSongs")           return GetBardSongsGlobal();
+        // "Scene" and any unknown category default to the pre-included scenes toggle.
+        return GetScenesGlobal();
+    }
+
     std::vector<std::string> GetHardcodedScenesList()
     {
         // Return scene names from the in-memory set (now stored with correct casing)

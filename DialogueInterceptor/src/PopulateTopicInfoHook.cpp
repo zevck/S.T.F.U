@@ -906,12 +906,11 @@ namespace PopulateTopicInfoHook
                         shouldBlockSceneSubtitles = shouldSoftBlockScene;
                     }
                 }
-                
-                bool scenesEnabled = Config::ShouldBlockScenes();
-                
+
                 // Check if scene is HARD blocked (scene prevention via phase conditions)
                 // Soft blocks should NOT trigger safety net - they're supposed to start and get silenced
                 bool isHardBlocked = false;
+                std::string hardBlockCategory;  // filterCategory of the hard-blocking scene entry
                 if (db && !sceneEditorID.empty()) {
                     // Get the blacklist cache to check block type
                     auto blacklistCache = db->GetBlacklist();
@@ -920,9 +919,10 @@ namespace PopulateTopicInfoHook
                             return e.targetType == DialogueDB::BlacklistTarget::Scene &&
                                    e.targetEditorID == sceneEditorID;
                         });
-                    
+
                     if (entry != blacklistCache.end()) {
                         isHardBlocked = (entry->blockType == DialogueDB::BlockType::Hard);
+                        hardBlockCategory = entry->filterCategory;
                     }
                 }
                 
@@ -933,8 +933,16 @@ namespace PopulateTopicInfoHook
                 if (isBardSong && bardSongsEnabled) {
                     shouldTriggerSafetyNet = true;
                 }
-                if (isHardBlocked && scenesEnabled) {
-                    shouldTriggerSafetyNet = true;
+                if (isHardBlocked) {
+                    // Gate the safety net on the toggle matching the entry's category,
+                    // consistent with how SceneHook gates the phase-condition block.
+                    // A user-added ("Blacklist") scene follows STFU_Blacklist, not
+                    // STFU_Scenes — otherwise a scene the user hard-blocked would show
+                    // "Hard Blocked" but never actually be stopped when scenes=0.
+                    auto* gate = Config::GetSceneGateGlobalForCategory(hardBlockCategory);
+                    if (gate && gate->value >= 0.5f) {
+                        shouldTriggerSafetyNet = true;
+                    }
                 }
                 
                 if (shouldTriggerSafetyNet) {

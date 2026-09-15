@@ -137,9 +137,21 @@ namespace Config
     
     // Get MCM global for STFU_Scenes toggle
     RE::TESGlobal* GetScenesGlobal();
-    
+
     // Get MCM global for STFU_BardSongs toggle
     RE::TESGlobal* GetBardSongsGlobal();
+
+    // Get MCM global for STFU_Blacklist toggle (gates user-added blacklist entries)
+    RE::TESGlobal* GetBlacklistGlobal();
+
+    // Get MCM global for STFU_FollowerCommentary toggle
+    RE::TESGlobal* GetFollowerCommentaryGlobal();
+
+    // Pick the toggle global that should gate a scene hard-block, based on the
+    // blacklist entry's filterCategory ("Blacklist" -> STFU_Blacklist, "Scene" ->
+    // STFU_Scenes, "FollowerCommentary" -> STFU_FollowerCommentary, "BardSongs" ->
+    // STFU_BardSongs). Falls back to STFU_Scenes for unknown categories.
+    RE::TESGlobal* GetSceneGateGlobalForCategory(const std::string& filterCategory);
     
     // Get list of hardcoded scenes for database import
     std::vector<std::string> GetHardcodedScenesList();

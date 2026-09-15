@@ -5,6 +5,7 @@
 #include <spdlog/spdlog.h>
 #include <mutex>
 #include <unordered_set>
+#include <unordered_map>
 
 namespace SceneHook
 {
@@ -42,6 +43,25 @@ namespace SceneHook
         return condition;
     }
     
+    // Resolve which toggle global should gate a scene's hard-block, from the
+    // filterCategory of its blacklist entry. User-added entries ("Blacklist")
+    // follow the master blacklist toggle; pre-included ones follow their own
+    // category toggle (STFU_Scenes / STFU_FollowerCommentary / STFU_BardSongs).
+    // Falls back to STFU_Scenes when the scene has no matching entry. Single-scene
+    // callers only — batch paths resolve from an already-loaded blacklist cache.
+    static RE::TESGlobal* ResolveSceneGateGlobal(const std::string& sceneEditorID)
+    {
+        if (auto* db = DialogueDB::GetDatabase()) {
+            for (const auto& e : db->GetBlacklist()) {
+                if (e.targetType == DialogueDB::BlacklistTarget::Scene &&
+                    e.targetEditorID == sceneEditorID) {
+                    return Config::GetSceneGateGlobalForCategory(e.filterCategory);
+                }
+            }
+        }
+        return Config::GetScenesGlobal();
+    }
+
     // Forward declaration
     static void RemoveConditionsFromScene(RE::BGSScene* scene);
     
@@ -77,12 +97,15 @@ namespace SceneHook
                 whitelistedTopicIDs.insert(e.targetEditorID);
         }
 
-        std::unordered_set<std::string> hardBlockedSceneIDs;
+        // Scene editorID -> the toggle global that gates it, chosen by filterCategory.
+        // User-added ("Blacklist") scenes follow STFU_Blacklist; pre-included ones
+        // follow STFU_Scenes / STFU_FollowerCommentary / STFU_BardSongs.
+        std::unordered_map<std::string, RE::TESGlobal*> hardBlockedSceneIDs;
         std::unordered_set<std::string> hardBlockedTopicIDs;
         for (const auto& e : blacklistCache) {
             if (e.blockType != DialogueDB::BlockType::Hard || e.targetEditorID.empty()) continue;
             if (e.targetType == DialogueDB::BlacklistTarget::Scene)
-                hardBlockedSceneIDs.insert(e.targetEditorID);
+                hardBlockedSceneIDs[e.targetEditorID] = Config::GetSceneGateGlobalForCategory(e.filterCategory);
             else if (e.targetType == DialogueDB::BlacklistTarget::Topic)
                 hardBlockedTopicIDs.insert(e.targetEditorID);
         }
@@ -108,16 +131,17 @@ namespace SceneHook
         auto* scenesGlobal  = Config::GetScenesGlobal();
         auto* bardSongsGlobal = Config::GetBardSongsGlobal();
 
-        // Pass 1: Hard-blocked scenes by editorID — direct lookup, no full scan needed
-        if (scenesGlobal) {
-            for (const auto& editorID : hardBlockedSceneIDs) {
-                if (whitelistedSceneIDs.count(editorID)) continue;
-                if (auto* scene = RE::TESForm::LookupByEditorID<RE::BGSScene>(editorID)) {
-                    patchScene(scene, scenesGlobal);
-                    spdlog::debug("[SCENE BLOCKER] Patched Hard-blocked scene: {}", editorID);
-                } else {
-                    spdlog::warn("[SCENE BLOCKER] Hard-blocked scene not found in form table: {}", editorID);
-                }
+        // Pass 1: Hard-blocked scenes by editorID — direct lookup, no full scan needed.
+        // Each scene is gated on the toggle matching its filterCategory.
+        for (const auto& [editorID, gateGlobal] : hardBlockedSceneIDs) {
+            if (!gateGlobal) continue;
+            if (whitelistedSceneIDs.count(editorID)) continue;
+            if (auto* scene = RE::TESForm::LookupByEditorID<RE::BGSScene>(editorID)) {
+                patchScene(scene, gateGlobal);
+                spdlog::debug("[SCENE BLOCKER] Patched Hard-blocked scene: {} (gate: {})",
+                    editorID, gateGlobal->GetFormEditorID() ? gateGlobal->GetFormEditorID() : "?");
+            } else {
+                spdlog::warn("[SCENE BLOCKER] Hard-blocked scene not found in form table: {}", editorID);
             }
         }
 
@@ -194,24 +218,30 @@ namespace SceneHook
     {
         if (!scene) return;
         
+        // Recognize every toggle global we might have gated a scene on, so re-patching
+        // strips the old condition regardless of which category applied it. Missing one
+        // would leave a stale condition behind and double-gate the scene.
         auto* scenesGlobal = Config::GetScenesGlobal();
         auto* bardSongsGlobal = Config::GetBardSongsGlobal();
-        
+        auto* blacklistGlobal = Config::GetBlacklistGlobal();
+        auto* followerCommentaryGlobal = Config::GetFollowerCommentaryGlobal();
+
         for (auto* phase : scene->phases) {
             if (!phase || !phase->startConditions.head) continue;
-            
+
             // Remove all conditions that reference our blocking globals
             RE::TESConditionItem* prev = nullptr;
             RE::TESConditionItem* current = phase->startConditions.head;
-            
+
             while (current) {
                 RE::TESConditionItem* next = current->next;
-                
+
                 // Check if this condition references one of our blocking globals
                 bool isBlockingCondition = false;
                 if (current->data.functionData.function == static_cast<RE::FUNCTION_DATA::FunctionID>(74)) {
                     auto* condGlobal = static_cast<RE::TESGlobal*>(current->data.functionData.params[0]);
-                    if (condGlobal == scenesGlobal || condGlobal == bardSongsGlobal) {
+                    if (condGlobal == scenesGlobal || condGlobal == bardSongsGlobal ||
+                        condGlobal == blacklistGlobal || condGlobal == followerCommentaryGlobal) {
                         isBlockingCondition = true;
                     }
                 }
@@ -245,16 +275,16 @@ namespace SceneHook
 
         spdlog::info("[SCENE UPDATE] PatchDeferredScenes: patching {} scene(s) queued from previous session", pending.size());
 
-        auto* controllingGlobal = Config::GetScenesGlobal();
-        if (!controllingGlobal) {
-            spdlog::error("[SCENE UPDATE] STFU_Scenes global not found - deferred scenes not patched");
-            return;
-        }
-
         for (const auto& sceneEditorID : pending) {
             auto* scene = RE::TESForm::LookupByEditorID<RE::BGSScene>(sceneEditorID);
             if (!scene) {
                 spdlog::warn("[SCENE UPDATE] Deferred scene not found: {}", sceneEditorID);
+                continue;
+            }
+            // Gate on the toggle matching this scene's blacklist category.
+            auto* controllingGlobal = ResolveSceneGateGlobal(sceneEditorID);
+            if (!controllingGlobal) {
+                spdlog::error("[SCENE UPDATE] Gate global not found for deferred scene {} - skipped", sceneEditorID);
                 continue;
             }
             RemoveConditionsFromScene(scene);
@@ -306,13 +336,15 @@ namespace SceneHook
                     return;
                 }
                 
-                // Add blocking condition for Hard blocks
-                auto* controllingGlobal = Config::GetScenesGlobal();
+                // Add blocking condition for Hard blocks, gated on the toggle
+                // matching this scene's blacklist category (user-added scenes
+                // follow STFU_Blacklist, not STFU_Scenes).
+                auto* controllingGlobal = ResolveSceneGateGlobal(sceneEditorID);
                 if (!controllingGlobal) {
-                    spdlog::error("[SCENE UPDATE] STFU_Scenes global not found!");
+                    spdlog::error("[SCENE UPDATE] Gate global not found for scene {}!", sceneEditorID);
                     return;
                 }
-                
+
                 int phasesPatched = 0;
                 for (auto* phase : targetScene->phases) {
                     if (!phase) continue;
