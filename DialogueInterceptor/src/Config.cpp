@@ -651,7 +651,7 @@ overrides:
             "RiftenHaelgasBunkhouseScene06", "RiftenHaelgasBunkhouseScene07", "RiftenHaelgasBunkhouseScene08", "RiftenHaelgasBunkhouseScene09", "RiftenHaelgasBunkhouseScene10",
             "RiftenHaelgasBunkhouseScene11", "RiftenHaelgasBunkhouseScene12", "RiftenHonorhallScene01", "RiftenKeepScene01",
             "RiftenKeepScene01Alternate", "RiftenKeepScene02", "RiftenKeepScene02Alternate", "RiftenKeepScene03", "RiftenKeepScene03Alternate",
-            "RiftenKeepScene04", "RiftenKeepScene04Alternate", "RiftenKeepScene05", "RiftenKeepScene05Alternate", "RiftenKeepScene06",
+            "RiftenKeepScene04Alternate", "RiftenKeepScene05", "RiftenKeepScene05Alternate", "RiftenKeepScene06",
             "RiftenKeepScene06Alternate", "RiftenKeepScene07", "RiftenKeepScene07Alternate", "RiftenKeepScene08", "RiftenKeepScene08Alternate01",
             "RiftenKeepScene09", "RiftenKeepScene10", "RiftenKeepScene11", "RiftenMjollHouseScene02", "RiftenPawnedPrawnScene01",
             "RiftenPawnedPrawnScene02", "RiftenPawnedPrawnScene03", "RiftenRaggedFlagon05Scene", "RiftenRaggedFlagonScene01", "RiftenRaggedFlagonScene02",
@@ -794,14 +794,21 @@ overrides:
 
     std::string GetSubtypeName(uint16_t subtype)
     {
-        // Build reverse lookup map (ID -> Name)
-        static std::unordered_map<uint16_t, std::string> reverseMap;
-        if (reverseMap.empty()) {
+        // Build reverse lookup map (ID -> Name) exactly once. The fill runs inside
+        // the initializer so C++'s thread-safe static-init guard serializes it:
+        // concurrent callers block until the first finishes, then only ever read.
+        // The old "declare empty, fill if empty()" form left the fill unsynchronized
+        // — several dialogue hooks run on BSJobs worker threads at once (e.g. the
+        // first frame after a save load), so they could fill the map simultaneously
+        // and corrupt it, freezing or crashing the game.
+        static const std::unordered_map<uint16_t, std::string> reverseMap = [] {
+            std::unordered_map<uint16_t, std::string> map;
             for (const auto& [name, id] : SubtypeNameMap) {
-                reverseMap[id] = name;
+                map[id] = name;
             }
-        }
-        
+            return map;
+        }();
+
         auto it = reverseMap.find(subtype);
         if (it != reverseMap.end()) {
             return it->second;
