@@ -245,8 +245,22 @@ namespace
                     SceneMonitor::Initialize();
                 }
                 
-               // Allocate trampoline memory for hooks
-                SKSE::AllocTrampoline(1 << 8);  // 256 bytes
+                // Allocate trampoline memory for hooks: SKSE's branch pool if available, otherwise
+                // our own block near the game module (SKSE::AllocTrampoline dropped that fallback
+                // in CommonLib v9 and silently allocates nothing without a TrampolineInterface)
+                {
+                    constexpr std::size_t trampolineSize = 1 << 8;  // 256 bytes
+                    auto& trampoline = SKSE::GetTrampoline();
+                    void* mem = nullptr;
+                    if (const auto* intfc = SKSE::GetTrampolineInterface()) {
+                        mem = intfc->AllocateFromBranchPool(trampolineSize);
+                    }
+                    if (mem) {
+                        trampoline.set_trampoline(mem, trampolineSize);
+                    } else {
+                        trampoline.create(trampolineSize);
+                    }
+                }
                 
                 // Install PopulateTopicInfo hook (blocks dialogue selection at source - earliest interception)
                 PopulateTopicInfoHook::Install();
@@ -311,7 +325,7 @@ namespace
     }
 }
 
-extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_skse)
+SKSE_PLUGIN_LOAD(const SKSE::LoadInterface* a_skse)
 {
     Logger::Setup();
 

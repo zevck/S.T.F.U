@@ -338,20 +338,34 @@ namespace ConstructResponseHook
         auto& trampoline = SKSE::GetTrampoline();
         
         REL::Relocation<std::uintptr_t> target{ REL::VariantID(34429, 35249, 0x573B70) };
-        
-        // Hook SetSubtitle at call site
-        _SetSubtitle = trampoline.write_call<5>(
-            target.address() + REL::Relocate(0x61, 0x61),
-            Hook_SetSubtitle
-        );
-        
-        spdlog::info("ConstructResponseHook: SetSubtitle hook installed");
-        
-        _ConstructResponse = trampoline.write_call<5>(
-            target.address() + REL::Relocate(0xDE, 0xDE),
-            Hook_ConstructResponse
-        );
-        
-        spdlog::info("ConstructResponse + SetSubtitle hooks installed");
+
+        // The call-site offsets are fixed, so refuse to patch unless a CALL (E8) is still
+        // there. On a runtime where the function changed, this skips the hook instead of
+        // overwriting the middle of another instruction. It can't tell whether it is the
+        // right call, so the call's target is logged to compare against a known-good runtime.
+        const auto base = REL::Module::get().base();
+        const auto isCall = [base](std::uintptr_t a_addr, const char* a_name) {
+            if (*reinterpret_cast<const std::uint8_t*>(a_addr) == 0xE8) {
+                const auto rel = *reinterpret_cast<const std::int32_t*>(a_addr + 1);
+                spdlog::info("ConstructResponseHook: {} call site 0x{:X} calls 0x{:X}",
+                    a_name, a_addr - base, a_addr + 5 + rel - base);
+                return true;
+            }
+            spdlog::error("ConstructResponseHook: no CALL at the {} call site (0x{:X}) on runtime {} - hook skipped",
+                a_name, a_addr - base, REL::Module::get().version().string());
+            return false;
+        };
+
+        const auto subtitleSite = target.address() + REL::Relocate(0x61, 0x61);
+        if (isCall(subtitleSite, "SetSubtitle")) {
+            _SetSubtitle = trampoline.write_call<5>(subtitleSite, Hook_SetSubtitle);
+            spdlog::info("ConstructResponseHook: SetSubtitle hook installed");
+        }
+
+        const auto constructSite = target.address() + REL::Relocate(0xDE, 0xDE);
+        if (isCall(constructSite, "ConstructResponse")) {
+            _ConstructResponse = trampoline.write_call<5>(constructSite, Hook_ConstructResponse);
+            spdlog::info("ConstructResponseHook: ConstructResponse hook installed");
+        }
     }
 }

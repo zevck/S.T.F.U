@@ -129,8 +129,6 @@ If you already cloned without `--recursive`:
 git submodule update --init --recursive
 ```
 
-> **Note:** the plugin currently still builds against CommonLibVR 4.5.0 from a local, untracked `.resources/CommonLibVR-4.5.0` folder. The switch to the `lib/commonlibsse-ng` submodule is in progress; until then, a fresh clone needs that folder supplied separately.
-
 ### Plugin
 From the repository root:
 ```

@@ -5,7 +5,7 @@ set(VCPKG_TARGET_TRIPLET "x64-windows-static" CACHE STRING "" FORCE)
 
 project(
     STFU
-    VERSION 0.1.0
+    VERSION 1.2.0
     LANGUAGES CXX
 )
 
@@ -22,10 +22,8 @@ set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}" CACHE PATH "Install prefi
 # ---- Add CommonLibSSE-NG ----
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 
-# Build from source
-message(STATUS "Building CommonLibSSE (CommonLibVR 4.5.0) from source")
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/.resources/CommonLibVR-4.5.0 ${CMAKE_CURRENT_BINARY_DIR}/CommonLibSSE-NG EXCLUDE_FROM_ALL)
-include(${CMAKE_CURRENT_SOURCE_DIR}/.resources/CommonLibVR-4.5.0/cmake/CommonLibSSE.cmake)
+add_subdirectory(lib/commonlibsse-ng ${CMAKE_CURRENT_BINARY_DIR}/CommonLibSSE-NG EXCLUDE_FROM_ALL)
+include(lib/commonlibsse-ng/cmake/CommonLibSSE.cmake)
 
 # ---- Add Detours library ----
 add_library(Detours STATIC
@@ -107,7 +105,7 @@ target_link_libraries(
         Detours
 )
 
-# Enable PCH - required for CommonLibVR 4.5.0 (auto-generated plugin file needs std:: headers)
+# Enable PCH - the auto-generated plugin file needs std:: headers
 target_precompile_headers(
     ${PROJECT_NAME}
     PRIVATE

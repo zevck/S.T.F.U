@@ -26,6 +26,4 @@
 #include <windows.h>
 #include <shlobj.h>
 
-#define DLLEXPORT __declspec(dllexport)
-
 using namespace std::literals;
