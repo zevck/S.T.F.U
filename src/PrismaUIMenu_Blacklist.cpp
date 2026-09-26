@@ -109,43 +109,10 @@ void PrismaUIMenu::OnUpdateBlacklistEntry(const char* data)
         
         std::string jsonStr(data);
         
-        // Simple JSON parsing (hacky but sufficient for our controlled data)
-        auto getValue = [&jsonStr](const std::string& key) -> std::string {
-            std::string searchKey = "\"" + key + "\":";
-            size_t pos = jsonStr.find(searchKey);
-            if (pos == std::string::npos) return "";
-            
-            pos += searchKey.length();
-            // Skip whitespace
-            while (pos < jsonStr.length() && (jsonStr[pos] == ' ' || jsonStr[pos] == '\t')) pos++;
-            
-            if (pos >= jsonStr.length()) return "";
-            
-            // Check if it's a string (starts with quote)
-            if (jsonStr[pos] == '"') {
-                pos++; // Skip opening quote
-                size_t endPos = jsonStr.find('"', pos);
-                if (endPos == std::string::npos) return "";
-                return jsonStr.substr(pos, endPos - pos);
-            } else {
-                // It's a number or other value
-                size_t endPos = jsonStr.find_first_of(",}", pos);
-                if (endPos == std::string::npos) endPos = jsonStr.length();
-                return jsonStr.substr(pos, endPos - pos);
-            }
-        };
-        
-        int64_t entryId = std::stoll(getValue("id"));
-        std::string blockTypeStr = getValue("blockType");
-        std::string filterCategory = getValue("filterCategory");
-        std::string notes = getValue("notes");
-        
-        // Unescape notes (\n -> newline)
-        size_t escapePos = 0;
-        while ((escapePos = notes.find("\\n", escapePos)) != std::string::npos) {
-            notes.replace(escapePos, 2, "\n");
-            escapePos += 1;
-        }
+        int64_t entryId = std::stoll(ExtractJsonValue(jsonStr, "id"));
+        std::string blockTypeStr = ExtractJsonValue(jsonStr, "blockType");
+        std::string filterCategory = ExtractJsonValue(jsonStr, "filterCategory");
+        std::string notes = ExtractJsonValue(jsonStr, "notes");
         
         spdlog::info("[PrismaUIMenu] Parsed: id={}, blockType={}, filterCategory={}, notes={}",
                     entryId, blockTypeStr, filterCategory, notes);
@@ -192,76 +159,10 @@ void PrismaUIMenu::OnUpdateBlacklistEntry(const char* data)
         existingEntry->filterCategory = filterCategory;
         existingEntry->notes = notes;
         
-        // Parse actor filters from JSON if present
-        auto parseActorFormIDsFromUpdate = [&jsonStr]() -> std::vector<uint32_t> {
-            std::vector<uint32_t> formIDs;
-            // Search string is 25 chars: "actorFilterFormIDs":["0x
-            size_t arrayStart = jsonStr.find("\"actorFilterFormIDs\":[\"0x");
-            if (arrayStart == std::string::npos) return formIDs;
-            size_t pos = arrayStart + 25;  // points past the '0x' to the hex digits
-            while (pos < jsonStr.size()) {
-                size_t hexEnd = jsonStr.find("\"", pos);
-                if (hexEnd == std::string::npos) break;
-                std::string hexStr = jsonStr.substr(pos, hexEnd - pos);
-                try {
-                    uint32_t formID = std::stoul(hexStr, nullptr, 16);
-                    formIDs.push_back(formID);
-                } catch (...) { }
-                pos = jsonStr.find("\"0x", hexEnd);
-                if (pos == std::string::npos) break;
-                pos += 3;
-            }
-            return formIDs;
-        };
-        
-        auto parseActorNamesFromUpdate = [&jsonStr]() -> std::vector<std::string> {
-            std::vector<std::string> names;
-            size_t arrayStart = jsonStr.find("\"actorFilterNames\":[");
-            if (arrayStart == std::string::npos) return names;
-            // Early exit for empty array
-            if (arrayStart + 20 < jsonStr.size() && jsonStr[arrayStart + 20] == ']') return names;
-            size_t pos = jsonStr.find("\"", arrayStart + 20);
-            while (pos != std::string::npos && pos < jsonStr.size()) {
-                if (jsonStr[pos] != '\"') break;
-                pos++;
-                size_t nameEnd = jsonStr.find("\"", pos);
-                if (nameEnd == std::string::npos) break;
-                names.push_back(jsonStr.substr(pos, nameEnd - pos));
-                pos = jsonStr.find("\",\"", nameEnd);
-                if (pos == std::string::npos) break;
-                pos += 3;
-            }
-            return names;
-        };
-        
-        existingEntry->actorFilterFormIDs = parseActorFormIDsFromUpdate();
-        existingEntry->actorFilterNames = parseActorNamesFromUpdate();
-
-        // Parse faction EditorIDs from JSON array: "factionFilterEditorIDs":["FactionA","FactionB"]
-        auto parseFactionEditorIDsFromUpdate = [&jsonStr]() -> std::vector<std::string> {
-            std::vector<std::string> ids;
-            size_t arrayStart = jsonStr.find("\"factionFilterEditorIDs\":");
-            if (arrayStart == std::string::npos) return ids;
-            size_t bracketPos = jsonStr.find('[', arrayStart);
-            if (bracketPos == std::string::npos) return ids;
-            size_t pos = bracketPos + 1;
-            while (pos < jsonStr.size()) {
-                // Skip whitespace
-                while (pos < jsonStr.size() && (jsonStr[pos] == ' ' || jsonStr[pos] == '\t')) pos++;
-                if (pos >= jsonStr.size() || jsonStr[pos] == ']') break;
-                if (jsonStr[pos] != '"') { pos++; continue; }
-                pos++; // skip opening quote
-                size_t end = jsonStr.find('"', pos);
-                if (end == std::string::npos) break;
-                ids.push_back(jsonStr.substr(pos, end - pos));
-                pos = end + 1;
-                // Skip to next element or end
-                while (pos < jsonStr.size() && jsonStr[pos] != ',' && jsonStr[pos] != ']') pos++;
-                if (pos < jsonStr.size() && jsonStr[pos] == ',') pos++;
-            }
-            return ids;
-        };
-        existingEntry->factionFilterEditorIDs = parseFactionEditorIDsFromUpdate();
+        // Actor and faction filters
+        existingEntry->actorFilterFormIDs = ParseHexFormIDs(ExtractJsonStringArray(jsonStr, "actorFilterFormIDs"));
+        existingEntry->actorFilterNames = ExtractJsonStringArray(jsonStr, "actorFilterNames");
+        existingEntry->factionFilterEditorIDs = ExtractJsonStringArray(jsonStr, "factionFilterEditorIDs");
 
         // Save to database (AddToBlacklist handles both insert and update)
         if (db->AddToBlacklist(*existingEntry)) {

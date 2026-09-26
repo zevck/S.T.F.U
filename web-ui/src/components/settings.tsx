@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, ReactNode } from 'react';
 import { Upload, Settings as SettingsIcon, Swords, MessageSquare, Users, Sparkles } from 'lucide-react';
 import { SKSE_API, log } from '../lib/skse-api';
 import { useSettingsStore } from '../stores/settings';
@@ -110,6 +110,16 @@ const OTHER_SUBTYPES = {
 
 type CategoryTab = 'master' | 'combat' | 'generic' | 'follower' | 'other';
 
+type Subtype = { id: number; name: string; tooltip?: string };
+
+const TABS: { id: CategoryTab; label: string; icon: typeof SettingsIcon; activeClass: string }[] = [
+  { id: 'master', label: 'Master Controls', icon: SettingsIcon, activeClass: 'text-purple-400 border-purple-400' },
+  { id: 'combat', label: 'Combat', icon: Swords, activeClass: 'text-red-400 border-red-400' },
+  { id: 'generic', label: 'Generic', icon: MessageSquare, activeClass: 'text-blue-400 border-blue-400' },
+  { id: 'follower', label: 'Follower', icon: Users, activeClass: 'text-green-400 border-green-400' },
+  { id: 'other', label: 'Other', icon: Sparkles, activeClass: 'text-yellow-400 border-yellow-400' },
+];
+
 interface SubcategoryHeaderProps {
   title: string;
 }
@@ -137,13 +147,44 @@ const Toggle = ({ label, checked, onChange, tooltip }: ToggleProps) => (
   </label>
 );
 
+// A tab's panel: colored title with Enable All / Disable All buttons
+interface CategoryPanelProps {
+  title: string;
+  titleClass: string;
+  onEnableAll: () => void;
+  onDisableAll: () => void;
+  children: ReactNode;
+}
+
+const CategoryPanel = ({ title, titleClass, onEnableAll, onDisableAll, children }: CategoryPanelProps) => (
+  <div className="bg-gray-800 rounded-lg p-4">
+    <div className="flex justify-between items-center mb-4">
+      <h3 className={`text-lg font-semibold ${titleClass}`}>{title}</h3>
+      <div className="flex gap-2">
+        <button
+          onClick={onEnableAll}
+          className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 text-white rounded transition-colors"
+        >
+          Enable All
+        </button>
+        <button
+          onClick={onDisableAll}
+          className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
+        >
+          Disable All
+        </button>
+      </div>
+    </div>
+    {children}
+  </div>
+);
+
 export const Settings = () => {
   // Category navigation state
   const [activeCategory, setActiveCategory] = useState<CategoryTab>('master');
-  
+
   // Read settings from global store (updated by C++ in real-time)
   const blacklistEnabled = useSettingsStore(state => state.blacklistEnabled);
-
   const scenesEnabled = useSettingsStore(state => state.scenesEnabled);
   const bardSongsEnabled = useSettingsStore(state => state.bardSongsEnabled);
   const combatGruntsBlocked = useSettingsStore(state => state.combatGruntsBlocked);
@@ -156,55 +197,29 @@ export const Settings = () => {
     log(`[Settings] Requested toggle for subtype ${subtypeId}`);
   }, []);
 
-  const handleEnableAll = useCallback((categorySubtypes: { id: number; name: string; tooltip?: string }[]) => {
-    // Toggle each subtype that's currently disabled
+  // Toggles every subtype in the list whose current state differs from `enabled`
+  const setAll = useCallback((categorySubtypes: Subtype[], enabled: boolean) => {
     categorySubtypes.forEach(subtype => {
-      // Only toggle if currently disabled (false/undefined in store)
-      if (!subtypes[subtype.id]) {
+      if (!!subtypes[subtype.id] !== enabled) {
         SKSE_API.toggleSubtypeFilter(subtype.id);
       }
     });
-    log(`[Settings] Requested enable all for category`);
+    log(`[Settings] Requested ${enabled ? 'enable' : 'disable'} all for category`);
   }, [subtypes]);
 
-  const handleDisableAll = useCallback((categorySubtypes: { id: number; name: string; tooltip?: string }[]) => {
-    // Toggle each subtype that's currently enabled
-    categorySubtypes.forEach(subtype => {
-      // Only toggle if currently enabled (true in store)
-      if (subtypes[subtype.id]) {
-        SKSE_API.toggleSubtypeFilter(subtype.id);
-      }
-    });
-    log(`[Settings] Requested disable all for category`);
-  }, [subtypes]);
-
-  const handleEnableAllCombat = useCallback(() => {
-    handleEnableAll(Object.values(COMBAT_SUBTYPES).flat());
-    if (!combatGruntsBlocked) {
-      SKSE_API.setCombatGruntsBlocked(true);
+  const setAllCombat = useCallback((enabled: boolean) => {
+    setAll(Object.values(COMBAT_SUBTYPES).flat(), enabled);
+    if (combatGruntsBlocked !== enabled) {
+      SKSE_API.setCombatGruntsBlocked(enabled);
     }
-  }, [handleEnableAll, combatGruntsBlocked]);
+  }, [setAll, combatGruntsBlocked]);
 
-  const handleDisableAllCombat = useCallback(() => {
-    handleDisableAll(Object.values(COMBAT_SUBTYPES).flat());
-    if (combatGruntsBlocked) {
-      SKSE_API.setCombatGruntsBlocked(false);
+  const setAllFollower = useCallback((enabled: boolean) => {
+    setAll(Object.values(FOLLOWER_SUBTYPES).flat(), enabled);
+    if (followerCommentaryEnabled !== enabled) {
+      SKSE_API.setFollowerCommentaryEnabled(enabled);
     }
-  }, [handleDisableAll, combatGruntsBlocked]);
-
-  const handleEnableAllFollower = useCallback(() => {
-    handleEnableAll(Object.values(FOLLOWER_SUBTYPES).flat());
-    if (!followerCommentaryEnabled) {
-      SKSE_API.setFollowerCommentaryEnabled(true);
-    }
-  }, [handleEnableAll, followerCommentaryEnabled]);
-
-  const handleDisableAllFollower = useCallback(() => {
-    handleDisableAll(Object.values(FOLLOWER_SUBTYPES).flat());
-    if (followerCommentaryEnabled) {
-      SKSE_API.setFollowerCommentaryEnabled(false);
-    }
-  }, [handleDisableAll, followerCommentaryEnabled]);
+  }, [setAll, followerCommentaryEnabled]);
 
   const handleImportScenes = useCallback(() => {
     SKSE_API.importScenes();
@@ -216,6 +231,24 @@ export const Settings = () => {
     log('[Settings] Import YAML requested');
   }, []);
 
+  // A titled group of subtype toggles
+  const subtypeGroup = (title: string, list: Subtype[]) => (
+    <div>
+      <SubcategoryHeader title={title} />
+      <div className="space-y-2">
+        {list.map(subtype => (
+          <Toggle
+            key={subtype.id}
+            label={subtype.name}
+            checked={subtypes[subtype.id] || false}
+            onChange={() => toggleSubtype(subtype.id)}
+            tooltip={subtype.tooltip}
+          />
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -226,61 +259,20 @@ export const Settings = () => {
 
       {/* Category Tabs */}
       <div className="flex gap-2 px-4 pt-4 border-b border-gray-700">
-        <button
-          onClick={() => setActiveCategory('master')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-colors border-b-2 ${
-            activeCategory === 'master'
-              ? 'bg-gray-700 text-purple-400 border-purple-400'
-              : 'bg-transparent text-gray-400 hover:text-gray-300 border-transparent'
-          }`}
-        >
-          <SettingsIcon size={16} />
-          Master Controls
-        </button>
-        <button
-          onClick={() => setActiveCategory('combat')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-colors border-b-2 ${
-            activeCategory === 'combat'
-              ? 'bg-gray-700 text-red-400 border-red-400'
-              : 'bg-transparent text-gray-400 hover:text-gray-300 border-transparent'
-          }`}
-        >
-          <Swords size={16} />
-          Combat
-        </button>
-        <button
-          onClick={() => setActiveCategory('generic')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-colors border-b-2 ${
-            activeCategory === 'generic'
-              ? 'bg-gray-700 text-blue-400 border-blue-400'
-              : 'bg-transparent text-gray-400 hover:text-gray-300 border-transparent'
-          }`}
-        >
-          <MessageSquare size={16} />
-          Generic
-        </button>
-        <button
-          onClick={() => setActiveCategory('follower')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-colors border-b-2 ${
-            activeCategory === 'follower'
-              ? 'bg-gray-700 text-green-400 border-green-400'
-              : 'bg-transparent text-gray-400 hover:text-gray-300 border-transparent'
-          }`}
-        >
-          <Users size={16} />
-          Follower
-        </button>
-        <button
-          onClick={() => setActiveCategory('other')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-colors border-b-2 ${
-            activeCategory === 'other'
-              ? 'bg-gray-700 text-yellow-400 border-yellow-400'
-              : 'bg-transparent text-gray-400 hover:text-gray-300 border-transparent'
-          }`}
-        >
-          <Sparkles size={16} />
-          Other
-        </button>
+        {TABS.map(({ id, label, icon: Icon, activeClass }) => (
+          <button
+            key={id}
+            onClick={() => setActiveCategory(id)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-colors border-b-2 ${
+              activeCategory === id
+                ? `bg-gray-700 ${activeClass}`
+                : 'bg-transparent text-gray-400 hover:text-gray-300 border-transparent'
+            }`}
+          >
+            <Icon size={16} />
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* Tab Content */}
@@ -343,25 +335,12 @@ export const Settings = () => {
 
         {/* Combat Dialogue Tab */}
         {activeCategory === 'combat' && (
-          <div className="bg-gray-800 rounded-lg p-4">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-red-400">Combat Dialogue Filters</h3>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleEnableAllCombat}
-                  className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 text-white rounded transition-colors"
-                >
-                  Enable All
-                </button>
-                <button
-                  onClick={handleDisableAllCombat}
-                  className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
-                >
-                  Disable All
-                </button>
-              </div>
-            </div>
-
+          <CategoryPanel
+            title="Combat Dialogue Filters"
+            titleClass="text-red-400"
+            onEnableAll={() => setAllCombat(true)}
+            onDisableAll={() => setAllCombat(false)}
+          >
             {/* Combat Grunts */}
             <div className="mb-4 pb-4 border-b border-gray-700">
               <SubcategoryHeader title="Combat Grunts" />
@@ -375,252 +354,56 @@ export const Settings = () => {
 
             {/* Three-column layout */}
             <div className="grid grid-cols-3 gap-6">
-              {/* Column 1 */}
               <div className="space-y-4">
-                <div>
-                  <SubcategoryHeader title="Attack Dialogue" />
-                  <div className="space-y-2">
-                    {COMBAT_SUBTYPES.attackDialogue.map(subtype => (
-                      <Toggle
-                        key={subtype.id}
-                        label={subtype.name}
-                        checked={subtypes[subtype.id] || false}
-                        onChange={() => toggleSubtype(subtype.id)}
-                        tooltip={subtype.tooltip}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <SubcategoryHeader title="Combat Reactions" />
-                  <div className="space-y-2">
-                    {COMBAT_SUBTYPES.combatReactions.map(subtype => (
-                      <Toggle
-                        key={subtype.id}
-                        label={subtype.name}
-                        checked={subtypes[subtype.id] || false}
-                        onChange={() => toggleSubtype(subtype.id)}
-                        tooltip={subtype.tooltip}
-                      />
-                    ))}
-                  </div>
-                </div>
+                {subtypeGroup('Attack Dialogue', COMBAT_SUBTYPES.attackDialogue)}
+                {subtypeGroup('Combat Reactions', COMBAT_SUBTYPES.combatReactions)}
               </div>
-
-              {/* Column 2 */}
               <div className="space-y-4">
-                <div>
-                  <SubcategoryHeader title="Combat Commentary" />
-                  <div className="space-y-2">
-                    {COMBAT_SUBTYPES.combatCommentary.map(subtype => (
-                      <Toggle
-                        key={subtype.id}
-                        label={subtype.name}
-                        checked={subtypes[subtype.id] || false}
-                        onChange={() => toggleSubtype(subtype.id)}
-                        tooltip={subtype.tooltip}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <SubcategoryHeader title="Detection & Alert" />
-                  <div className="space-y-2">
-                    {COMBAT_SUBTYPES.detectionAlert.map(subtype => (
-                      <Toggle
-                        key={subtype.id}
-                        label={subtype.name}
-                        checked={subtypes[subtype.id] || false}
-                        onChange={() => toggleSubtype(subtype.id)}
-                        tooltip={subtype.tooltip}
-                      />
-                    ))}
-                  </div>
-                </div>
+                {subtypeGroup('Combat Commentary', COMBAT_SUBTYPES.combatCommentary)}
+                {subtypeGroup('Detection & Alert', COMBAT_SUBTYPES.detectionAlert)}
               </div>
-
-              {/* Column 3 */}
               <div className="space-y-4">
-                <div>
-                  <SubcategoryHeader title="Lost/Search" />
-                  <div className="space-y-2">
-                    {COMBAT_SUBTYPES.lostSearch.map(subtype => (
-                      <Toggle
-                        key={subtype.id}
-                        label={subtype.name}
-                        checked={subtypes[subtype.id] || false}
-                        onChange={() => toggleSubtype(subtype.id)}
-                        tooltip={subtype.tooltip}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <SubcategoryHeader title="Transitions" />
-                  <div className="space-y-2">
-                    {COMBAT_SUBTYPES.transitions.map(subtype => (
-                      <Toggle
-                        key={subtype.id}
-                        label={subtype.name}
-                        checked={subtypes[subtype.id] || false}
-                        onChange={() => toggleSubtype(subtype.id)}
-                        tooltip={subtype.tooltip}
-                      />
-                    ))}
-                  </div>
-                </div>
+                {subtypeGroup('Lost/Search', COMBAT_SUBTYPES.lostSearch)}
+                {subtypeGroup('Transitions', COMBAT_SUBTYPES.transitions)}
               </div>
             </div>
-          </div>
+          </CategoryPanel>
         )}
 
         {/* Generic Dialogue Tab */}
         {activeCategory === 'generic' && (
-          <div className="bg-gray-800 rounded-lg p-4">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-blue-400">Generic Dialogue Filters</h3>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleEnableAll(Object.values(GENERIC_SUBTYPES).flat())}
-                  className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 text-white rounded transition-colors"
-                >
-                  Enable All
-                </button>
-                <button
-                  onClick={() => handleDisableAll(Object.values(GENERIC_SUBTYPES).flat())}
-                  className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
-                >
-                  Disable All
-                </button>
-              </div>
-            </div>
-
+          <CategoryPanel
+            title="Generic Dialogue Filters"
+            titleClass="text-blue-400"
+            onEnableAll={() => setAll(Object.values(GENERIC_SUBTYPES).flat(), true)}
+            onDisableAll={() => setAll(Object.values(GENERIC_SUBTYPES).flat(), false)}
+          >
             {/* Three-column layout */}
             <div className="grid grid-cols-3 gap-6">
-              {/* Column 1 */}
               <div className="space-y-4">
-                <div>
-                  <SubcategoryHeader title="Behaviors" />
-                  <div className="space-y-2">
-                    {GENERIC_SUBTYPES.behaviors.map(subtype => (
-                      <Toggle
-                        key={subtype.id}
-                        label={subtype.name}
-                        checked={subtypes[subtype.id] || false}
-                        onChange={() => toggleSubtype(subtype.id)}
-                        tooltip={subtype.tooltip}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <SubcategoryHeader title="Object Interactions" />
-                  <div className="space-y-2">
-                    {GENERIC_SUBTYPES.objectInteractions.map(subtype => (
-                      <Toggle
-                        key={subtype.id}
-                        label={subtype.name}
-                        checked={subtypes[subtype.id] || false}
-                        onChange={() => toggleSubtype(subtype.id)}
-                        tooltip={subtype.tooltip}
-                      />
-                    ))}
-                  </div>
-                </div>
+                {subtypeGroup('Behaviors', GENERIC_SUBTYPES.behaviors)}
+                {subtypeGroup('Object Interactions', GENERIC_SUBTYPES.objectInteractions)}
               </div>
-
-              {/* Column 2 */}
               <div className="space-y-4">
-                <div>
-                  <SubcategoryHeader title="Player Actions" />
-                  <div className="space-y-2">
-                    {GENERIC_SUBTYPES.playerActions.map(subtype => (
-                      <Toggle
-                        key={subtype.id}
-                        label={subtype.name}
-                        checked={subtypes[subtype.id] || false}
-                        onChange={() => toggleSubtype(subtype.id)}
-                        tooltip={subtype.tooltip}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <SubcategoryHeader title="Social" />
-                  <div className="space-y-2">
-                    {GENERIC_SUBTYPES.social.map(subtype => (
-                      <Toggle
-                        key={subtype.id}
-                        label={subtype.name}
-                        checked={subtypes[subtype.id] || false}
-                        onChange={() => toggleSubtype(subtype.id)}
-                        tooltip={subtype.tooltip}
-                      />
-                    ))}
-                  </div>
-                </div>
+                {subtypeGroup('Player Actions', GENERIC_SUBTYPES.playerActions)}
+                {subtypeGroup('Social', GENERIC_SUBTYPES.social)}
               </div>
-
               {/* Column 3 - Crime & Stealth (full column) */}
-              <div>
-                <SubcategoryHeader title="Crime & Stealth" />
-                <div className="space-y-2">
-                  {GENERIC_SUBTYPES.crimeStealth.map(subtype => (
-                    <Toggle
-                      key={subtype.id}
-                      label={subtype.name}
-                      checked={subtypes[subtype.id] || false}
-                      onChange={() => toggleSubtype(subtype.id)}
-                      tooltip={subtype.tooltip}
-                    />
-                  ))}
-                </div>
-              </div>
+              {subtypeGroup('Crime & Stealth', GENERIC_SUBTYPES.crimeStealth)}
             </div>
-          </div>
+          </CategoryPanel>
         )}
 
         {/* Follower Dialogue Tab */}
         {activeCategory === 'follower' && (
-          <div className="bg-gray-800 rounded-lg p-4">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-green-400">Follower Dialogue Filters</h3>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleEnableAllFollower}
-                  className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 text-white rounded transition-colors"
-                >
-                  Enable All
-                </button>
-                <button
-                  onClick={handleDisableAllFollower}
-                  className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
-                >
-                  Disable All
-                </button>
-              </div>
-            </div>
-
+          <CategoryPanel
+            title="Follower Dialogue Filters"
+            titleClass="text-green-400"
+            onEnableAll={() => setAllFollower(true)}
+            onDisableAll={() => setAllFollower(false)}
+          >
             <div className="grid grid-cols-2 gap-8">
-              <div>
-                <SubcategoryHeader title="Commands" />
-                <div className="space-y-2">
-                  {FOLLOWER_SUBTYPES.commands.map(subtype => (
-                    <Toggle
-                      key={subtype.id}
-                      label={subtype.name}
-                      checked={subtypes[subtype.id] || false}
-                      onChange={() => toggleSubtype(subtype.id)}
-                      tooltip={subtype.tooltip}
-                    />
-                  ))}
-                </div>
-              </div>
+              {subtypeGroup('Commands', FOLLOWER_SUBTYPES.commands)}
 
               <div>
                 <SubcategoryHeader title="Follower Commentary" />
@@ -634,30 +417,17 @@ export const Settings = () => {
                 </div>
               </div>
             </div>
-          </div>
+          </CategoryPanel>
         )}
 
         {/* Other Dialogue Tab */}
         {activeCategory === 'other' && (
-          <div className="bg-gray-800 rounded-lg p-4">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-yellow-400">Other Dialogue Filters</h3>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleEnableAll(Object.values(OTHER_SUBTYPES).flat())}
-                  className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 text-white rounded transition-colors"
-                >
-                  Enable All
-                </button>
-                <button
-                  onClick={() => handleDisableAll(Object.values(OTHER_SUBTYPES).flat())}
-                  className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
-                >
-                  Disable All
-                </button>
-              </div>
-            </div>
-
+          <CategoryPanel
+            title="Other Dialogue Filters"
+            titleClass="text-yellow-400"
+            onEnableAll={() => setAll(Object.values(OTHER_SUBTYPES).flat(), true)}
+            onDisableAll={() => setAll(Object.values(OTHER_SUBTYPES).flat(), false)}
+          >
             <SubcategoryHeader title="Voice Powers" />
             <div className="grid grid-cols-2 gap-x-8 gap-y-2">
               {OTHER_SUBTYPES.voicePowers.map(subtype => (
@@ -670,7 +440,7 @@ export const Settings = () => {
                 />
               ))}
             </div>
-          </div>
+          </CategoryPanel>
         )}
       </div>
     </div>

@@ -215,94 +215,8 @@ void PrismaUIMenu::OnUpdateWhitelistEntryAdvanced(const char* data)
         spdlog::info("[PrismaUIMenu] Updating whitelist entry (advanced), data: {}", data);
         std::string jsonStr(data);
 
-        auto getValue = [&jsonStr](const std::string& key) -> std::string {
-            std::string searchKey = "\"" + key + "\":";
-            size_t pos = jsonStr.find(searchKey);
-            if (pos == std::string::npos) return "";
-            pos += searchKey.length();
-            while (pos < jsonStr.length() && (jsonStr[pos] == ' ' || jsonStr[pos] == '\t')) pos++;
-            if (pos >= jsonStr.length()) return "";
-            if (jsonStr[pos] == '"') {
-                pos++;
-                size_t endPos = jsonStr.find('"', pos);
-                if (endPos == std::string::npos) return "";
-                return jsonStr.substr(pos, endPos - pos);
-            } else {
-                size_t endPos = jsonStr.find_first_of(",}", pos);
-                if (endPos == std::string::npos) endPos = jsonStr.length();
-                return jsonStr.substr(pos, endPos - pos);
-            }
-        };
-
-        int64_t entryId = std::stoll(getValue("id"));
-        std::string notes = getValue("notes");
-
-        // Unescape notes
-        size_t escapePos = 0;
-        while ((escapePos = notes.find("\\n", escapePos)) != std::string::npos) {
-            notes.replace(escapePos, 2, "\n");
-            escapePos += 1;
-        }
-
-        // Parse actorFilterFormIDs: ["0x...", ...]
-        auto parseFormIDs = [&jsonStr]() -> std::vector<uint32_t> {
-            std::vector<uint32_t> formIDs;
-            size_t arrayStart = jsonStr.find("\"actorFilterFormIDs\":[\"0x");
-            if (arrayStart == std::string::npos) return formIDs;
-            size_t pos = arrayStart + 24;
-            while (pos < jsonStr.size()) {
-                size_t hexEnd = jsonStr.find('"', pos);
-                if (hexEnd == std::string::npos) break;
-                std::string hexStr = jsonStr.substr(pos, hexEnd - pos);
-                try { formIDs.push_back(std::stoul(hexStr, nullptr, 16)); } catch (...) {}
-                pos = jsonStr.find("\"0x", hexEnd);
-                if (pos == std::string::npos) break;
-                pos += 3;
-            }
-            return formIDs;
-        };
-
-        // Parse actorFilterNames
-        auto parseNames = [&jsonStr]() -> std::vector<std::string> {
-            std::vector<std::string> names;
-            size_t arrayStart = jsonStr.find("\"actorFilterNames\":");
-            if (arrayStart == std::string::npos) return names;
-            size_t pos = jsonStr.find('"', arrayStart + 20);
-            while (pos != std::string::npos && pos < jsonStr.size()) {
-                if (jsonStr[pos] != '"') break;
-                pos++;
-                size_t nameEnd = jsonStr.find('"', pos);
-                if (nameEnd == std::string::npos) break;
-                names.push_back(jsonStr.substr(pos, nameEnd - pos));
-                pos = jsonStr.find("\",\"", nameEnd);
-                if (pos == std::string::npos) break;
-                pos += 3;
-            }
-            return names;
-        };
-
-        // Parse factionFilterEditorIDs
-        auto parseFactions = [&jsonStr]() -> std::vector<std::string> {
-            std::vector<std::string> ids;
-            size_t arrayStart = jsonStr.find("\"factionFilterEditorIDs\":");
-            if (arrayStart == std::string::npos) return ids;
-            size_t bracketPos = jsonStr.find('[', arrayStart);
-            if (bracketPos == std::string::npos) return ids;
-            size_t pos = bracketPos + 1;
-            while (pos < jsonStr.size()) {
-                while (pos < jsonStr.size() && (jsonStr[pos] == ' ' || jsonStr[pos] == '\t')) pos++;
-                if (pos >= jsonStr.size() || jsonStr[pos] == ']') break;
-                if (jsonStr[pos] != '"') { pos++; continue; }
-                pos++;
-                size_t end = jsonStr.find('"', pos);
-                if (end == std::string::npos) break;
-                ids.push_back(jsonStr.substr(pos, end - pos));
-                pos = end + 1;
-                while (pos < jsonStr.size() && jsonStr[pos] != ',' && jsonStr[pos] != ']') pos++;
-                if (pos < jsonStr.size() && jsonStr[pos] == ',') pos++;
-            }
-            return ids;
-        };
+        int64_t entryId = std::stoll(ExtractJsonValue(jsonStr, "id"));
+        std::string notes = ExtractJsonValue(jsonStr, "notes");
 
         auto* db = DialogueDB::GetDatabase();
         if (!db) {
@@ -325,9 +239,9 @@ void PrismaUIMenu::OnUpdateWhitelistEntryAdvanced(const char* data)
         }
 
         existingEntry->notes = notes;
-        existingEntry->actorFilterFormIDs = parseFormIDs();
-        existingEntry->actorFilterNames = parseNames();
-        existingEntry->factionFilterEditorIDs = parseFactions();
+        existingEntry->actorFilterFormIDs = ParseHexFormIDs(ExtractJsonStringArray(jsonStr, "actorFilterFormIDs"));
+        existingEntry->actorFilterNames = ExtractJsonStringArray(jsonStr, "actorFilterNames");
+        existingEntry->factionFilterEditorIDs = ExtractJsonStringArray(jsonStr, "factionFilterEditorIDs");
 
         if (db->AddToWhitelist(*existingEntry)) {
             spdlog::info("[PrismaUIMenu] Successfully updated whitelist entry (advanced) {}", entryId);

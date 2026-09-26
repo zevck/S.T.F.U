@@ -209,9 +209,9 @@ namespace
 {
     // Handles a settings-toggle request from the UI: parses {"<field>": true|false},
     // writes it to the toggle's global, saves settings and pushes the new state back
-    // to the UI. `invert` is for globals that mean "block" while the UI shows "enabled".
+    // to the UI. Every toggle global is 1 when its blocking is on.
     void SetToggleFromUI(const char* handler, const char* data, const char* field,
-                         RE::TESGlobal* global, bool invert)
+                         RE::TESGlobal* global)
     {
         spdlog::info("[PrismaUIMenu::{}] Request received", handler);
 
@@ -258,7 +258,7 @@ namespace
                 return;
             }
 
-            global->value = (value != invert) ? 1.0f : 0.0f;
+            global->value = value ? 1.0f : 0.0f;
             const char* globalID = STFU::GetEditorID(global);
             spdlog::info("[PrismaUIMenu::{}] Set {} global to {}", handler, globalID ? globalID : "?", global->value);
 
@@ -274,28 +274,28 @@ namespace
 // Combat grunts: STFU_PreserveGrunts is 1 when grunts are blocked
 void PrismaUIMenu::OnSetCombatGruntsBlocked(const char* data)
 {
-    SetToggleFromUI("OnSetCombatGruntsBlocked", data, "blocked", Config::GetSettings().mcm.preserveGruntsGlobal, false);
+    SetToggleFromUI("OnSetCombatGruntsBlocked", data, "blocked", Config::GetSettings().mcm.preserveGruntsGlobal);
 }
 
-// Follower commentary: STFU_FollowerCommentary is 1 when commentary is blocked (UI shows "enabled")
+// Follower commentary: "enabled" means blocking is on (STFU_FollowerCommentary = 1)
 void PrismaUIMenu::OnSetFollowerCommentaryEnabled(const char* data)
 {
-    SetToggleFromUI("OnSetFollowerCommentaryEnabled", data, "enabled", Config::GetSettings().mcm.blockFollowerCommentaryGlobal, true);
+    SetToggleFromUI("OnSetFollowerCommentaryEnabled", data, "enabled", Config::GetSettings().mcm.blockFollowerCommentaryGlobal);
 }
 
 void PrismaUIMenu::OnSetBlacklistEnabled(const char* data)
 {
-    SetToggleFromUI("OnSetBlacklistEnabled", data, "enabled", Config::GetSettings().blacklist.toggleGlobal, false);
+    SetToggleFromUI("OnSetBlacklistEnabled", data, "enabled", Config::GetSettings().blacklist.toggleGlobal);
 }
 
 void PrismaUIMenu::OnSetScenesEnabled(const char* data)
 {
-    SetToggleFromUI("OnSetScenesEnabled", data, "enabled", Config::GetSettings().mcm.blockScenesGlobal, false);
+    SetToggleFromUI("OnSetScenesEnabled", data, "enabled", Config::GetSettings().mcm.blockScenesGlobal);
 }
 
 void PrismaUIMenu::OnSetBardSongsEnabled(const char* data)
 {
-    SetToggleFromUI("OnSetBardSongsEnabled", data, "enabled", Config::GetSettings().mcm.blockBardSongsGlobal, false);
+    SetToggleFromUI("OnSetBardSongsEnabled", data, "enabled", Config::GetSettings().mcm.blockBardSongsGlobal);
 }
 
 void PrismaUIMenu::SendSettingsData()
@@ -317,8 +317,7 @@ void PrismaUIMenu::SendSettingsData()
         json << "\"scenesEnabled\":" << (settings.mcm.blockScenesGlobal && settings.mcm.blockScenesGlobal->value >= 0.5f ? "true" : "false") << ",";
         json << "\"bardSongsEnabled\":" << (settings.mcm.blockBardSongsGlobal && settings.mcm.blockBardSongsGlobal->value >= 0.5f ? "true" : "false") << ",";
         
-        // Follower Commentary and Combat Grunts (note inverted logic)
-        json << "\"followerCommentaryEnabled\":" << (settings.mcm.blockFollowerCommentaryGlobal && settings.mcm.blockFollowerCommentaryGlobal->value < 0.5f ? "true" : "false") << ",";
+        json << "\"followerCommentaryEnabled\":" << (settings.mcm.blockFollowerCommentaryGlobal && settings.mcm.blockFollowerCommentaryGlobal->value >= 0.5f ? "true" : "false") << ",";
         json << "\"combatGruntsBlocked\":" << (settings.mcm.preserveGruntsGlobal && settings.mcm.preserveGruntsGlobal->value >= 0.5f ? "true" : "false") << ",";
         
         // Subtype toggles

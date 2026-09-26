@@ -205,223 +205,44 @@ void PrismaUIMenu::OnCreateAdvancedEntry(const char* data)
             return;
         }
         
-        // Helper to extract JSON string value
-        auto extractString = [](const std::string& json, const std::string& key) -> std::string {
-            std::string searchKey = "\"" + key + "\":\"";
-            size_t keyPos = json.find(searchKey);
-            if (keyPos == std::string::npos) return "";
-            size_t valueStart = keyPos + searchKey.length();
-            size_t valueEnd = json.find("\"", valueStart);
-            if (valueEnd == std::string::npos) return "";
-            return json.substr(valueStart, valueEnd - valueStart);
-        };
-        
-        // Helper to extract JSON boolean value
-        auto extractBool = [](const std::string& json, const std::string& key) -> bool {
-            std::string searchKey = "\"" + key + "\":";
-            size_t keyPos = json.find(searchKey);
-            if (keyPos == std::string::npos) return false;
-            size_t valueStart = keyPos + searchKey.length();
-            while (valueStart < json.length() && std::isspace(json[valueStart])) valueStart++;
-            if (valueStart >= json.length()) return false;
-            if (json.substr(valueStart, 4) == "true") return true;
-            if (json.substr(valueStart, 5) == "false") return false;
-            return false;
-        };
-        
-        // Parse actor filters - handles both "0x01A6A4" and "01A6A4" formats
-        auto parseActorFormIDs = [](const std::string& json) -> std::vector<uint32_t> {
-            std::vector<uint32_t> formIDs;
-            size_t arrayStart = json.find("\"actorFilterFormIDs\":[]");
-            if (arrayStart != std::string::npos) return formIDs; // Empty array, return immediately
-            
-            arrayStart = json.find("\"actorFilterFormIDs\":[");
-            if (arrayStart == std::string::npos) return formIDs;
-            
-            // Find opening [ bracket
-            size_t pos = json.find("[", arrayStart);
-            if (pos == std::string::npos) return formIDs;
-            pos++; // Move past [
-            
-            // Parse each quoted string in the array
-            while (pos < json.length()) {
-                // Skip whitespace
-                while (pos < json.length() && (json[pos] == ' ' || json[pos] == ',')) pos++;
-                
-                // Check for end of array
-                if (pos >= json.length() || json[pos] == ']') break;
-                
-                // Expect opening quote
-                if (json[pos] != '\"') break;
-                pos++; // Skip opening quote
-                
-                // Find closing quote
-                size_t hexEnd = json.find("\"", pos);
-                if (hexEnd == std::string::npos) break;
-                
-                // Extract hex string (with or without 0x prefix)
-                std::string hexStr = json.substr(pos, hexEnd - pos);
-                
-                // Remove 0x or 0X prefix if present
-                if (hexStr.length() >= 2 && hexStr[0] == '0' && (hexStr[1] == 'x' || hexStr[1] == 'X')) {
-                    hexStr = hexStr.substr(2);
-                }
-                
-                // Parse as hex
-                try {
-                    if (!hexStr.empty()) {
-                        uint32_t formID = std::stoul(hexStr, nullptr, 16);
-                        formIDs.push_back(formID);
-                    }
-                } catch (...) {
-                    spdlog::warn("[PrismaUIMenu::parseActorFormIDs] Failed to parse hex: {}", hexStr);
-                }
-                
-                // Move past closing quote
-                pos = hexEnd + 1;
-            }
-            return formIDs;
-        };
-        
-        auto parseActorNames = [](const std::string& json) -> std::vector<std::string> {
-            std::vector<std::string> names;
-            size_t arrayStart = json.find("\"actorFilterNames\":[]");
-            if (arrayStart != std::string::npos) return names; // Empty array, return immediately
-            
-            arrayStart = json.find("\"actorFilterNames\":[");
-            if (arrayStart == std::string::npos) return names;
-            
-            // Find the opening bracket
-            size_t bracketPos = json.find("[", arrayStart);
-            if (bracketPos == std::string::npos) return names;
-            
-            size_t pos = json.find("\"", bracketPos);
-            while (pos != std::string::npos && pos < json.size()) {
-                if (json[pos] != '\"') break;
-                pos++;
-                size_t nameEnd = json.find("\"", pos);
-                if (nameEnd == std::string::npos) break;
-                names.push_back(json.substr(pos, nameEnd - pos));
-                pos = json.find("\",\"", nameEnd);
-                if (pos == std::string::npos) break;
-                pos += 3;
-            }
-            return names;
-        };
-        
-        auto parseFactionEditorIDs = [](const std::string& json) -> std::vector<std::string> {
-            std::vector<std::string> editorIDs;
-            size_t arrayStart = json.find("\"factionFilterEditorIDs\":[]");
-            if (arrayStart != std::string::npos) return editorIDs; // Empty array, return immediately
-            
-            arrayStart = json.find("\"factionFilterEditorIDs\":[");
-            if (arrayStart == std::string::npos) return editorIDs;
-            
-            // Find the opening bracket
-            size_t bracketPos = json.find("[", arrayStart);
-            if (bracketPos == std::string::npos) return editorIDs;
-            
-            size_t pos = json.find("\"", bracketPos);
-            while (pos != std::string::npos && pos < json.size()) {
-                if (json[pos] != '\"') break;
-                pos++;
-                size_t idEnd = json.find("\"", pos);
-                if (idEnd == std::string::npos) break;
-                editorIDs.push_back(json.substr(pos, idEnd - pos));
-                pos = json.find("\",\"", idEnd);
-                if (pos == std::string::npos) break;
-                pos += 3;
-            }
-            return editorIDs;
-        };
-        
         // Extract fields
-        std::string identifier = extractString(jsonStr, "identifier");
-        std::string blockTypeStr = extractString(jsonStr, "blockType");
-        std::string category = extractString(jsonStr, "category");
-        std::string notes = extractString(jsonStr, "notes");
-        bool isWhitelist = extractBool(jsonStr, "isWhitelist");
+        std::string identifier = ExtractJsonValue(jsonStr, "identifier");
+        std::string blockTypeStr = ExtractJsonValue(jsonStr, "blockType");
+        std::string category = ExtractJsonValue(jsonStr, "category");
+        std::string notes = ExtractJsonValue(jsonStr, "notes");
+        bool isWhitelist = ExtractJsonValue(jsonStr, "isWhitelist") == "true";
         
         if (identifier.empty()) {
             spdlog::error("[PrismaUIMenu::OnCreateAdvancedEntry] Empty identifier");
             return;
         }
         
-        // Helper to count JSON array elements
-        auto countJsonArrayElements = [](const std::string& json, const std::string& key) -> size_t {
-            size_t arrayStart = json.find("\"" + key + "\":[");
-            if (arrayStart == std::string::npos) return 0;
-            
-            size_t pos = json.find("[", arrayStart);
-            if (pos == std::string::npos) return 0;
-            pos++;
-            
-            size_t count = 0;
-            bool inQuote = false;
-            int depth = 0;
-            
-            while (pos < json.length()) {
-                char c = json[pos];
-                if (c == '\"' && (pos == 0 || json[pos-1] != '\\')) {
-                    inQuote = !inQuote;
-                    if (inQuote) count++; // Opening quote = new element
-                } else if (!inQuote) {
-                    if (c == '[') depth++;
-                    else if (c == ']') {
-                        if (depth == 0) break; // End of our array
-                        depth--;
-                    }
-                }
-                pos++;
-            }
-            return count;
-        };
-        
-        // Count expected elements before parsing
-        size_t expectedFormIDCount = countJsonArrayElements(jsonStr, "actorFilterFormIDs");
-        size_t expectedNameCount = countJsonArrayElements(jsonStr, "actorFilterNames");
-        
-        // CRITICAL VALIDATION #1: Arrays must be paired (same count in JSON)
-        if (expectedFormIDCount != expectedNameCount) {
-            spdlog::error("[PrismaUIMenu::OnCreateAdvancedEntry] PAIRING ERROR: JSON has {} FormIDs but {} names. Arrays must be synchronized pairs!",
-                         expectedFormIDCount, expectedNameCount);
-            return;
-        }
-        
+        // Actor filters are parallel arrays: FormIDs[i] belongs to Names[i]
+        std::vector<std::string> formIDStrings = ExtractJsonStringArray(jsonStr, "actorFilterFormIDs");
+
         // Create entry
         DialogueDB::BlacklistEntry entry;
         entry.notes = notes;
-        entry.actorFilterFormIDs = parseActorFormIDs(jsonStr);
-        entry.actorFilterNames = parseActorNames(jsonStr);
-        entry.factionFilterEditorIDs = parseFactionEditorIDs(jsonStr);
-        
+        entry.actorFilterFormIDs = ParseHexFormIDs(formIDStrings);
+        entry.actorFilterNames = ExtractJsonStringArray(jsonStr, "actorFilterNames");
+        entry.factionFilterEditorIDs = ExtractJsonStringArray(jsonStr, "factionFilterEditorIDs");
+
         spdlog::info("[PrismaUIMenu::OnCreateAdvancedEntry] Parsed {} actor names, {} actor FormIDs, {} faction EditorIDs",
                     entry.actorFilterNames.size(), entry.actorFilterFormIDs.size(), entry.factionFilterEditorIDs.size());
-        
-        // CRITICAL VALIDATION #2: Verify FormID parsing matched expected count
-        if (entry.actorFilterFormIDs.size() != expectedFormIDCount) {
+
+        // The arrays must be paired, and every FormID must have parsed
+        if (formIDStrings.size() != entry.actorFilterNames.size()) {
+            spdlog::error("[PrismaUIMenu::OnCreateAdvancedEntry] PAIRING ERROR: JSON has {} FormIDs but {} names. Arrays must be synchronized pairs!",
+                         formIDStrings.size(), entry.actorFilterNames.size());
+            return;
+        }
+        if (entry.actorFilterFormIDs.size() != formIDStrings.size()) {
             spdlog::error("[PrismaUIMenu::OnCreateAdvancedEntry] FORMID PARSING FAILED: Expected {} FormIDs from JSON, but parsed only {}",
-                         expectedFormIDCount, entry.actorFilterFormIDs.size());
+                         formIDStrings.size(), entry.actorFilterFormIDs.size());
             spdlog::error("[PrismaUIMenu::OnCreateAdvancedEntry] JSON was: {}", jsonStr);
             return;
         }
-        
-        // CRITICAL VALIDATION #3: Verify name parsing matched expected count
-        if (entry.actorFilterNames.size() != expectedNameCount) {
-            spdlog::error("[PrismaUIMenu::OnCreateAdvancedEntry] NAME PARSING FAILED: Expected {} actor names from JSON, but parsed only {}",
-                         expectedNameCount, entry.actorFilterNames.size());
-            spdlog::error("[PrismaUIMenu::OnCreateAdvancedEntry] JSON was: {}", jsonStr);
-            return;
-        }
-        
-        // CRITICAL VALIDATION #4: Final pairing check - both arrays must have identical size
-        if (entry.actorFilterFormIDs.size() != entry.actorFilterNames.size()) {
-            spdlog::error("[PrismaUIMenu::OnCreateAdvancedEntry] PAIRING DESYNC: Parsed {} FormIDs but {} names. Pairs are broken!",
-                         entry.actorFilterFormIDs.size(), entry.actorFilterNames.size());
-            spdlog::error("[PrismaUIMenu::OnCreateAdvancedEntry] This should never happen if validations #2 and #3 passed!");
-            return;
-        }
-        
+
         // Log successful pairing
         if (!entry.actorFilterFormIDs.empty()) {
             spdlog::info("[PrismaUIMenu::OnCreateAdvancedEntry] Validated {} actor filter pairs:", entry.actorFilterFormIDs.size());

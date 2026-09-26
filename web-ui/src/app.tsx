@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { History } from './components/history';
-import { Blacklist } from './components/blacklist';
-import { Whitelist } from './components/whitelist';
+import { Blacklist, Whitelist } from './components/entry-list';
 import { Settings } from './components/settings';
 import { Toast } from './components/toast';
 import { useHistoryStore } from './stores/history';

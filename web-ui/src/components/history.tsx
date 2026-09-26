@@ -4,6 +4,7 @@ import { useBlacklistStore } from '@/stores/blacklist';
 import { useWhitelistStore } from '@/stores/whitelist';
 import { DialogueEntry } from '@/types';
 import { SKSE_API, log } from '@/lib/skse-api';
+import { useLazyList, useMultiSelect } from '@/lib/list-hooks';
 import { ResponsesModal } from './responses-modal';
 import { ManualEntryModal } from './manual-entry-modal';
 import { AdvancedEditModal } from './advanced-edit-modal';
@@ -132,9 +133,6 @@ export const History = () => {
   const { entries, searchQuery, setSearchQuery, selectedEntries, setSelectedEntries } = useHistoryStore();
   const { entries: blacklistEntries } = useBlacklistStore();
   const { entries: whitelistEntries } = useWhitelistStore();
-  const [lastClickedIndex, setLastClickedIndex] = useState<number>(-1);
-  const [displayCount, setDisplayCount] = useState(100); // Increased initial load
-  const sentinelRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const [showResponsesModal, setShowResponsesModal] = useState(false);
@@ -277,34 +275,9 @@ export const History = () => {
     return [...filtered].reverse();
   }, [entries, searchQuery, statusFilters]);
 
-  // Lazy loading with IntersectionObserver
-  useEffect(() => {
-    const sentinel = sentinelRef.current;
-    if (!sentinel) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        // Load more when sentinel becomes visible
-        if (entries[0].isIntersecting && displayCount < filteredEntries.length) {
-          setDisplayCount(prev => Math.min(prev + 100, filteredEntries.length));
-        }
-      },
-      { threshold: 0.5, rootMargin: '200px' } // Load earlier with margin
-    );
-
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [displayCount, filteredEntries.length]);
-
-  // Reset display count when search changes
-  useEffect(() => {
-    setDisplayCount(100);
-  }, [searchQuery]);
-
-  // Slice entries for lazy loading
-  const displayedEntries = useMemo(() => {
-    return filteredEntries.slice(0, displayCount);
-  }, [filteredEntries, displayCount]);
+  // Lazy loading (back to the first page when the search changes)
+  const { displayed: displayedEntries, displayCount, sentinelRef } = useLazyList(filteredEntries, searchQuery);
+  const { handleItemClick: selectItem, clearAnchor } = useMultiSelect(filteredEntries, selectedEntries, setSelectedEntries);
 
   // Auto-scroll to bottom when entries change (like a chat log)
   useEffect(() => {
@@ -342,29 +315,7 @@ export const History = () => {
 
   // Handle multi-selection click
   const handleItemClick = useCallback((entry: DialogueEntry, index: number, event?: React.MouseEvent) => {
-    const isCtrlClick = event?.ctrlKey || event?.metaKey;
-    const isShiftClick = event?.shiftKey;
-    
-    if (isShiftClick && lastClickedIndex >= 0 && filteredEntries.length > 0) {
-      // Shift-click: select range
-      const start = Math.min(lastClickedIndex, index);
-      const end = Math.max(lastClickedIndex, index);
-      const rangeEntries = filteredEntries.slice(start, end + 1);
-      setSelectedEntries(rangeEntries);
-    } else if (isCtrlClick) {
-      // Ctrl-click: toggle selection
-      const isSelected = selectedEntries.some(e => e.id === entry.id);
-      if (isSelected) {
-        setSelectedEntries(selectedEntries.filter(e => e.id !== entry.id));
-      } else {
-        setSelectedEntries([...selectedEntries, entry]);
-      }
-      setLastClickedIndex(index);
-    } else {
-      // Normal click: single selection
-      setSelectedEntries([entry]);
-      setLastClickedIndex(index);
-    }
+    selectItem(entry, index, event);
     
     // Focus the container so DEL key works immediately
     log('[History] Item clicked, focusing container');
@@ -373,7 +324,7 @@ export const History = () => {
       const activeEl = document.activeElement;
       log(`[History] Container focus attempted, activeElement: ${activeEl?.className || 'unknown'}`);
     }, 10);
-  }, [lastClickedIndex, filteredEntries, selectedEntries, setSelectedEntries]);
+  }, [selectItem]);
   
   // Keyboard support for DEL key - handle directly on the history container
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -387,7 +338,7 @@ export const History = () => {
       log(`[History DEL] Calling deleteHistoryEntries with: ${JSON.stringify(entryIds)}`);
       SKSE_API.deleteHistoryEntries(entryIds);
       setSelectedEntries([]);
-      setLastClickedIndex(-1);
+      clearAnchor();
       log('[History DEL] Delete complete, selection cleared');
     } else {
       log('[History DEL] Not handling - either not Delete key or no selection');
