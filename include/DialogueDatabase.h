@@ -183,7 +183,6 @@ namespace DialogueDB
         int ClearBlacklist();  // Remove all blacklist entries, returns count removed
         
         // Batch operations for better performance
-        int AddToBlacklistBatch(const std::vector<BlacklistEntry>& entries, bool skipEnrichment = false);
         int RemoveFromBlacklistBatch(const std::vector<int64_t>& ids);
         
         // Whitelist management (uses same BlacklistEntry struct with filterCategory="Whitelist")

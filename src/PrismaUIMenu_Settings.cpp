@@ -205,319 +205,97 @@ void PrismaUIMenu::OnImportYAML(const char* data)
     }
 }
 
-void PrismaUIMenu::OnSetCombatGruntsBlocked(const char* data)
+namespace
 {
-    spdlog::info("[PrismaUIMenu::OnSetCombatGruntsBlocked] Request received");
-    
-    if (!data || data[0] == '\0') {
-        spdlog::error("[PrismaUIMenu::OnSetCombatGruntsBlocked] Null or empty data received");
-        return;
-    }
-    
-    try {
-        spdlog::info("[PrismaUIMenu::OnSetCombatGruntsBlocked] Received data: {}", data);
-        
-        // Parse JSON: {"blocked":true} or {"blocked":false}
-        std::string dataStr(data);
-        auto blockedPos = dataStr.find("\"blocked\"");
-        if (blockedPos == std::string::npos) {
-            spdlog::error("[PrismaUIMenu::OnSetCombatGruntsBlocked] 'blocked' field not found in JSON");
+    // Handles a settings-toggle request from the UI: parses {"<field>": true|false},
+    // writes it to the toggle's global, saves settings and pushes the new state back
+    // to the UI. `invert` is for globals that mean "block" while the UI shows "enabled".
+    void SetToggleFromUI(const char* handler, const char* data, const char* field,
+                         RE::TESGlobal* global, bool invert)
+    {
+        spdlog::info("[PrismaUIMenu::{}] Request received", handler);
+
+        if (!data || data[0] == '\0') {
+            spdlog::error("[PrismaUIMenu::{}] Null or empty data received", handler);
             return;
         }
-        
-        // Find the boolean value after "blocked":
-        auto colonPos = dataStr.find(':', blockedPos);
-        if (colonPos == std::string::npos) {
-            spdlog::error("[PrismaUIMenu::OnSetCombatGruntsBlocked] Malformed JSON - no colon after blocked");
-            return;
-        }
-        
-        // Skip whitespace and find true/false
-        size_t valueStart = colonPos + 1;
-        while (valueStart < dataStr.length() && (dataStr[valueStart] == ' ' || dataStr[valueStart] == '\t')) {
-            valueStart++;
-        }
-        
-        bool blocked = false;
-        if (dataStr.substr(valueStart, 4) == "true") {
-            blocked = true;
-        } else if (dataStr.substr(valueStart, 5) == "false") {
-            blocked = false;
-        } else {
-            spdlog::error("[PrismaUIMenu::OnSetCombatGruntsBlocked] Could not parse blocked value");
-            return;
-        }
-        
-        spdlog::info("[PrismaUIMenu::OnSetCombatGruntsBlocked] Setting combat grunts blocked to: {}", blocked);
-        
-        // Get the PreserveGrunts global (inverted logic: 1=preserve/block, 0=filter/allow)
-        const auto& settings = Config::GetSettings();
-        if (settings.mcm.preserveGruntsGlobal) {
-            settings.mcm.preserveGruntsGlobal->value = blocked ? 1.0f : 0.0f;
-            spdlog::info("[PrismaUIMenu::OnSetCombatGruntsBlocked] Set STFU_PreserveGrunts global to {}", 
-                settings.mcm.preserveGruntsGlobal->value);
-            
-            // Save to INI
+
+        try {
+            spdlog::info("[PrismaUIMenu::{}] Received data: {}", handler, data);
+
+            std::string dataStr(data);
+            auto fieldPos = dataStr.find(std::string("\"") + field + "\"");
+            if (fieldPos == std::string::npos) {
+                spdlog::error("[PrismaUIMenu::{}] '{}' field not found in JSON", handler, field);
+                return;
+            }
+
+            auto colonPos = dataStr.find(':', fieldPos);
+            if (colonPos == std::string::npos) {
+                spdlog::error("[PrismaUIMenu::{}] Malformed JSON - no colon after {}", handler, field);
+                return;
+            }
+
+            size_t valueStart = colonPos + 1;
+            while (valueStart < dataStr.length() && (dataStr[valueStart] == ' ' || dataStr[valueStart] == '\t')) {
+                valueStart++;
+            }
+
+            bool value = false;
+            if (dataStr.substr(valueStart, 4) == "true") {
+                value = true;
+            } else if (dataStr.substr(valueStart, 5) == "false") {
+                value = false;
+            } else {
+                spdlog::error("[PrismaUIMenu::{}] Could not parse {} value", handler, field);
+                return;
+            }
+
+            spdlog::info("[PrismaUIMenu::{}] Setting {} to: {}", handler, field, value);
+
+            if (!global) {
+                spdlog::warn("[PrismaUIMenu::{}] Toggle global not found", handler);
+                return;
+            }
+
+            global->value = (value != invert) ? 1.0f : 0.0f;
+            const char* globalID = STFU::GetEditorID(global);
+            spdlog::info("[PrismaUIMenu::{}] Set {} global to {}", handler, globalID ? globalID : "?", global->value);
+
             SettingsPersistence::SaveSettings();
-            
-            // Send updated settings to UI
-            SendSettingsData();
-            
-        } else {
-            spdlog::warn("[PrismaUIMenu::OnSetCombatGruntsBlocked] PreserveGrunts global not found");
+            PrismaUIMenu::SendSettingsData();
+
+        } catch (const std::exception& e) {
+            spdlog::error("[PrismaUIMenu::{}] Exception: {}", handler, e.what());
         }
-        
-    } catch (const std::exception& e) {
-        spdlog::error("[PrismaUIMenu::OnSetCombatGruntsBlocked] Exception: {}", e.what());
     }
 }
 
+// Combat grunts: STFU_PreserveGrunts is 1 when grunts are blocked
+void PrismaUIMenu::OnSetCombatGruntsBlocked(const char* data)
+{
+    SetToggleFromUI("OnSetCombatGruntsBlocked", data, "blocked", Config::GetSettings().mcm.preserveGruntsGlobal, false);
+}
+
+// Follower commentary: STFU_FollowerCommentary is 1 when commentary is blocked (UI shows "enabled")
 void PrismaUIMenu::OnSetFollowerCommentaryEnabled(const char* data)
 {
-    spdlog::info("[PrismaUIMenu::OnSetFollowerCommentaryEnabled] Request received");
-    
-    if (!data || data[0] == '\0') {
-        spdlog::error("[PrismaUIMenu::OnSetFollowerCommentaryEnabled] Null or empty data received");
-        return;
-    }
-    
-    try {
-        spdlog::info("[PrismaUIMenu::OnSetFollowerCommentaryEnabled] Received data: {}", data);
-        
-        // Parse JSON: {"enabled":true} or {"enabled":false}
-        std::string dataStr(data);
-        auto enabledPos = dataStr.find("\"enabled\"");
-        if (enabledPos == std::string::npos) {
-            spdlog::error("[PrismaUIMenu::OnSetFollowerCommentaryEnabled] 'enabled' field not found in JSON");
-            return;
-        }
-        
-        // Find the boolean value after "enabled":
-        auto colonPos = dataStr.find(':', enabledPos);
-        if (colonPos == std::string::npos) {
-            spdlog::error("[PrismaUIMenu::OnSetFollowerCommentaryEnabled] Malformed JSON - no colon after enabled");
-            return;
-        }
-        
-        // Skip whitespace and find true/false
-        size_t valueStart = colonPos + 1;
-        while (valueStart < dataStr.length() && (dataStr[valueStart] == ' ' || dataStr[valueStart] == '\t')) {
-            valueStart++;
-        }
-        
-        bool enabled = false;
-        if (dataStr.substr(valueStart, 4) == "true") {
-            enabled = true;
-        } else if (dataStr.substr(valueStart, 5) == "false") {
-            enabled = false;
-        } else {
-            spdlog::error("[PrismaUIMenu::OnSetFollowerCommentaryEnabled] Could not parse enabled value");
-            return;
-        }
-        
-        spdlog::info("[PrismaUIMenu::OnSetFollowerCommentaryEnabled] Setting follower commentary enabled to: {}", enabled);
-        
-        // Get the BlockFollowerCommentary global (inverted: 1=block/disabled, 0=allow/enabled)
-        const auto& settings = Config::GetSettings();
-        if (settings.mcm.blockFollowerCommentaryGlobal) {
-            settings.mcm.blockFollowerCommentaryGlobal->value = enabled ? 0.0f : 1.0f;
-            spdlog::info("[PrismaUIMenu::OnSetFollowerCommentaryEnabled] Set STFU_BlockFollowerCommentary global to {}", 
-                settings.mcm.blockFollowerCommentaryGlobal->value);
-            
-            // Save to INI
-            SettingsPersistence::SaveSettings();
-            
-            // Send updated settings to UI
-            SendSettingsData();
-            
-        } else {
-            spdlog::warn("[PrismaUIMenu::OnSetFollowerCommentaryEnabled] BlockFollowerCommentary global not found");
-        }
-        
-    } catch (const std::exception& e) {
-        spdlog::error("[PrismaUIMenu::OnSetFollowerCommentaryEnabled] Exception: {}", e.what());
-    }
+    SetToggleFromUI("OnSetFollowerCommentaryEnabled", data, "enabled", Config::GetSettings().mcm.blockFollowerCommentaryGlobal, true);
 }
 
 void PrismaUIMenu::OnSetBlacklistEnabled(const char* data)
 {
-    spdlog::info("[PrismaUIMenu::OnSetBlacklistEnabled] Request received");
-    
-    if (!data || data[0] == '\0') {
-        spdlog::error("[PrismaUIMenu::OnSetBlacklistEnabled] Null or empty data received");
-        return;
-    }
-    
-    try {
-        spdlog::info("[PrismaUIMenu::OnSetBlacklistEnabled] Received data: {}", data);
-        
-        // Parse JSON: {"enabled":true} or {"enabled":false}
-        std::string dataStr(data);
-        auto enabledPos = dataStr.find("\"enabled\"");
-        if (enabledPos == std::string::npos) {
-            spdlog::error("[PrismaUIMenu::OnSetBlacklistEnabled] 'enabled' field not found in JSON");
-            return;
-        }
-        
-        auto colonPos = dataStr.find(':', enabledPos);
-        if (colonPos == std::string::npos) {
-            spdlog::error("[PrismaUIMenu::OnSetBlacklistEnabled] Malformed JSON - no colon after enabled");
-            return;
-        }
-        
-        size_t valueStart = colonPos + 1;
-        while (valueStart < dataStr.length() && (dataStr[valueStart] == ' ' || dataStr[valueStart] == '\t')) {
-            valueStart++;
-        }
-        
-        bool enabled = false;
-        if (dataStr.substr(valueStart, 4) == "true") {
-            enabled = true;
-        } else if (dataStr.substr(valueStart, 5) == "false") {
-            enabled = false;
-        } else {
-            spdlog::error("[PrismaUIMenu::OnSetBlacklistEnabled] Could not parse enabled value");
-            return;
-        }
-        
-        spdlog::info("[PrismaUIMenu::OnSetBlacklistEnabled] Setting blacklist enabled to: {}", enabled);
-        
-        const auto& settings = Config::GetSettings();
-        if (settings.blacklist.toggleGlobal) {
-            settings.blacklist.toggleGlobal->value = enabled ? 1.0f : 0.0f;
-            spdlog::info("[PrismaUIMenu::OnSetBlacklistEnabled] Set blacklist toggle global to {}", 
-                settings.blacklist.toggleGlobal->value);
-            
-            SettingsPersistence::SaveSettings();
-            SendSettingsData();
-            
-        } else {
-            spdlog::warn("[PrismaUIMenu::OnSetBlacklistEnabled] Blacklist toggle global not found");
-        }
-        
-    } catch (const std::exception& e) {
-        spdlog::error("[PrismaUIMenu::OnSetBlacklistEnabled] Exception: {}", e.what());
-    }
+    SetToggleFromUI("OnSetBlacklistEnabled", data, "enabled", Config::GetSettings().blacklist.toggleGlobal, false);
 }
 
 void PrismaUIMenu::OnSetScenesEnabled(const char* data)
 {
-    spdlog::info("[PrismaUIMenu::OnSetScenesEnabled] Request received");
-    
-    if (!data || data[0] == '\0') {
-        spdlog::error("[PrismaUIMenu::OnSetScenesEnabled] Null or empty data received");
-        return;
-    }
-    
-    try {
-        spdlog::info("[PrismaUIMenu::OnSetScenesEnabled] Received data: {}", data);
-        
-        std::string dataStr(data);
-        auto enabledPos = dataStr.find("\"enabled\"");
-        if (enabledPos == std::string::npos) {
-            spdlog::error("[PrismaUIMenu::OnSetScenesEnabled] 'enabled' field not found in JSON");
-            return;
-        }
-        
-        auto colonPos = dataStr.find(':', enabledPos);
-        if (colonPos == std::string::npos) {
-            spdlog::error("[PrismaUIMenu::OnSetScenesEnabled] Malformed JSON - no colon after enabled");
-            return;
-        }
-        
-        size_t valueStart = colonPos + 1;
-        while (valueStart < dataStr.length() && (dataStr[valueStart] == ' ' || dataStr[valueStart] == '\t')) {
-            valueStart++;
-        }
-        
-        bool enabled = false;
-        if (dataStr.substr(valueStart, 4) == "true") {
-            enabled = true;
-        } else if (dataStr.substr(valueStart, 5) == "false") {
-            enabled = false;
-        } else {
-            spdlog::error("[PrismaUIMenu::OnSetScenesEnabled] Could not parse enabled value");
-            return;
-        }
-        
-        spdlog::info("[PrismaUIMenu::OnSetScenesEnabled] Setting scenes enabled to: {}", enabled);
-        
-        const auto& settings = Config::GetSettings();
-        if (settings.mcm.blockScenesGlobal) {
-            settings.mcm.blockScenesGlobal->value = enabled ? 1.0f : 0.0f;
-            spdlog::info("[PrismaUIMenu::OnSetScenesEnabled] Set blockScenes global to {}", 
-                settings.mcm.blockScenesGlobal->value);
-            
-            SettingsPersistence::SaveSettings();
-            SendSettingsData();
-            
-        } else {
-            spdlog::warn("[PrismaUIMenu::OnSetScenesEnabled] BlockScenes global not found");
-        }
-        
-    } catch (const std::exception& e) {
-        spdlog::error("[PrismaUIMenu::OnSetScenesEnabled] Exception: {}", e.what());
-    }
+    SetToggleFromUI("OnSetScenesEnabled", data, "enabled", Config::GetSettings().mcm.blockScenesGlobal, false);
 }
 
 void PrismaUIMenu::OnSetBardSongsEnabled(const char* data)
 {
-    spdlog::info("[PrismaUIMenu::OnSetBardSongsEnabled] Request received");
-    
-    if (!data || data[0] == '\0') {
-        spdlog::error("[PrismaUIMenu::OnSetBardSongsEnabled] Null or empty data received");
-        return;
-    }
-    
-    try {
-        spdlog::info("[PrismaUIMenu::OnSetBardSongsEnabled] Received data: {}", data);
-        
-        std::string dataStr(data);
-        auto enabledPos = dataStr.find("\"enabled\"");
-        if (enabledPos == std::string::npos) {
-            spdlog::error("[PrismaUIMenu::OnSetBardSongsEnabled] 'enabled' field not found in JSON");
-            return;
-        }
-        
-        auto colonPos = dataStr.find(':', enabledPos);
-        if (colonPos == std::string::npos) {
-            spdlog::error("[PrismaUIMenu::OnSetBardSongsEnabled] Malformed JSON - no colon after enabled");
-            return;
-        }
-        
-        size_t valueStart = colonPos + 1;
-        while (valueStart < dataStr.length() && (dataStr[valueStart] == ' ' || dataStr[valueStart] == '\t')) {
-            valueStart++;
-        }
-        
-        bool enabled = false;
-        if (dataStr.substr(valueStart, 4) == "true") {
-            enabled = true;
-        } else if (dataStr.substr(valueStart, 5) == "false") {
-            enabled = false;
-        } else {
-            spdlog::error("[PrismaUIMenu::OnSetBardSongsEnabled] Could not parse enabled value");
-            return;
-        }
-        
-        spdlog::info("[PrismaUIMenu::OnSetBardSongsEnabled] Setting bard songs enabled to: {}", enabled);
-        
-        const auto& settings = Config::GetSettings();
-        if (settings.mcm.blockBardSongsGlobal) {
-            settings.mcm.blockBardSongsGlobal->value = enabled ? 1.0f : 0.0f;
-            spdlog::info("[PrismaUIMenu::OnSetBardSongsEnabled] Set blockBardSongs global to {}", 
-                settings.mcm.blockBardSongsGlobal->value);
-            
-            SettingsPersistence::SaveSettings();
-            SendSettingsData();
-            
-        } else {
-            spdlog::warn("[PrismaUIMenu::OnSetBardSongsEnabled] BlockBardSongs global not found");
-        }
-        
-    } catch (const std::exception& e) {
-        spdlog::error("[PrismaUIMenu::OnSetBardSongsEnabled] Exception: {}", e.what());
-    }
+    SetToggleFromUI("OnSetBardSongsEnabled", data, "enabled", Config::GetSettings().mcm.blockBardSongsGlobal, false);
 }
 
 void PrismaUIMenu::SendSettingsData()

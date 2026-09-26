@@ -143,8 +143,6 @@ export const App = () => {
     log(`[App] requestBlacklist exists: ${typeof (window as any).requestBlacklist === 'function'}`);
     log(`[App] closeMenu exists: ${typeof (window as any).closeMenu === 'function'}`);
     log(`[App] jsLog exists: ${typeof (window as any).jsLog === 'function'}`);
-    log(`[App] addToBlacklist exists: ${typeof (window as any).addToBlacklist === 'function'}`);
-    log(`[App] addToWhitelist exists: ${typeof (window as any).addToWhitelist === 'function'}`);
     log(`[App] deleteBlacklistEntry exists: ${typeof (window as any).deleteBlacklistEntry === 'function'}`);
 
     // Request initial data

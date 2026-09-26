@@ -64,8 +64,6 @@ void PrismaUIMenu::Initialize()
     prismaUI_->RegisterJSListener(view_, "deleteBlacklistEntry", &OnDeleteBlacklistEntry);
     prismaUI_->RegisterJSListener(view_, "deleteBlacklistBatch", &OnDeleteBlacklistBatch);
     prismaUI_->RegisterJSListener(view_, "refreshBlacklist", &OnRefreshBlacklist);
-    prismaUI_->RegisterJSListener(view_, "addToBlacklist", &OnAddToBlacklist);
-    prismaUI_->RegisterJSListener(view_, "addToWhitelist", &OnAddToWhitelist);
     prismaUI_->RegisterJSListener(view_, "toggleSubtypeFilter", &OnToggleSubtypeFilter);
     prismaUI_->RegisterJSListener(view_, "deleteHistoryEntries", &OnDeleteHistoryEntries);
     prismaUI_->RegisterJSListener(view_, "detectIdentifierType", &OnDetectIdentifierType);

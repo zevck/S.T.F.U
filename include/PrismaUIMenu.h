@@ -46,8 +46,6 @@ private:
     static void OnDeleteBlacklistBatch(const char* data);
     static void OnRefreshBlacklist(const char* data);
     static void OnUpdateBlacklistEntry(const char* data);
-    static void OnAddToBlacklist(const char* data);
-    static void OnAddToWhitelist(const char* data);
     static void OnToggleSubtypeFilter(const char* data);
     static void OnDeleteHistoryEntries(const char* data);
     static void OnDetectIdentifierType(const char* data);

@@ -26,6 +26,7 @@
 #include <fstream>
 #include <algorithm>
 #include <vector>
+#include <functional>
 
 namespace Config
 {
@@ -381,6 +382,113 @@ overrides:
         }
     }
 
+    // Imports the topics/scenes/quests sections shared by STFU_Blacklist.yaml and
+    // STFU_Whitelist.yaml, adding each entry through `add`. listName ("Blacklist" or
+    // "Whitelist") is used as the filter category and in the entry notes.
+    static void ImportYAMLListSections(const YAML::Node& config, const std::string& listName,
+        const std::function<bool(const DialogueDB::BlacklistEntry&)>& add,
+        int& topicCount, int& sceneCount, int& questTopicCount)
+    {
+        const std::string notes = "Imported from " + listName + " YAML";
+
+        // Import topics
+        if (config["topics"] && config["topics"].IsSequence()) {
+            for (const auto& entry : config["topics"]) {
+                if (entry.IsScalar()) {
+                    std::string value = entry.as<std::string>();
+                    auto [formID, editorID] = ParseFormIdentifierInternal(value);
+
+                    DialogueDB::BlacklistEntry listEntry;
+                    listEntry.targetType = DialogueDB::BlacklistTarget::Topic;
+                    listEntry.targetFormID = formID;
+                    listEntry.targetEditorID = editorID;
+                    listEntry.filterCategory = listName;
+                    listEntry.blockType = DialogueDB::BlockType::Soft;
+                    listEntry.notes = notes;
+
+                    if (add(listEntry)) {
+                        topicCount++;
+                    }
+                }
+            }
+        }
+
+        // Import scenes
+        if (config["scenes"] && config["scenes"].IsSequence()) {
+            for (const auto& entry : config["scenes"]) {
+                if (entry.IsScalar()) {
+                    std::string sceneEditorID = entry.as<std::string>();
+
+                    DialogueDB::BlacklistEntry listEntry;
+                    listEntry.targetType = DialogueDB::BlacklistTarget::Scene;
+                    listEntry.targetFormID = 0;
+                    listEntry.targetEditorID = sceneEditorID;
+                    listEntry.filterCategory = listName;
+                    listEntry.blockType = DialogueDB::BlockType::Hard;
+                    listEntry.notes = notes;
+                    listEntry.subtype = 14;
+                    listEntry.subtypeName = "Scene";
+
+                    if (add(listEntry)) {
+                        sceneCount++;
+                    }
+                }
+            }
+        }
+
+        // Import quests (extract ALL topics from them)
+        if (config["quests"] && config["quests"].IsSequence()) {
+            for (const auto& entry : config["quests"]) {
+                if (entry.IsScalar()) {
+                    std::string questEditorID = entry.as<std::string>();
+
+                    auto* quest = SafeLookupForm<RE::TESQuest>(questEditorID.c_str());
+                    if (!quest) {
+                        spdlog::warn("[Config] Quest not found: {}", questEditorID);
+                        continue;
+                    }
+
+                    auto addQuestTopic = [&](RE::TESTopic* topic, const std::string& topicNotes) {
+                        const char* topicEditorID = STFU::GetEditorID(topic);
+
+                        DialogueDB::BlacklistEntry listEntry;
+                        listEntry.targetType = DialogueDB::BlacklistTarget::Topic;
+                        listEntry.targetFormID = topic->GetFormID();
+                        listEntry.targetEditorID = topicEditorID ? topicEditorID : "";
+                        listEntry.filterCategory = listName;
+                        listEntry.blockType = DialogueDB::BlockType::Soft;
+                        listEntry.notes = topicNotes;
+
+                        if (add(listEntry)) {
+                            questTopicCount++;
+                        }
+                    };
+
+                    // Import from regular topics arrays (SceneDialogue + Combat + Favors + Detection + Service + Miscellaneous)
+                    for (int dialogueType = 0; dialogueType < (RE::DIALOGUE_TYPES::kTotal - RE::DIALOGUE_TYPES::kBranchedTotal); ++dialogueType) {
+                        for (auto* topic : quest->topics[dialogueType]) {
+                            if (topic) {
+                                addQuestTopic(topic, notes + " (quest: " + questEditorID + ")");
+                            }
+                        }
+                    }
+
+                    // Also import from branched dialogue (PlayerDialogue + CommandDialogue)
+                    for (int branchType = 0; branchType < RE::DIALOGUE_TYPES::kBranchedTotal; ++branchType) {
+                        for (auto& [branch, topicsArray] : quest->branchedDialogue[branchType]) {
+                            if (!topicsArray) continue;
+                            for (auto* topic : *topicsArray) {
+                                if (topic) {
+                                    addQuestTopic(topic, notes + " (quest: " + questEditorID + ", branched)");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     int ImportYAMLToDatabase()
     {
         spdlog::info("[Config] Starting YAML import to database...");
@@ -401,114 +509,9 @@ overrides:
                 spdlog::info("[Config] Importing from STFU_Blacklist.yaml...");
                 YAML::Node config = YAML::LoadFile(blacklistPath);
                 
-                // Import topics
-                if (config["topics"] && config["topics"].IsSequence()) {
-                    for (const auto& entry : config["topics"]) {
-                        if (entry.IsScalar()) {
-                            std::string value = entry.as<std::string>();
-                            auto [formID, editorID] = ParseFormIdentifierInternal(value);
-                            
-                            DialogueDB::BlacklistEntry blacklistEntry;
-                            blacklistEntry.targetType = DialogueDB::BlacklistTarget::Topic;
-                            blacklistEntry.targetFormID = formID;
-                            blacklistEntry.targetEditorID = editorID;
-                            blacklistEntry.filterCategory = "Blacklist";
-                            blacklistEntry.blockType = DialogueDB::BlockType::Soft;
-                            blacklistEntry.notes = "Imported from Blacklist YAML";
-                            
-                            if (db->AddToBlacklist(blacklistEntry, false)) {
-                                blacklistTopics++;
-                            }
-                        }
-                    }
-                }
-                
-                // Import scenes
-                if (config["scenes"] && config["scenes"].IsSequence()) {
-                    for (const auto& entry : config["scenes"]) {
-                        if (entry.IsScalar()) {
-                            std::string sceneEditorID = entry.as<std::string>();
-                            
-                            DialogueDB::BlacklistEntry blacklistEntry;
-                            blacklistEntry.targetType = DialogueDB::BlacklistTarget::Scene;
-                            blacklistEntry.targetFormID = 0;
-                            blacklistEntry.targetEditorID = sceneEditorID;
-                            blacklistEntry.filterCategory = "Blacklist";
-                            blacklistEntry.blockType = DialogueDB::BlockType::Hard;
-                            blacklistEntry.notes = "Imported from Blacklist YAML";
-                            blacklistEntry.subtype = 14;
-                            blacklistEntry.subtypeName = "Scene";
-                            
-                            if (db->AddToBlacklist(blacklistEntry, false)) {
-                                blacklistScenes++;
-                            }
-                        }
-                    }
-                }
-                
-                // Import quests (extract ALL topics from them)
-                if (config["quests"] && config["quests"].IsSequence()) {
-                    for (const auto& entry : config["quests"]) {
-                        if (entry.IsScalar()) {
-                            std::string questEditorID = entry.as<std::string>();
-                            
-                            auto* quest = SafeLookupForm<RE::TESQuest>(questEditorID.c_str());
-                            if (!quest) {
-                                spdlog::warn("[Config] Quest not found: {}", questEditorID);
-                                continue;
-                            }
-                            
-                            // Import from regular topics arrays (SceneDialogue + Combat + Favors + Detection + Service + Miscellaneous)
-                            for (int dialogueType = 0; dialogueType < (RE::DIALOGUE_TYPES::kTotal - RE::DIALOGUE_TYPES::kBranchedTotal); ++dialogueType) {
-                                auto& topicsArray = quest->topics[dialogueType];
-                                for (auto* topic : topicsArray) {
-                                    if (!topic) continue;
-
-                                    uint32_t topicFormID = topic->GetFormID();
-                                    const char* topicEditorID = STFU::GetEditorID(topic);
-
-                                    DialogueDB::BlacklistEntry blacklistEntry;
-                                    blacklistEntry.targetType = DialogueDB::BlacklistTarget::Topic;
-                                    blacklistEntry.targetFormID = topicFormID;
-                                    blacklistEntry.targetEditorID = topicEditorID ? topicEditorID : "";
-                                    blacklistEntry.filterCategory = "Blacklist";
-                                    blacklistEntry.blockType = DialogueDB::BlockType::Soft;
-                                    blacklistEntry.notes = "Imported from Blacklist YAML (quest: " + questEditorID + ")";
-
-                                    if (db->AddToBlacklist(blacklistEntry, false)) {
-                                        blacklistQuests++;
-                                    }
-                                }
-                            }
-
-                            // Also import from branched dialogue (PlayerDialogue + CommandDialogue)
-                            for (int branchType = 0; branchType < RE::DIALOGUE_TYPES::kBranchedTotal; ++branchType) {
-                                auto& branchMap = quest->branchedDialogue[branchType];
-                                for (auto& [branch, topicsArray] : branchMap) {
-                                    if (!topicsArray) continue;
-                                    for (auto* topic : *topicsArray) {
-                                        if (!topic) continue;
-
-                                        uint32_t topicFormID = topic->GetFormID();
-                                        const char* topicEditorID = STFU::GetEditorID(topic);
-
-                                        DialogueDB::BlacklistEntry blacklistEntry;
-                                        blacklistEntry.targetType = DialogueDB::BlacklistTarget::Topic;
-                                        blacklistEntry.targetFormID = topicFormID;
-                                        blacklistEntry.targetEditorID = topicEditorID ? topicEditorID : "";
-                                        blacklistEntry.filterCategory = "Blacklist";
-                                        blacklistEntry.blockType = DialogueDB::BlockType::Soft;
-                                        blacklistEntry.notes = "Imported from Blacklist YAML (quest: " + questEditorID + ", branched)";
-
-                                        if (db->AddToBlacklist(blacklistEntry, false)) {
-                                            blacklistQuests++;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                ImportYAMLListSections(config, "Blacklist",
+                    [db](const DialogueDB::BlacklistEntry& e) { return db->AddToBlacklist(e, false); },
+                    blacklistTopics, blacklistScenes, blacklistQuests);
                 
                 spdlog::info("[Config] Blacklist YAML import: {} topics, {} scenes, {} quest topics", 
                     blacklistTopics, blacklistScenes, blacklistQuests);
@@ -527,114 +530,9 @@ overrides:
                 spdlog::info("[Config] Importing from STFU_Whitelist.yaml...");
                 YAML::Node config = YAML::LoadFile(whitelistPath);
                 
-                // Import topics
-                if (config["topics"] && config["topics"].IsSequence()) {
-                    for (const auto& entry : config["topics"]) {
-                        if (entry.IsScalar()) {
-                            std::string value = entry.as<std::string>();
-                            auto [formID, editorID] = ParseFormIdentifierInternal(value);
-                            
-                            DialogueDB::BlacklistEntry whitelistEntry;
-                            whitelistEntry.targetType = DialogueDB::BlacklistTarget::Topic;
-                            whitelistEntry.targetFormID = formID;
-                            whitelistEntry.targetEditorID = editorID;
-                            whitelistEntry.filterCategory = "Whitelist";
-                            whitelistEntry.blockType = DialogueDB::BlockType::Soft;
-                            whitelistEntry.notes = "Imported from Whitelist YAML";
-                            
-                            if (db->AddToWhitelist(whitelistEntry)) {
-                                whitelistTopics++;
-                            }
-                        }
-                    }
-                }
-                
-                // Import scenes
-                if (config["scenes"] && config["scenes"].IsSequence()) {
-                    for (const auto& entry : config["scenes"]) {
-                        if (entry.IsScalar()) {
-                            std::string sceneEditorID = entry.as<std::string>();
-                            
-                            DialogueDB::BlacklistEntry whitelistEntry;
-                            whitelistEntry.targetType = DialogueDB::BlacklistTarget::Scene;
-                            whitelistEntry.targetFormID = 0;
-                            whitelistEntry.targetEditorID = sceneEditorID;
-                            whitelistEntry.filterCategory = "Whitelist";
-                            whitelistEntry.blockType = DialogueDB::BlockType::Hard;
-                            whitelistEntry.notes = "Imported from Whitelist YAML";
-                            whitelistEntry.subtype = 14;
-                            whitelistEntry.subtypeName = "Scene";
-                            
-                            if (db->AddToWhitelist(whitelistEntry)) {
-                                whitelistScenes++;
-                            }
-                        }
-                    }
-                }
-                
-                // Import quests (extract ALL topics from them)
-                if (config["quests"] && config["quests"].IsSequence()) {
-                    for (const auto& entry : config["quests"]) {
-                        if (entry.IsScalar()) {
-                            std::string questEditorID = entry.as<std::string>();
-                            
-                            auto* quest = SafeLookupForm<RE::TESQuest>(questEditorID.c_str());
-                            if (!quest) {
-                                spdlog::warn("[Config] Quest not found: {}", questEditorID);
-                                continue;
-                            }
-                            
-                            // Import from regular topics arrays (SceneDialogue + Combat + Favors + Detection + Service + Miscellaneous)
-                            for (int dialogueType = 0; dialogueType < (RE::DIALOGUE_TYPES::kTotal - RE::DIALOGUE_TYPES::kBranchedTotal); ++dialogueType) {
-                                auto& topicsArray = quest->topics[dialogueType];
-                                for (auto* topic : topicsArray) {
-                                    if (!topic) continue;
-
-                                    uint32_t topicFormID = topic->GetFormID();
-                                    const char* topicEditorID = STFU::GetEditorID(topic);
-
-                                    DialogueDB::BlacklistEntry whitelistEntry;
-                                    whitelistEntry.targetType = DialogueDB::BlacklistTarget::Topic;
-                                    whitelistEntry.targetFormID = topicFormID;
-                                    whitelistEntry.targetEditorID = topicEditorID ? topicEditorID : "";
-                                    whitelistEntry.filterCategory = "Whitelist";
-                                    whitelistEntry.blockType = DialogueDB::BlockType::Soft;
-                                    whitelistEntry.notes = "Imported from Whitelist YAML (quest: " + questEditorID + ")";
-
-                                    if (db->AddToWhitelist(whitelistEntry)) {
-                                        whitelistQuests++;
-                                    }
-                                }
-                            }
-
-                            // Also import from branched dialogue (PlayerDialogue + CommandDialogue)
-                            for (int branchType = 0; branchType < RE::DIALOGUE_TYPES::kBranchedTotal; ++branchType) {
-                                auto& branchMap = quest->branchedDialogue[branchType];
-                                for (auto& [branch, topicsArray] : branchMap) {
-                                    if (!topicsArray) continue;
-                                    for (auto* topic : *topicsArray) {
-                                        if (!topic) continue;
-
-                                        uint32_t topicFormID = topic->GetFormID();
-                                        const char* topicEditorID = STFU::GetEditorID(topic);
-
-                                        DialogueDB::BlacklistEntry whitelistEntry;
-                                        whitelistEntry.targetType = DialogueDB::BlacklistTarget::Topic;
-                                        whitelistEntry.targetFormID = topicFormID;
-                                        whitelistEntry.targetEditorID = topicEditorID ? topicEditorID : "";
-                                        whitelistEntry.filterCategory = "Whitelist";
-                                        whitelistEntry.blockType = DialogueDB::BlockType::Soft;
-                                        whitelistEntry.notes = "Imported from Whitelist YAML (quest: " + questEditorID + ", branched)";
-
-                                        if (db->AddToWhitelist(whitelistEntry)) {
-                                            whitelistQuests++;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                ImportYAMLListSections(config, "Whitelist",
+                    [db](const DialogueDB::BlacklistEntry& e) { return db->AddToWhitelist(e); },
+                    whitelistTopics, whitelistScenes, whitelistQuests);
                 
                 // Import plugins
                 if (config["plugins"] && config["plugins"].IsSequence()) {

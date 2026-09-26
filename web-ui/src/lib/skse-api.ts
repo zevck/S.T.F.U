@@ -81,26 +81,6 @@ export const SKSE_API = {
     SKSE_API.sendToSKSE('refreshBlacklist');
   },
   
-  addToBlacklist: (entries: any[], blockType: 'Soft' | 'Hard', filterCategory?: string, notes?: string) => {
-    log(`[SKSE_API] addToBlacklist called with ${entries.length} entries, blockType: ${blockType}`);
-    log(`[SKSE_API] Entries: ${JSON.stringify(entries)}`);
-    const jsonData = JSON.stringify({ entries, blockType, filterCategory: filterCategory || '', notes: notes || '' });
-    log(`[SKSE_API] JSON data: ${jsonData}`);
-    log(`[SKSE_API] Calling sendToSKSE('addToBlacklist', jsonData)...`);
-    SKSE_API.sendToSKSE('addToBlacklist', jsonData);
-    log(`[SKSE_API] sendToSKSE call completed`);
-  },
-  
-  addToWhitelist: (entries: any[], notes?: string) => {
-    log(`[SKSE_API] addToWhitelist called with ${entries.length} entries`);
-    log(`[SKSE_API] Entries: ${JSON.stringify(entries)}`);
-    const jsonData = JSON.stringify({ entries, notes: notes || '' });
-    log(`[SKSE_API] JSON data: ${jsonData}`);
-    log(`[SKSE_API] Calling sendToSKSE('addToWhitelist', jsonData)...`);
-    SKSE_API.sendToSKSE('addToWhitelist', jsonData);
-    log(`[SKSE_API] sendToSKSE call completed`);
-  },
-  
   toggleSubtypeFilter: (topicSubtype: number) => {
     const jsonData = JSON.stringify({
       topicSubtype
