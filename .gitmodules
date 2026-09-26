@@ -2,3 +2,6 @@
 	path = lib/commonlibsse-ng
 	url = https://github.com/alandtse/CommonLibSSE-NG.git
 	branch = ng
+[submodule "lib/detours"]
+	path = lib/detours
+	url = https://github.com/microsoft/Detours.git

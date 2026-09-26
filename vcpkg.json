@@ -1,0 +1,11 @@
+{
+  "name": "stfu",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "spdlog",
+    "yaml-cpp",
+    "sqlite3",
+    "rapidcsv",
+    "directxtk"
+  ]
+}

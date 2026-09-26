@@ -3,7 +3,6 @@ import { create } from 'zustand';
 export interface SettingsState {
   // Master controls
   blacklistEnabled: boolean;
-  skyrimNetEnabled: boolean;
   scenesEnabled: boolean;
   bardSongsEnabled: boolean;
   followerCommentaryEnabled: boolean;
@@ -19,7 +18,6 @@ export interface SettingsState {
 export const useSettingsStore = create<SettingsState>((set) => ({
   // Initial defaults (will be overwritten by C++ data)
   blacklistEnabled: true,
-  skyrimNetEnabled: true,
   scenesEnabled: true,
   bardSongsEnabled: true,
   followerCommentaryEnabled: true,

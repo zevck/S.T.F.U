@@ -76,52 +76,12 @@ export const SKSE_API = {
     SKSE_API.sendToSKSE('deleteBlacklistBatch', ids.join(','));
   },
   
-  clearBlacklist: () => {
-    log('[SKSE_API] Clearing all blacklist entries');
-    SKSE_API.sendToSKSE('clearBlacklist');
-  },
-  
   refreshBlacklist: () => {
     log('[SKSE_API] Refreshing blacklist data');
     SKSE_API.sendToSKSE('refreshBlacklist');
   },
   
-  updateBlacklistEntry: (id: number, blockType: string, filterCategory: string, notes: string) => {
-    log(`[SKSE_API] Updating blacklist entry ${id}: blockType=${blockType}, filterCategory=${filterCategory}`);
-    // Escape notes for JSON
-    const escapedNotes = notes.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
-    const jsonData = `{"id":${id},"blockType":"${blockType}","filterCategory":"${filterCategory}","notes":"${escapedNotes}"}`;
-    SKSE_API.sendToSKSE('updateBlacklistEntry', jsonData);
-  },
-  
-  updateBlacklistEntryAdvanced: (data: {
-    id: number;
-    blockType: string;
-    filterCategory: string;
-    notes: string;
-    actorFilterNames: string[];
-    actorFilterFormIDs: string[];
-  }) => {
-    log(`[SKSE_API] Updating blacklist entry (advanced) ${data.id}: blockType=${data.blockType}, actors=${data.actorFilterNames.length}`);
-    const jsonData = JSON.stringify(data);
-    SKSE_API.sendToSKSE('updateBlacklistEntryAdvanced', jsonData);
-  },
-  
-  createAdvancedEntry: (data: {
-    identifier: string;
-    blockType: string;
-    category: string;
-    notes: string;
-    isWhitelist: boolean;
-    actorFilterNames: string[];
-    actorFilterFormIDs: string[];
-  }) => {
-    log(`[SKSE_API] Creating advanced entry: identifier=${data.identifier}, actors=${data.actorFilterNames.length}`);
-    const jsonData = JSON.stringify(data);
-    SKSE_API.sendToSKSE('createAdvancedEntry', jsonData);
-  },
-  
-  addToBlacklist: (entries: any[], blockType: 'Soft' | 'Hard' | 'SkyrimNet', filterCategory?: string, notes?: string) => {
+  addToBlacklist: (entries: any[], blockType: 'Soft' | 'Hard', filterCategory?: string, notes?: string) => {
     log(`[SKSE_API] addToBlacklist called with ${entries.length} entries, blockType: ${blockType}`);
     log(`[SKSE_API] Entries: ${JSON.stringify(entries)}`);
     const jsonData = JSON.stringify({ entries, blockType, filterCategory: filterCategory || '', notes: notes || '' });
@@ -141,18 +101,6 @@ export const SKSE_API = {
     log(`[SKSE_API] sendToSKSE call completed`);
   },
   
-  removeFromBlacklist: (entry: any) => {
-    log(`[SKSE_API] removeFromBlacklist called - topicEditorID=${entry.topicEditorID}, topicFormID=${entry.topicFormID}, sceneEditorID=${entry.sceneEditorID}, isScene=${entry.isScene}`);
-    const jsonData = JSON.stringify({
-      topicFormID: entry.topicFormID || '',
-      topicEditorID: entry.topicEditorID || '',
-      sceneEditorID: entry.sceneEditorID || '',
-      isScene: entry.isScene || false
-    });
-    log(`[SKSE_API] Sending JSON to C++: ${jsonData}`);
-    SKSE_API.sendToSKSE('removeFromBlacklist', jsonData);
-  },
-
   toggleSubtypeFilter: (topicSubtype: number) => {
     const jsonData = JSON.stringify({
       topicSubtype
@@ -192,25 +140,6 @@ export const SKSE_API = {
     SKSE_API.sendToSKSE('updateWhitelistEntryAdvanced', JSON.stringify(data));
   },
 
-  updateWhitelistEntry: (updates: { id: number; filterCategory: string; note: string }) => {
-    log(`[SKSE_API] Updating whitelist entry ${updates.id}`);
-    const escapedNote = updates.note.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
-    const jsonData = `{"id":${updates.id},"filterCategory":"${updates.filterCategory}","note":"${escapedNote}"}`;
-    SKSE_API.sendToSKSE('updateWhitelistEntry', jsonData);
-  },
-
-  moveToBlacklist: (id: number) => {
-    log(`[SKSE_API] Moving whitelist entry ${id} to blacklist`);
-    const jsonData = JSON.stringify({ id });
-    SKSE_API.sendToSKSE('moveToBlacklist', jsonData);
-  },
-
-  moveToWhitelist: (id: number) => {
-    log(`[SKSE_API] Moving blacklist entry ${id} to whitelist`);
-    const jsonData = JSON.stringify({ id });
-    SKSE_API.sendToSKSE('moveToWhitelist', jsonData);
-  },
-
   removeWhitelistBatch: (ids: number[]) => {
     log(`[SKSE_API] Removing ${ids.length} whitelist entries`);
     const jsonData = JSON.stringify({ ids });
@@ -244,12 +173,6 @@ export const SKSE_API = {
     log(`[SKSE_API] Setting blacklist enabled: ${enabled}`);
     const jsonData = JSON.stringify({ enabled });
     SKSE_API.sendToSKSE('setBlacklistEnabled', jsonData);
-  },
-
-  setSkyrimNetEnabled: (enabled: boolean) => {
-    log(`[SKSE_API] Setting SkyrimNet enabled: ${enabled}`);
-    const jsonData = JSON.stringify({ enabled });
-    SKSE_API.sendToSKSE('setSkyrimNetEnabled', jsonData);
   },
 
   setScenesEnabled: (enabled: boolean) => {

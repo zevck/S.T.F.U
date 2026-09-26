@@ -110,6 +110,43 @@ overrides:
 ```
 *After editing YAMLs you need to click "Import from YAML" in the settings tab or MCM. No need to restart the game.
 
+## Building from Source
+STFU has two parts: the SKSE plugin (C++, at the repository root) and the in-game menu (React, in `web-ui/`).
+
+### Prerequisites
+- Visual Studio 2026 with the "Desktop development with C++" workload (the CMake preset uses the Visual Studio 18 generator)
+- CMake 3.21 or newer
+- [vcpkg](https://github.com/microsoft/vcpkg) installed at `C:/vcpkg` (the path is set in `CMakePresets.json`; edit it if yours is elsewhere)
+- Node.js and npm, for the menu
+
+### Clone
+The repository uses git submodules for its dependencies ([Detours](https://github.com/microsoft/Detours) and CommonLibSSE-NG, which has a nested submodule of its own). Clone recursively:
+```
+git clone --recursive https://github.com/zevck/S.T.F.U.git
+```
+If you already cloned without `--recursive`:
+```
+git submodule update --init --recursive
+```
+
+> **Note:** the plugin currently still builds against CommonLibVR 4.5.0 from a local, untracked `.resources/CommonLibVR-4.5.0` folder. The switch to the `lib/commonlibsse-ng` submodule is in progress; until then, a fresh clone needs that folder supplied separately.
+
+### Plugin
+From the repository root:
+```
+cmake --preset vs2022-windows
+cmake --build build --config Release --target STFU
+```
+vcpkg installs the dependencies (yaml-cpp, SQLite, and CommonLib's own) on the first configure. The plugin is written to `build/Release/STFU.dll`; copy it to `SKSE/Plugins/STFU.dll`.
+
+### Menu
+```
+cd web-ui
+npm install
+npm run build
+```
+Copy the contents of `web-ui/dist/` (`index.html` and `assets/`) to `PrismaUI/views/STFU/`.
+
 ## License
 
 STFU is Copyright © 2026 Zevick, released under the GNU General Public License v3.0 or later (GPL-3.0-or-later). See [LICENSE.md](LICENSE.md) for the full text.

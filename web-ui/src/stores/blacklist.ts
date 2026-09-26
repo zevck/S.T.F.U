@@ -7,7 +7,6 @@ interface BlacklistStore {
   typeFilter: string;
   blockSoft: boolean;
   blockHard: boolean;
-  blockSkyrimNet: boolean;
   showTopics: boolean;
   showScenes: boolean;
   showActors: boolean;
@@ -18,7 +17,6 @@ interface BlacklistStore {
   setTypeFilter: (filter: string) => void;
   setBlockSoft: (enabled: boolean) => void;
   setBlockHard: (enabled: boolean) => void;
-  setBlockSkyrimNet: (enabled: boolean) => void;
   setShowTopics: (enabled: boolean) => void;
   setShowScenes: (enabled: boolean) => void;
   setShowActors: (enabled: boolean) => void;
@@ -33,7 +31,6 @@ export const useBlacklistStore = create<BlacklistStore>((set) => ({
   typeFilter: 'All',
   blockSoft: true,
   blockHard: true,
-  blockSkyrimNet: true,
   showTopics: true,
   showScenes: true,
   showActors: true,
@@ -44,7 +41,6 @@ export const useBlacklistStore = create<BlacklistStore>((set) => ({
   setTypeFilter: (filter) => set({ typeFilter: filter }),
   setBlockSoft: (enabled) => set({ blockSoft: enabled }),
   setBlockHard: (enabled) => set({ blockHard: enabled }),
-  setBlockSkyrimNet: (enabled) => set({ blockSkyrimNet: enabled }),
   setShowTopics: (enabled) => set({ showTopics: enabled }),
   setShowScenes: (enabled) => set({ showScenes: enabled }),
   setShowActors: (enabled) => set({ showActors: enabled }),
