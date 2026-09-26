@@ -1,4 +1,5 @@
 #include "SceneMonitor.h"
+#include "EditorID.h"
 #include "Config.h"
 #include "DialogueDatabase.h"
 #include <spdlog/spdlog.h>
@@ -107,7 +108,7 @@ namespace SceneMonitor
                                     // Get EditorID - pointer may be unstable during init
                                     const char* sceneEditorID_unsafe = nullptr;
                                     try {
-                                        sceneEditorID_unsafe = scene->GetFormEditorID();
+                                        sceneEditorID_unsafe = STFU::GetEditorID(scene);
                                     } catch (...) {
                                         // Skip scenes with inaccessible EditorIDs during init
                                         continue;

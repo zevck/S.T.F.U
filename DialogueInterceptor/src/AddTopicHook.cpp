@@ -1,4 +1,5 @@
 #include "AddTopicHook.h"
+#include "EditorID.h"
 #include "Config.h"
 #include "DialogueDatabase.h"
 #include "TopicResponseExtractor.h"
@@ -33,7 +34,7 @@ namespace AddTopicHook
         }
 
         if (Config::ShouldBlockDialogue(quest, a_topic, speakerName, nullptr)) {
-            const char* topicEditorID = a_topic->GetFormEditorID();
+            const char* topicEditorID = STFU::GetEditorID(a_topic);
             uint16_t subtype = static_cast<uint16_t>(a_topic->data.subtype.get());
             uint32_t topicFormID = a_topic->GetFormID();
             // Extract response text to check if it's empty
@@ -89,7 +90,7 @@ namespace AddTopicHook
             entry.topicSubtype = subtype;
             entry.topicSubtypeName = Config::GetSubtypeName(subtype);
             
-            entry.questEditorID = quest && quest->GetFormEditorID() ? quest->GetFormEditorID() : "";
+            entry.questEditorID = quest && STFU::GetEditorID(quest) ? STFU::GetEditorID(quest) : "";
             entry.questFormID = quest ? quest->GetFormID() : 0;
             entry.questName = quest && quest->GetName() ? quest->GetName() : "";
             

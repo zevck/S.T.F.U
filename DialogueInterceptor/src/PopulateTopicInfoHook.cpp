@@ -1,4 +1,5 @@
 #include "PopulateTopicInfoHook.h"
+#include "EditorID.h"
 #include "Config.h"
 #include "DialogueDatabase.h"
 #include "ConstructResponseHook.h"
@@ -221,14 +222,14 @@ namespace PopulateTopicInfoHook
         if (a_topic && a_speaker) {
             RE::TESQuest* quest = a_topic->ownerQuest;
             uint32_t topicFormID = a_topic->GetFormID();
-            const char* topicEditorID = a_topic->GetFormEditorID();
+            const char* topicEditorID = STFU::GetEditorID(a_topic);
             std::string topicEditorIDStr = topicEditorID ? topicEditorID : "";
             uint16_t subtype = Config::GetAccurateSubtype(a_topic);
             
             // Get quest info for ESL-safe matching
             std::string questEditorIDStr = "";
             if (quest) {
-                const char* questEdID = quest->GetFormEditorID();
+                const char* questEdID = STFU::GetEditorID(quest);
                 questEditorIDStr = questEdID ? questEdID : "";
             }
             const char* topicSourcePlugin = a_topic->GetFile(0) ? a_topic->GetFile(0)->fileName : nullptr;
@@ -274,7 +275,7 @@ namespace PopulateTopicInfoHook
                 } else if (quest) {
                     // Check quest hard block
                     uint32_t questFormID = quest->GetFormID();
-                    const char* questEditorID = quest->GetFormEditorID();
+                    const char* questEditorID = STFU::GetEditorID(quest);
                     std::string questEditorIDStr = questEditorID ? questEditorID : "";
                     
                     auto questEntry = std::find_if(blacklistCache.begin(), blacklistCache.end(),
@@ -332,7 +333,7 @@ namespace PopulateTopicInfoHook
                 entry.topicSubtype = subtype;
                 entry.topicSubtypeName = Config::GetSubtypeName(subtype);
                 
-                entry.questEditorID = quest && quest->GetFormEditorID() ? quest->GetFormEditorID() : "";
+                entry.questEditorID = quest && STFU::GetEditorID(quest) ? STFU::GetEditorID(quest) : "";
                 entry.questFormID = quest ? quest->GetFormID() : 0;
                 entry.questName = quest && quest->GetName() ? quest->GetName() : "";
                 
@@ -455,7 +456,7 @@ namespace PopulateTopicInfoHook
             }
             
             const char* speakerName = a_speaker->GetName();
-            const char* topicEditorID = a_topic->GetFormEditorID();
+            const char* topicEditorID = STFU::GetEditorID(a_topic);
             RE::TESQuest* quest = a_topic->ownerQuest;
             
             uint32_t topicFormID = a_topic->GetFormID();
@@ -630,7 +631,7 @@ namespace PopulateTopicInfoHook
             entry.topicSubtype = subtype;
             entry.topicSubtypeName = Config::GetSubtypeName(subtype);
             
-            entry.questEditorID = quest && quest->GetFormEditorID() ? quest->GetFormEditorID() : "";
+            entry.questEditorID = quest && STFU::GetEditorID(quest) ? STFU::GetEditorID(quest) : "";
             entry.questFormID = quest ? quest->GetFormID() : 0;
             entry.questName = quest && quest->GetName() ? quest->GetName() : "";
             
@@ -692,7 +693,7 @@ namespace PopulateTopicInfoHook
                     
                     if (sceneContainsTopic) {
                         // Found the scene - capture its EditorID
-                        const char* sceneEditorID = scene->GetFormEditorID();
+                        const char* sceneEditorID = STFU::GetEditorID(scene);
                         entry.sceneEditorID = sceneEditorID ? sceneEditorID : "";
                         break;
                     }
@@ -865,8 +866,8 @@ namespace PopulateTopicInfoHook
 
             // Check for scenes (subtype 14)
             if (subtype == 14) {
-                const char* topicEditorID = a_topic->GetFormEditorID();
-                const char* questEditorID = quest ? quest->GetFormEditorID() : nullptr;
+                const char* topicEditorID = STFU::GetEditorID(a_topic);
+                const char* questEditorID = quest ? STFU::GetEditorID(quest) : nullptr;
                 
                 // Check if this scene should be blocked
                 bool isBardSong = Config::IsBardSongQuest(quest);
@@ -891,7 +892,7 @@ namespace PopulateTopicInfoHook
                             if (!action || action->GetType() != RE::BGSSceneAction::Type::kDialogue) continue;
                             auto* dialogueAction = static_cast<RE::BGSSceneActionDialogue*>(action);
                             if (dialogueAction && dialogueAction->topic == a_topic) {
-                                const char* scnEditorID = scene->GetFormEditorID();
+                                const char* scnEditorID = STFU::GetEditorID(scene);
                                 sceneEditorID = scnEditorID ? scnEditorID : "";
                                 sceneFormID = scene->GetFormID();
                                 break;
@@ -968,7 +969,7 @@ namespace PopulateTopicInfoHook
             
             if (shouldSoftBlock) {
                 uint16_t subtype = static_cast<uint16_t>(a_topic->data.subtype.get());
-                const char* topicEditorID = a_topic->GetFormEditorID();
+                const char* topicEditorID = STFU::GetEditorID(a_topic);
                 uint32_t topicFormID = a_topic->GetFormID();
 
                 spdlog::debug("[POPULATE SILENCE] Speaker: {} - Topic: {} (subtype: {}, FormID: 0x{:08X}, softBlock: {})",

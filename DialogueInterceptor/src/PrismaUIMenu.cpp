@@ -1,4 +1,5 @@
 #include "PrismaUIMenu.h"
+#include "EditorID.h"
 #include "Config.h"
 #include "SettingsPersistence.h"
 #include "TopicResponseExtractor.h"
@@ -556,7 +557,7 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
                                 for (auto& factionInfo : npcBase->factions) {
                                     if (factionFilterMatches) break;
                                     if (!factionInfo.faction) continue;
-                                    const char* editorID = factionInfo.faction->GetFormEditorID();
+                                    const char* editorID = STFU::GetEditorID(factionInfo.faction);
                                     if (!editorID || !editorID[0]) continue;
                                     for (const auto& filterFaction : wlEntry.factionFilterEditorIDs) {
                                         if (filterFaction == editorID) {
@@ -612,7 +613,7 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
                                     if (!factionInfo.faction) continue;
                                     bool match = (wlEntry.targetFormID != 0 && factionInfo.faction->GetFormID() == wlEntry.targetFormID);
                                     if (!match && !wlEntry.targetEditorID.empty()) {
-                                        const char* edID = factionInfo.faction->GetFormEditorID();
+                                        const char* edID = STFU::GetEditorID(factionInfo.faction);
                                         match = (edID && wlEntry.targetEditorID == edID);
                                     }
                                     if (match) {
@@ -688,7 +689,7 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
                                         for (auto& factionInfo : npcBase->factions) {
                                             if (factionFilterMatches) break;
                                             if (!factionInfo.faction) continue;
-                                            const char* editorID = factionInfo.faction->GetFormEditorID();
+                                            const char* editorID = STFU::GetEditorID(factionInfo.faction);
                                             if (!editorID || !editorID[0]) continue;
                                             for (const auto& filterFaction : blEntry.factionFilterEditorIDs) {
                                                 if (filterFaction == editorID) {
@@ -770,7 +771,7 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
                                             if (!factionInfo.faction) continue;
                                             bool match = (blEntry.targetFormID != 0 && factionInfo.faction->GetFormID() == blEntry.targetFormID);
                                             if (!match && !blEntry.targetEditorID.empty()) {
-                                                const char* edID = factionInfo.faction->GetFormEditorID();
+                                                const char* edID = STFU::GetEditorID(factionInfo.faction);
                                                 match = (edID && blEntry.targetEditorID == edID);
                                             }
                                             if (match) {
@@ -831,7 +832,7 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
                                     if (!factionInfo.faction) continue;
                                     bool match = (blEntry.targetFormID != 0 && factionInfo.faction->GetFormID() == blEntry.targetFormID);
                                     if (!match && !blEntry.targetEditorID.empty()) {
-                                        const char* edID = factionInfo.faction->GetFormEditorID();
+                                        const char* edID = STFU::GetEditorID(factionInfo.faction);
                                         match = (edID && blEntry.targetEditorID == edID);
                                     }
                                     if (match) {
@@ -2137,7 +2138,7 @@ void PrismaUIMenu::OnCreateManualEntry(const char* data)
                         spdlog::info("[PrismaUIMenu::OnCreateManualEntry] FormID is Actor: {} (Name: {})", identifier, entry.targetEditorID);
                     } else {
                     // Get EditorID from form (for non-actor types)
-                    const char* editorID = form->GetFormEditorID();
+                    const char* editorID = STFU::GetEditorID(form);
                     entry.targetEditorID = editorID ? editorID : "";
                     
                     // Check if it's a scene
@@ -2193,7 +2194,7 @@ void PrismaUIMenu::OnCreateManualEntry(const char* data)
                             // Get quest context
                             RE::TESQuest* quest = topic->ownerQuest;
                             if (quest) {
-                                const char* questEdID = quest->GetFormEditorID();
+                                const char* questEdID = STFU::GetEditorID(quest);
                                 entry.questEditorID = questEdID ? questEdID : "";
                             }
                             
@@ -2336,7 +2337,7 @@ void PrismaUIMenu::OnCreateManualEntry(const char* data)
                         // Get quest context
                         RE::TESQuest* quest = topic->ownerQuest;
                         if (quest) {
-                            const char* questEdID = quest->GetFormEditorID();
+                            const char* questEdID = STFU::GetEditorID(quest);
                             entry.questEditorID = questEdID ? questEdID : "";
                         }
                         
@@ -2711,7 +2712,7 @@ void PrismaUIMenu::OnCreateAdvancedEntry(const char* data)
                 
                 auto* form = RE::TESForm::LookupByID(parsedFormID);
                 if (form) {
-                    const char* editorID = form->GetFormEditorID();
+                    const char* editorID = STFU::GetEditorID(form);
                     entry.targetEditorID = editorID ? editorID : "";
                     
                     auto* actor = form->As<RE::Actor>();
@@ -2754,7 +2755,7 @@ void PrismaUIMenu::OnCreateAdvancedEntry(const char* data)
                             entry.targetType = DialogueDB::BlacklistTarget::Topic;
                             RE::TESQuest* quest = topic->ownerQuest;
                             if (quest) {
-                                const char* questEdID = quest->GetFormEditorID();
+                                const char* questEdID = STFU::GetEditorID(quest);
                                 entry.questEditorID = questEdID ? questEdID : "";
                             }
                             uint16_t subtype = Config::GetAccurateSubtype(topic);
@@ -2812,7 +2813,7 @@ void PrismaUIMenu::OnCreateAdvancedEntry(const char* data)
                     bool found = false;
                     for (auto* scene : handler->GetFormArray<RE::BGSScene>()) {
                         if (scene) {
-                            const char* edID = scene->GetFormEditorID();
+                            const char* edID = STFU::GetEditorID(scene);
                             if (edID && parsedEditorID == edID) {
                                 entry.targetType = DialogueDB::BlacklistTarget::Scene;
                                 entry.targetFormID = scene->GetFormID();
@@ -2830,13 +2831,13 @@ void PrismaUIMenu::OnCreateAdvancedEntry(const char* data)
                         // Try topic
                         for (auto* topic : handler->GetFormArray<RE::TESTopic>()) {
                             if (topic) {
-                                const char* edID = topic->GetFormEditorID();
+                                const char* edID = STFU::GetEditorID(topic);
                                 if (edID && parsedEditorID == edID) {
                                     entry.targetType = DialogueDB::BlacklistTarget::Topic;
                                     entry.targetFormID = topic->GetFormID();
                                     RE::TESQuest* quest = topic->ownerQuest;
                                     if (quest) {
-                                        const char* questEdID = quest->GetFormEditorID();
+                                        const char* questEdID = STFU::GetEditorID(quest);
                                         entry.questEditorID = questEdID ? questEdID : "";
                                     }
                                     uint16_t subtype = Config::GetAccurateSubtype(topic);

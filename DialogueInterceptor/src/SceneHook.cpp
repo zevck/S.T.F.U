@@ -1,4 +1,5 @@
 #include "SceneHook.h"
+#include "EditorID.h"
 #include "Config.h"
 #include "DialogueDatabase.h"
 #include "../include/PCH.h"
@@ -139,7 +140,7 @@ namespace SceneHook
             if (auto* scene = RE::TESForm::LookupByEditorID<RE::BGSScene>(editorID)) {
                 patchScene(scene, gateGlobal);
                 spdlog::debug("[SCENE BLOCKER] Patched Hard-blocked scene: {} (gate: {})",
-                    editorID, gateGlobal->GetFormEditorID() ? gateGlobal->GetFormEditorID() : "?");
+                    editorID, STFU::GetEditorID(gateGlobal) ? STFU::GetEditorID(gateGlobal) : "?");
             } else {
                 spdlog::warn("[SCENE BLOCKER] Hard-blocked scene not found in form table: {}", editorID);
             }
@@ -159,7 +160,7 @@ namespace SceneHook
                 if (!dataHandler) continue;
                 for (auto* scene : dataHandler->GetFormArray<RE::BGSScene>()) {
                     if (!scene || scene->parentQuest != quest) continue;
-                    const char* sceneEditorID = scene->GetFormEditorID();
+                    const char* sceneEditorID = STFU::GetEditorID(scene);
                     std::string sceneIDStr = sceneEditorID ? sceneEditorID : "";
                     if (!sceneIDStr.empty() && whitelistedSceneIDs.count(sceneIDStr)) continue;
                     patchScene(scene, bardSongsGlobal);
@@ -175,7 +176,7 @@ namespace SceneHook
             if (dataHandler) {
                 for (auto* scene : dataHandler->GetFormArray<RE::BGSScene>()) {
                     if (!scene) continue;
-                    const char* sceneEditorID = scene->GetFormEditorID();
+                    const char* sceneEditorID = STFU::GetEditorID(scene);
                     std::string sceneIDStr = sceneEditorID ? sceneEditorID : "";
 
                     // Skip already patched (Pass 1) or whitelisted scenes
@@ -187,7 +188,7 @@ namespace SceneHook
                         if (!action || action->GetType() != RE::BGSSceneAction::Type::kDialogue) continue;
                         auto* da = static_cast<RE::BGSSceneActionDialogue*>(action);
                         if (!da || !da->topic) continue;
-                        const char* topicEditorID = da->topic->GetFormEditorID();
+                        const char* topicEditorID = STFU::GetEditorID(da->topic);
                         if (!topicEditorID) continue;
                         std::string topicIDStr = topicEditorID;
 
@@ -394,7 +395,7 @@ namespace SceneHook
                     auto* dialogueAction = static_cast<RE::BGSSceneActionDialogue*>(action);
                     if (!dialogueAction || !dialogueAction->topic) continue;
                     
-                    const char* topicEditorIDPtr = dialogueAction->topic->GetFormEditorID();
+                    const char* topicEditorIDPtr = STFU::GetEditorID(dialogueAction->topic);
                     if (topicEditorIDPtr && topicEditorID == topicEditorIDPtr) {
                         affectedScenes.push_back(scene);
                         break;
@@ -419,7 +420,7 @@ namespace SceneHook
             int totalPhasesPatched = 0;
             int skippedRunningScenes = 0;
             for (auto* scene : affectedScenes) {
-                const char* sceneEditorID = scene->GetFormEditorID();
+                const char* sceneEditorID = STFU::GetEditorID(scene);
                 
                 if (blockType == HARD_BLOCK) {
                     // SAFETY CHECK: Don't add conditions to running scenes - this would softlock NPCs.

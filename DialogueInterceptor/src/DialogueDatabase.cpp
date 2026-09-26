@@ -1,4 +1,5 @@
 #include "../include/PCH.h"
+#include "EditorID.h"
 #include "DialogueDatabase.h"
 #include "Config.h"
 #include "PopulateTopicInfoHook.h"
@@ -232,7 +233,7 @@ namespace DialogueDB
         // Iterate through factions
         for (auto& factionInfo : actorBase->factions) {
             if (factionInfo.faction) {
-                const char* editorID = factionInfo.faction->GetFormEditorID();
+                const char* editorID = STFU::GetEditorID(factionInfo.faction);
                 if (editorID && editorID[0]) {
                     factionEditorIDs.push_back(editorID);
                 }

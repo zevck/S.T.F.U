@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../include/PCH.h"
+#include "EditorID.h"
 #include <string>
 #include <unordered_set>
 #include <unordered_map>
@@ -179,8 +180,8 @@ namespace Config
         if (!dataHandler) return nullptr;
         
         for (auto& form : dataHandler->GetFormArray<T>()) {
-            if (form && form->GetFormEditorID()) {
-                if (strcmp(form->GetFormEditorID(), editorID) == 0) {
+            if (form && STFU::GetEditorID(form)) {
+                if (strcmp(STFU::GetEditorID(form), editorID) == 0) {
                     return form;
                 }
             }

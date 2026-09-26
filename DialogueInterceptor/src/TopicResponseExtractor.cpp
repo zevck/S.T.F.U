@@ -1,4 +1,5 @@
 #include "TopicResponseExtractor.h"
+#include "EditorID.h"
 #include <RE/B/BGSSceneActionDialogue.h>
 #include <spdlog/spdlog.h>
 #include <unordered_set>
@@ -287,7 +288,7 @@ namespace TopicResponseExtractor
             
             DialogueTopicInfo info;
             info.formID = topic->GetFormID();
-            info.editorID = topic->GetFormEditorID() ? topic->GetFormEditorID() : "";
+            info.editorID = STFU::GetEditorID(topic) ? STFU::GetEditorID(topic) : "";
             
             // Get source plugin
             auto* file = topic->GetFile(0);

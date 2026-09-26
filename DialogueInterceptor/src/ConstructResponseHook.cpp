@@ -1,4 +1,5 @@
 #include "ConstructResponseHook.h"
+#include "EditorID.h"
 #include "PopulateTopicInfoHook.h"
 #include "Config.h"
 #include "DialogueDatabase.h"
@@ -135,7 +136,7 @@ namespace ConstructResponseHook
     {
         // Log entry to track if this hook fires when DialogueItem::Ctor returns nullptr
         if (a_topic && a_topicInfo) {
-            const char* topicEditorID = a_topic->GetFormEditorID();
+            const char* topicEditorID = STFU::GetEditorID(a_topic);
             uint16_t subtype = Config::GetAccurateSubtype(a_topic);
             spdlog::debug("[CONSTRUCT ENTRY] Topic: {}, TopicInfo: 0x{:08X}, Subtype: {}",
                 topicEditorID ? topicEditorID : "(none)",
@@ -176,7 +177,7 @@ namespace ConstructResponseHook
             RE::TESQuest* quest = a_topic->ownerQuest;
             uint16_t subtype = Config::GetAccurateSubtype(a_topic);
             
-            const char* topicEditorID = a_topic->GetFormEditorID();
+            const char* topicEditorID = STFU::GetEditorID(a_topic);
             uint32_t topicFormID = a_topic->GetFormID();
             
             spdlog::debug("[ConstructResponse] No cached decision - evaluating: {} (FormID: 0x{:08X}, subtype: {})", 
@@ -205,8 +206,8 @@ namespace ConstructResponseHook
             
             if (subtype == 14) {
                 // Scene detected - check if we should block it
-                const char* topicEditorID = a_topic->GetFormEditorID();
-                const char* questEditorID = a_topic->ownerQuest ? a_topic->ownerQuest->GetFormEditorID() : nullptr;
+                const char* topicEditorID = STFU::GetEditorID(a_topic);
+                const char* questEditorID = a_topic->ownerQuest ? STFU::GetEditorID(a_topic->ownerQuest) : nullptr;
                 RE::TESQuest* quest = a_topic->ownerQuest;
                 bool isHardcoded = Config::IsHardcodedAmbientScene(a_topic);
                 bool isBardSong = Config::IsBardSongQuest(quest);
@@ -274,7 +275,7 @@ namespace ConstructResponseHook
 
         // Apply blocking that was determined before calling original
         if (a_topic && (shouldSoftBlock || shouldBlockSkyrimNet)) {
-            const char* topicEditorID = a_topic->GetFormEditorID();
+            const char* topicEditorID = STFU::GetEditorID(a_topic);
             uint16_t subtype = Config::GetAccurateSubtype(a_topic);
             
             // SOFT BLOCKING: Audio + subtitles (always together)

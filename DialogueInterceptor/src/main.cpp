@@ -1,4 +1,5 @@
 #include "../include/PCH.h"
+#include "EditorID.h"
 #include "Logger.h"
 #include "DialogueHook.h"
 #include "DialogueDatabase.h"
@@ -90,7 +91,7 @@ namespace DialogueItemCtorHook
     {
         // Log entry for all dialogue constructions
         if (a_topic && a_topicInfo && a_speaker) {
-            const char* topicEditorID = a_topic->GetFormEditorID();
+            const char* topicEditorID = STFU::GetEditorID(a_topic);
             const char* speakerName = a_speaker->GetName();
             uint16_t subtype = Config::GetAccurateSubtype(a_topic);
             spdlog::debug("[CTOR ENTRY] Speaker: {}, Topic: {}, TopicInfo: 0x{:08X}, Subtype: {}",
@@ -104,7 +105,7 @@ namespace DialogueItemCtorHook
         // This prevents SkyrimNet from seeing this dialogue while allowing subtitles to work normally
         // NOTE: Only for MENU dialogue - background/ambient dialogue uses ConstructResponse blocking
         if (Config::IsSkyrimNetLoaded() && a_topic && a_topicInfo && a_speaker) {
-            const char* topicEditorID = a_topic->GetFormEditorID();
+            const char* topicEditorID = STFU::GetEditorID(a_topic);
             const char* speakerName = a_speaker->GetName();
             uint16_t subtype = Config::GetAccurateSubtype(a_topic);
             
@@ -206,7 +207,7 @@ namespace DialogueItemCtorHook
                         entry.topicSubtype = subtype;
                         entry.topicSubtypeName = Config::GetSubtypeName(subtype);
                         
-                        entry.questEditorID = a_quest && a_quest->GetFormEditorID() ? a_quest->GetFormEditorID() : "";
+                        entry.questEditorID = a_quest && STFU::GetEditorID(a_quest) ? STFU::GetEditorID(a_quest) : "";
                         entry.questFormID = a_quest ? a_quest->GetFormID() : 0;
                         entry.questName = a_quest && a_quest->GetName() ? a_quest->GetName() : "";
                         
