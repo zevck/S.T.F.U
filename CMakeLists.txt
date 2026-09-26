@@ -61,6 +61,9 @@ add_commonlibsse_plugin(
     SOURCES
         src/main.cpp
         src/Config.cpp
+        src/Config_Scenes.cpp
+        src/Config_Blocking.cpp
+        src/Config_Yaml.cpp
         src/PopulateTopicInfoHook.cpp
         src/ConstructResponseHook.cpp
         src/SceneHook.cpp
