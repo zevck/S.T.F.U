@@ -67,9 +67,19 @@ add_commonlibsse_plugin(
         src/SceneHook.cpp
         src/SceneMonitor.cpp
         src/DialogueDatabase.cpp
+        src/DialogueDatabase_History.cpp
+        src/DialogueDatabase_Blacklist.cpp
+        src/DialogueDatabase_Whitelist.cpp
+        src/DialogueDatabase_Query.cpp
+        src/DialogueDatabase_Json.cpp
         src/DialogueLogger.cpp
         src/TopicResponseExtractor.cpp
         src/PrismaUIMenu.cpp
+        src/PrismaUIMenu_History.cpp
+        src/PrismaUIMenu_Blacklist.cpp
+        src/PrismaUIMenu_Whitelist.cpp
+        src/PrismaUIMenu_Entries.cpp
+        src/PrismaUIMenu_Settings.cpp
         src/SettingsPersistence.cpp
         src/PapyrusInterface.cpp
 )

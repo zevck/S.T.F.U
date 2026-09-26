@@ -109,3 +109,9 @@ overrides:
   DLC2PillarBlockingTopic: Idle
 ```
 *After editing YAMLs you need to click "Import from YAML" in the settings tab or MCM. No need to restart the game.
+
+## License
+
+STFU is Copyright © 2026 Zevick, released under the GNU General Public License v3.0 or later (GPL-3.0-or-later). See [LICENSE.md](LICENSE.md) for the full text.
+
+STFU links against [CommonLibSSE-NG](https://github.com/alandtse/CommonLibSSE-NG) (GPL-3.0), which is why STFU is distributed under the GPL. You are free to use, study, modify, and redistribute STFU under the terms of the GPL, provided derivative works remain open source under the same license.
