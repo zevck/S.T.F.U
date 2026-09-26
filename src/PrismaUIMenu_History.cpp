@@ -95,22 +95,11 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
                 // Regular dialogue entry - check topic whitelist with actor filtering
                 for (const auto& wlEntry : whitelist) {
                     if (wlEntry.targetType == DialogueDB::BlacklistTarget::Topic &&
-                        ((wlEntry.targetFormID == entry.topicFormID && wlEntry.targetFormID != 0) ||
-                         (!wlEntry.targetEditorID.empty() && wlEntry.targetEditorID == entry.topicEditorID))) {
-                        
+                        DialogueDB::EntryMatchesTarget(wlEntry, entry.topicFormID, entry.topicEditorID)) {
+
                         // Whitelist entry found - check actor filter
                         bool hasActorFilter = !wlEntry.actorFilterFormIDs.empty() || !wlEntry.actorFilterNames.empty();
-                        bool actorFilterMatches = false;
-                        if (!wlEntry.actorFilterFormIDs.empty()) {
-                            // Check if speaker FormID matches any actor filter
-                            for (const auto& filterFormID : wlEntry.actorFilterFormIDs) {
-                                if (entry.speakerFormID == filterFormID) {
-                                    actorFilterMatches = true;
-                                    break;
-                                }
-                            }
-                        }
-                        // Note: actorFilterNames without FormIDs is broken state, actorFilterMatches stays false
+                        bool actorFilterMatches = DialogueDB::EntryActorFilterMatches(wlEntry, entry.speakerFormID, entry.speakerName);
                         
                         // Check faction filter using base form (always in memory, unlike placed references)
                         bool hasFactionFilter = !wlEntry.factionFilterEditorIDs.empty();
@@ -155,7 +144,7 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
                 if (entry.speakerFormID != 0) {
                     for (const auto& wlEntry : whitelist) {
                         if (wlEntry.targetType == DialogueDB::BlacklistTarget::Actor &&
-                            wlEntry.targetFormID == entry.speakerFormID) {
+                            DialogueDB::EntryMatchesActor(wlEntry, entry.speakerFormID)) {
                             entry.blockedStatus = DialogueDB::BlockedStatus::Whitelisted;
                             entry.isActorWhitelisted = true;
                             foundInWhitelist = true;
@@ -231,17 +220,7 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
                             if (blEntry.id == blacklistId) {
                                 // Check actor filter - if entry has actor filters, verify speaker matches
                                 bool hasActorFilter = !blEntry.actorFilterFormIDs.empty() || !blEntry.actorFilterNames.empty();
-                                bool actorFilterMatches = false;
-                                if (!blEntry.actorFilterFormIDs.empty()) {
-                                    // Check if speaker FormID matches any actor filter
-                                    for (const auto& filterFormID : blEntry.actorFilterFormIDs) {
-                                        if (entry.speakerFormID == filterFormID) {
-                                            actorFilterMatches = true;
-                                            break;
-                                        }
-                                    }
-                                }
-                                // Note: actorFilterNames without FormIDs is broken state, actorFilterMatches stays false
+                                bool actorFilterMatches = DialogueDB::EntryActorFilterMatches(blEntry, entry.speakerFormID, entry.speakerName);
                                 
                                 // Check faction filter using base form (always in memory, unlike placed references)
                                 bool hasFactionFilter = !blEntry.factionFilterEditorIDs.empty();
@@ -309,7 +288,7 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
                         if (entry.speakerFormID != 0) {
                             for (const auto& blEntry : blacklist) {
                                 if (blEntry.targetType == DialogueDB::BlacklistTarget::Actor &&
-                                    blEntry.targetFormID == entry.speakerFormID) {
+                                    DialogueDB::EntryMatchesActor(blEntry, entry.speakerFormID)) {
                                     // Actor blocks are always soft
                                     if (blEntry.blockType == DialogueDB::BlockType::SkyrimNet) {
                                         entry.blockedStatus = DialogueDB::BlockedStatus::SkyrimNetBlock;
@@ -377,7 +356,7 @@ std::string PrismaUIMenu::SerializeHistoryToJSON()
                 if (entry.speakerFormID != 0) {
                     for (const auto& blEntry : blacklist) {
                         if (blEntry.targetType == DialogueDB::BlacklistTarget::Actor &&
-                            blEntry.targetFormID == entry.speakerFormID) {
+                            DialogueDB::EntryMatchesActor(blEntry, entry.speakerFormID)) {
                             entry.isActorBlocked = true;
                             break;
                         }

@@ -32,10 +32,34 @@ namespace DialogueDB
     std::string ActorNamesToJson(const std::vector<std::string>& names);
     std::string FactionEditorIDsToJson(const std::vector<std::string>& editorIDs);
     std::vector<std::string> JsonToResponses(const std::string& json);
-    bool ActorMatchesFilter(uint32_t actorFormID, const std::string& actorName, const std::vector<uint32_t>& filterFormIDs, const std::vector<std::string>& filterNames);
+    bool ActorMatchesFilter(uint32_t actorFormID, const std::string& actorName, const std::vector<uint32_t>& filterFormIDs,
+                            const std::vector<std::string>& filterNames, const std::vector<std::string>& filterFormKeys);
     std::vector<uint32_t> ParseActorFormIDsFromJson(const std::string& json);
     std::vector<std::string> ParseActorNamesFromJson(const std::string& json);
     std::vector<std::string> ParseFactionEditorIDsFromJson(const std::string& json);
     std::vector<std::string> GetActorFactionEditorIDs(RE::TESObjectREFR* actorRef);
     bool FactionMatchesFilter(RE::TESObjectREFR* actorRef, const std::vector<std::string>& factionFilter);
+
+    // Fills in the FormKeys of an entry about to be saved (see the comment in the definition)
+    void ResolveFormKeys(BlacklistEntry& entry);
+
+    // Id of the saved row for the same record as entry in table ("blacklist"/"whitelist"), or -1.
+    // Also returns that row's block_type through existingBlockType when given.
+    int64_t FindExistingEntry(sqlite3* db, const char* table, const BlacklistEntry& entry, int* existingBlockType = nullptr);
+
+    // Reads one blacklist/whitelist row from a "SELECT *" statement
+    BlacklistEntry ReadListEntry(sqlite3_stmt* stmt, const char* defaultCategory);
+
+    // WHERE fragment matching a topic/scene/quest/subtype/plugin row. Binds, in order: FormKey,
+    // EditorID, FormID. Same rule as EntryMatchesTarget.
+    inline constexpr const char* kTargetMatchSql =
+        "(target_type NOT IN (6, 7) AND ((target_formkey <> '' AND target_formkey = ?)"
+        " OR (target_editorid <> '' AND target_editorid = ?)"
+        " OR (target_formkey = '' AND target_editorid = '' AND target_formid <> 0 AND target_formid = ?)))";
+
+    // WHERE fragment matching an Actor row. Binds, in order: FormKey, FormID. Same rule as
+    // EntryMatchesActor.
+    inline constexpr const char* kActorMatchSql =
+        "(target_type = 6 AND ((target_formkey <> '' AND target_formkey = ?)"
+        " OR (target_formkey = '' AND target_formid <> 0 AND target_formid = ?)))";
 }

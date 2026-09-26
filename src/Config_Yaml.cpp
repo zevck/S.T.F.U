@@ -19,6 +19,7 @@
 #include "Config.h"
 #include "ConfigInternal.h"
 #include "EditorID.h"
+#include "FormKey.h"
 #include "DialogueDatabase.h"
 #include <spdlog/spdlog.h>
 #include <yaml-cpp/yaml.h>
@@ -225,31 +226,14 @@ overrides:
     static std::pair<uint32_t, std::string> ParseFormIdentifierInternal(const std::string& value)
     {
         // Check for FormKey format: "FormID:PluginName" (e.g., "04C2D2:Skyrim.esm")
-        size_t colonPos = value.find(':');
-        if (colonPos != std::string::npos && colonPos > 0) {
-            try {
-                std::string formIDStr = value.substr(0, colonPos);
-                std::string pluginName = value.substr(colonPos + 1);
-                
-                // Parse the form ID (hex string)
-                uint32_t localFormID = std::stoul(formIDStr, nullptr, 16);
-                
-                // Look up plugin to get load order
-                auto* dataHandler = RE::TESDataHandler::GetSingleton();
-                if (dataHandler) {
-                    auto modIndexOpt = dataHandler->GetModIndex(pluginName.c_str());
-                    if (modIndexOpt.has_value()) {
-                        uint8_t modIndex = modIndexOpt.value();
-                        // Construct full form ID: (modIndex << 24) | localFormID
-                        uint32_t fullFormID = (static_cast<uint32_t>(modIndex) << 24) | (localFormID & 0x00FFFFFF);
-                        return {fullFormID, ""};
-                    } else {
-                        spdlog::warn("[Config] Plugin not found for FormKey: {} (plugin: {})", value, pluginName);
-                    }
-                }
-            } catch (const std::exception& e) {
-                spdlog::error("[Config] Failed to parse FormKey: {} (error: {})", value, e.what());
+        // (anything with a colon that isn't a valid FormKey falls through to the EditorID case)
+        uint32_t localFormID = 0;
+        std::string pluginName;
+        if (FormKey::Parse(value, localFormID, pluginName)) {
+            if (const uint32_t formID = FormKey::ToFormID(value)) {
+                return {formID, ""};
             }
+            spdlog::warn("[Config] Plugin not found for FormKey: {} (plugin: {})", value, pluginName);
         }
         
         // Check for 0x format: "0xFormID"

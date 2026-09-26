@@ -18,6 +18,7 @@
 
 #include "PopulateTopicInfoHook.h"
 #include "EditorID.h"
+#include "FormKey.h"
 #include "Config.h"
 #include "DialogueDatabase.h"
 #include "ConstructResponseHook.h"
@@ -174,22 +175,27 @@ namespace PopulateTopicInfoHook
             const char* topicSourcePlugin = a_topic->GetFile(0) ? a_topic->GetFile(0)->fileName : nullptr;
             std::string topicSourcePluginStr = topicSourcePlugin ? topicSourcePlugin : "";
             uint32_t localFormID = topicFormID & 0xFFF;  // Extract last 3 hex digits (stable part)
-            
+            const std::string topicFormKey = FormKey::Of(a_topic);
+
             // Check if this topic/quest is hard-blocked in the database
             bool isHardBlocked = false;
             auto db = DialogueDB::GetDatabase();
             if (db) {
                 // Check blacklist for hard block type
                 auto blacklistCache = db->GetBlacklist();
-                
+
                 // Check topic hard block with ESL-safe matching
                 auto topicEntry = std::find_if(blacklistCache.begin(), blacklistCache.end(),
-                    [topicFormID, &topicEditorIDStr, &questEditorIDStr, &topicSourcePluginStr, localFormID](const DialogueDB::BlacklistEntry& e) {
+                    [topicFormID, &topicFormKey, &topicEditorIDStr, &questEditorIDStr, &topicSourcePluginStr, localFormID](const DialogueDB::BlacklistEntry& e) {
                         if (e.targetType != DialogueDB::BlacklistTarget::Topic || e.blockType != DialogueDB::BlockType::Hard) {
                             return false;
                         }
-                        
-                        // ESL-safe match: quest + plugin + local FormID
+
+                        if (!e.targetFormKey.empty() && e.targetFormKey == topicFormKey) {
+                            return true;
+                        }
+
+                        // ESL-safe match for rows saved before 1.2.0: quest + plugin + local FormID
                         if (!e.questEditorID.empty() && !e.sourcePlugin.empty() && 
                             e.questEditorID == questEditorIDStr && e.sourcePlugin == topicSourcePluginStr &&
                             (e.targetFormID & 0xFFF) == localFormID) {
@@ -201,8 +207,8 @@ namespace PopulateTopicInfoHook
                             return true;
                         }
                         
-                        // Full FormID match (fallback for topics without EditorIDs)
-                        if (e.targetFormID == topicFormID && topicFormID != 0) {
+                        // Full FormID match (fallback for rows saved before 1.2.0 without an EditorID)
+                        if (e.targetFormKey.empty() && e.targetFormID == topicFormID && topicFormID != 0) {
                             return true;
                         }
                         
@@ -220,7 +226,7 @@ namespace PopulateTopicInfoHook
                     auto questEntry = std::find_if(blacklistCache.begin(), blacklistCache.end(),
                         [questFormID, &questEditorIDStr](const DialogueDB::BlacklistEntry& e) {
                             return e.targetType == DialogueDB::BlacklistTarget::Quest &&
-                                   (e.targetFormID == questFormID || e.targetEditorID == questEditorIDStr) &&
+                                   DialogueDB::EntryMatchesTarget(e, questFormID, questEditorIDStr) &&
                                    e.blockType == DialogueDB::BlockType::Hard;
                         });
                     

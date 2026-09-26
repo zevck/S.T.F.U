@@ -73,6 +73,7 @@ add_commonlibsse_plugin(
         src/DialogueDatabase_Query.cpp
         src/DialogueDatabase_Json.cpp
         src/DialogueLogger.cpp
+        src/FormKey.cpp
         src/TopicResponseExtractor.cpp
         src/PrismaUIMenu.cpp
         src/PrismaUIMenu_History.cpp

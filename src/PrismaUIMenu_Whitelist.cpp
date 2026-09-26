@@ -18,6 +18,7 @@
 
 #include "PrismaUIMenu.h"
 #include "EditorID.h"
+#include "FormKey.h"
 #include "Config.h"
 #include "SettingsPersistence.h"
 #include "TopicResponseExtractor.h"
@@ -91,9 +92,10 @@ std::string PrismaUIMenu::SerializeWhitelistToJSON()
         // Emit FormID as "0x" + 8 fixed hex chars. See the corresponding comment
         // in the history serializer for why the previous "leading zero" logic
         // was broken.
-        if (entry.targetFormID != 0) {
+        // The menu works in current-session FormIDs, and sends actor filter FormIDs back on edit
+        if (const auto formID = FormKey::CurrentFormID(entry.targetFormID, entry.targetFormKey); formID != 0) {
             char formIDHex[16];
-            sprintf_s(formIDHex, "0x%08X", entry.targetFormID);
+            sprintf_s(formIDHex, "0x%08X", formID);
             json << "\"topicFormID\":\"" << formIDHex << "\",";
         } else {
             json << "\"topicFormID\":null,";
@@ -118,7 +120,8 @@ std::string PrismaUIMenu::SerializeWhitelistToJSON()
         for (size_t i = 0; i < entry.actorFilterFormIDs.size(); ++i) {
             if (i > 0) json << ",";
             char formIDHex[16];
-            sprintf_s(formIDHex, "%08X", entry.actorFilterFormIDs[i]);
+            const std::string& formKey = i < entry.actorFilterFormKeys.size() ? entry.actorFilterFormKeys[i] : std::string{};
+            sprintf_s(formIDHex, "%08X", FormKey::CurrentFormID(entry.actorFilterFormIDs[i], formKey));
             json << "\"0x" << formIDHex << "\"";
         }
         json << "],";

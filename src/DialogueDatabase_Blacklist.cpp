@@ -32,6 +32,7 @@
 #include <iomanip>
 #include <cstring>
 #include "DialogueDatabaseInternal.h"
+#include "FormKey.h"
 
 namespace DialogueDB
 {
@@ -67,71 +68,11 @@ namespace DialogueDB
             }
         }
 
-        // Check if entry already exists using ESL-safe matching
-        // Priority order:
-        // 1. For Topics with quest+plugin: Match by quest_editorid + source_plugin + local FormID (ESL-safe)
-        // 2. Match by EditorID (works for all ESP/ESM with EditorIDs)
-        // 3. Match by full FormID (fallback for topics without EditorIDs)
-        
-        int64_t existingId = -1;
+        ResolveFormKeys(enrichedEntry);
+
         int existingBlockType = -1;
-        
-        // Try ESL-safe match first (only for Topics with quest and plugin info)
-        if (enrichedEntry.targetType == BlacklistTarget::Topic && 
-            !enrichedEntry.questEditorID.empty() && 
-            !enrichedEntry.sourcePlugin.empty() &&
-            enrichedEntry.targetFormID != 0) {
-            
-            uint32_t localFormID = enrichedEntry.targetFormID & 0xFFF;  // Extract last 3 hex digits (stable part)
-            
-            const char* eslCheckSql = R"(
-                SELECT id, block_type FROM blacklist 
-                WHERE target_type = ? 
-                  AND quest_editorid = ? 
-                  AND source_plugin = ? 
-                  AND (target_formid & 4095) = ?
-                LIMIT 1;
-            )";
-            
-            sqlite3_stmt* eslCheckStmt = nullptr;
-            if (sqlite3_prepare_v2(db_, eslCheckSql, -1, &eslCheckStmt, nullptr) == SQLITE_OK) {
-                sqlite3_bind_int(eslCheckStmt, 1, static_cast<int>(enrichedEntry.targetType));
-                sqlite3_bind_text(eslCheckStmt, 2, enrichedEntry.questEditorID.c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(eslCheckStmt, 3, enrichedEntry.sourcePlugin.c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_int(eslCheckStmt, 4, localFormID);
-                
-                if (sqlite3_step(eslCheckStmt) == SQLITE_ROW) {
-                    existingId = sqlite3_column_int64(eslCheckStmt, 0);
-                    existingBlockType = sqlite3_column_int(eslCheckStmt, 1);
-                    spdlog::debug("[DialogueDB] Found existing entry via ESL-safe match (id={}): Quest={}, Plugin={}, LocalFormID=0x{:03X}", 
-                        existingId, enrichedEntry.questEditorID, enrichedEntry.sourcePlugin, localFormID);
-                }
-                sqlite3_finalize(eslCheckStmt);
-            }
-        }
-        
-        // If not found via ESL-safe match, try standard EditorID/FormID match
-        if (existingId == -1) {
-            const char* checkSql = "SELECT id, block_type FROM blacklist WHERE target_type = ? AND (((target_formid = ? OR target_formid = 0) AND target_editorid = ?) OR (target_editorid = '' AND target_formid = ?)) LIMIT 1;";
-            sqlite3_stmt* checkStmt = nullptr;
-            
-            if (sqlite3_prepare_v2(db_, checkSql, -1, &checkStmt, nullptr) != SQLITE_OK) {
-                spdlog::error("[DialogueDB] Failed to prepare check statement: {}", sqlite3_errmsg(db_));
-                return false;
-            }
-            
-            sqlite3_bind_int(checkStmt, 1, static_cast<int>(enrichedEntry.targetType));
-            sqlite3_bind_int(checkStmt, 2, enrichedEntry.targetFormID);
-            sqlite3_bind_text(checkStmt, 3, enrichedEntry.targetEditorID.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_int(checkStmt, 4, enrichedEntry.targetFormID);
-            
-            if (sqlite3_step(checkStmt) == SQLITE_ROW) {
-                existingId = sqlite3_column_int64(checkStmt, 0);
-                existingBlockType = sqlite3_column_int(checkStmt, 1);
-            }
-            sqlite3_finalize(checkStmt);
-        }
-        
+        const int64_t existingId = FindExistingEntry(db_, "blacklist", enrichedEntry, &existingBlockType);
+
         if (existingId > 0) {
             // Check if block type is changing (for logging purposes)
             bool blockTypeChanged = (existingBlockType != static_cast<int>(enrichedEntry.blockType));
@@ -149,15 +90,17 @@ namespace DialogueDB
                 UPDATE blacklist 
                 SET block_type = ?, added_timestamp = ?, notes = ?, response_text = ?, subtype = ?, subtype_name = ?,
                     filter_category = ?, block_skyrimnet = ?, source_plugin = ?, quest_editorid = ?,
-                    actor_filter_formids = ?, actor_filter_names = ?, faction_filter_editorids = ?
+                    actor_filter_formids = ?, actor_filter_names = ?, faction_filter_editorids = ?,
+                    target_formkey = ?, actor_filter_formkeys = ?
                 WHERE id = ?;
             )";
             sqlite3_stmt* updateStmt = nullptr;
-            
+
             if (sqlite3_prepare_v2(db_, updateSql, -1, &updateStmt, nullptr) != SQLITE_OK) {
                 spdlog::error("[DialogueDB] Failed to prepare update statement: {}", sqlite3_errmsg(db_));
                 return false;
             }
+            std::string actorFormKeysJson = ResponsesToJson(enrichedEntry.actorFilterFormKeys);
             
             // Serialize actor and faction filters to JSON
             std::string actorFormIDsJson = ActorFormIDsToJson(enrichedEntry.actorFilterFormIDs);
@@ -177,7 +120,9 @@ namespace DialogueDB
             sqlite3_bind_text(updateStmt, 11, actorFormIDsJson.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_text(updateStmt, 12, actorNamesJson.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_text(updateStmt, 13, factionEditorIDsJson.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_int64(updateStmt, 14, existingId);
+            sqlite3_bind_text(updateStmt, 14, enrichedEntry.targetFormKey.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(updateStmt, 15, actorFormKeysJson.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_int64(updateStmt, 16, existingId);
             
             bool success = sqlite3_step(updateStmt) == SQLITE_DONE;
             if (!success) {
@@ -287,6 +232,9 @@ namespace DialogueDB
             sqlite3_bind_text(insertBlacklistStmt_, 14, actorFormIDsJson.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_text(insertBlacklistStmt_, 15, actorNamesJson.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_text(insertBlacklistStmt_, 16, factionEditorIDsJson.c_str(), -1, SQLITE_TRANSIENT);
+            std::string actorFormKeysJson = ResponsesToJson(enrichedEntry.actorFilterFormKeys);
+            sqlite3_bind_text(insertBlacklistStmt_, 17, enrichedEntry.targetFormKey.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(insertBlacklistStmt_, 18, actorFormKeysJson.c_str(), -1, SQLITE_TRANSIENT);
 
             if (sqlite3_step(insertBlacklistStmt_) != SQLITE_DONE) {
                 spdlog::error("[DialogueDB] Failed to add blacklist entry: {}", sqlite3_errmsg(db_));
@@ -550,15 +498,15 @@ namespace DialogueDB
 
         if (!db_) return -1;
 
-        // Prioritize EditorID matching (stable for ESL plugins), fall back to FormID if EditorID is empty
-        const char* sql = "SELECT id FROM blacklist WHERE ((target_formid = ? OR target_formid = 0) AND target_editorid = ?) OR (target_editorid = '' AND target_formid = ?) LIMIT 1;";
+        const std::string sql = std::string("SELECT id FROM blacklist WHERE ") + kTargetMatchSql + " LIMIT 1;";
         sqlite3_stmt* stmt = nullptr;
 
-        if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
             return -1;
         }
 
-        sqlite3_bind_int(stmt, 1, formID);
+        const std::string formKey = FormKey::OfFormID(formID);
+        sqlite3_bind_text(stmt, 1, formKey.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, 2, editorID.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_int(stmt, 3, formID);
 
@@ -588,82 +536,7 @@ namespace DialogueDB
         }
 
         while (sqlite3_step(stmt) == SQLITE_ROW) {
-            BlacklistEntry entry;
-            entry.id = sqlite3_column_int64(stmt, 0);
-            entry.targetType = static_cast<BlacklistTarget>(sqlite3_column_int(stmt, 1));
-            entry.targetFormID = sqlite3_column_int(stmt, 2);
-            entry.targetEditorID = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
-            entry.blockType = static_cast<BlockType>(sqlite3_column_int(stmt, 4));
-            entry.addedTimestamp = sqlite3_column_int64(stmt, 5);
-            
-            const char* notes = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
-            entry.notes = notes ? notes : "";
-            
-            const char* responseText = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7));
-            entry.responseText = responseText ? responseText : "";
-            
-            entry.subtype = sqlite3_column_int(stmt, 8);
-            const char* subtypeName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9));
-            entry.subtypeName = subtypeName ? subtypeName : "";
-            
-            const char* filterCategory = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 10));
-            entry.filterCategory = filterCategory ? filterCategory : "Blacklist";
-            
-            // Column 11: block_skyrimnet
-            entry.blockSkyrimNet = sqlite3_column_int(stmt, 11) != 0;
-            
-            // Column 12: source_plugin (may not exist in old databases)
-            if (sqlite3_column_type(stmt, 12) != SQLITE_NULL) {
-                const char* sourcePlugin = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 12));
-                entry.sourcePlugin = sourcePlugin ? sourcePlugin : "";
-            } else {
-                entry.sourcePlugin = "";
-            }
-            
-            // Column 13: quest_editorid (may not exist in old databases)
-            if (sqlite3_column_type(stmt, 13) != SQLITE_NULL) {
-                const char* questEditorID = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 13));
-                entry.questEditorID = questEditorID ? questEditorID : "";
-            } else {
-                entry.questEditorID = "";
-            }
-            
-            // Column 14: actor_filter_formids (JSON array)
-            if (sqlite3_column_type(stmt, 14) != SQLITE_NULL) {
-                const char* actorFormIDsJson = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 14));
-                if (actorFormIDsJson) {
-                    entry.actorFilterFormIDs = ParseActorFormIDsFromJson(actorFormIDsJson);
-                }
-            }
-            
-            // Column 15: actor_filter_names (JSON array)
-            if (sqlite3_column_type(stmt, 15) != SQLITE_NULL) {
-                const char* actorNamesJson = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 15));
-                if (actorNamesJson) {
-                    entry.actorFilterNames = ParseActorNamesFromJson(actorNamesJson);
-                }
-            }
-            
-            // Column 16: faction_filter_editorids (JSON array)
-            if (sqlite3_column_count(stmt) > 16 && sqlite3_column_type(stmt, 16) != SQLITE_NULL) {
-                const char* factionEditorIDsJson = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 16));
-                if (factionEditorIDsJson) {
-                    entry.factionFilterEditorIDs = ParseFactionEditorIDsFromJson(factionEditorIDsJson);
-                }
-            }
-            
-            // Derive blockAudio and blockSubtitles from blockType (not stored in DB)
-            // SkyrimNet-only blocks never block audio/subtitles
-            // Hard and Soft blocks always block both audio and subtitles
-            if (entry.blockType == BlockType::SkyrimNet) {
-                entry.blockAudio = false;
-                entry.blockSubtitles = false;
-            } else {
-                entry.blockAudio = true;
-                entry.blockSubtitles = true;
-            }
-
-            results.push_back(entry);
+            results.push_back(ReadListEntry(stmt, "Blacklist"));
         }
 
         sqlite3_finalize(stmt);

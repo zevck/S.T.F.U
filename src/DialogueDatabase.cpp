@@ -185,6 +185,8 @@ namespace DialogueDB
                 actor_filter_formids TEXT DEFAULT '[]',
                 actor_filter_names TEXT DEFAULT '[]',
                 faction_filter_editorids TEXT DEFAULT '[]',
+                target_formkey TEXT DEFAULT '',
+                actor_filter_formkeys TEXT DEFAULT '[]',
                 UNIQUE(target_type, target_formid, target_editorid)
             );
         )";
@@ -208,6 +210,8 @@ namespace DialogueDB
                 actor_filter_formids TEXT DEFAULT '[]',
                 actor_filter_names TEXT DEFAULT '[]',
                 faction_filter_editorids TEXT DEFAULT '[]',
+                target_formkey TEXT DEFAULT '',
+                actor_filter_formkeys TEXT DEFAULT '[]',
                 UNIQUE(target_type, target_formid, target_editorid)
             );
         )";
@@ -377,7 +381,28 @@ namespace DialogueDB
                 return false;
             }
         }
-        
+
+        // FormKey columns (1.2.0). Existing rows keep '' / '[]' and match the pre-1.2.0 way
+        // until they are saved again.
+        for (const char* table : { "blacklist", "whitelist" }) {
+            const std::pair<const char*, const char*> formKeyColumns[] = {
+                { "target_formkey", "TEXT DEFAULT ''" },
+                { "actor_filter_formkeys", "TEXT DEFAULT '[]'" },
+            };
+            for (const auto& [column, definition] : formKeyColumns) {
+                if (columnExists(table, column)) {
+                    continue;
+                }
+                spdlog::info("[DialogueDB] Adding {} column to {}", column, table);
+                std::string sql = std::format("ALTER TABLE {} ADD COLUMN {} {};", table, column, definition);
+                if (sqlite3_exec(db_, sql.c_str(), nullptr, nullptr, &errMsg) != SQLITE_OK) {
+                    spdlog::error("[DialogueDB] Failed to add {} column to {}: {}", column, table, errMsg);
+                    sqlite3_free(errMsg);
+                    return false;
+                }
+            }
+        }
+
         spdlog::info("[DialogueDB] Schema update complete");
         return true;
     }
@@ -425,8 +450,9 @@ namespace DialogueDB
                 target_type, target_formid, target_editorid,
                 block_type, added_timestamp, notes, response_text, subtype, subtype_name,
                 filter_category, block_skyrimnet, source_plugin, quest_editorid,
-                actor_filter_formids, actor_filter_names, faction_filter_editorids
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                actor_filter_formids, actor_filter_names, faction_filter_editorids,
+                target_formkey, actor_filter_formkeys
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         )";
 
         const char* insertWhitelistSQL = R"(
@@ -434,8 +460,9 @@ namespace DialogueDB
                 target_type, target_formid, target_editorid,
                 block_type, added_timestamp, notes, response_text, subtype, subtype_name,
                 filter_category, block_skyrimnet, source_plugin, quest_editorid,
-                actor_filter_formids, actor_filter_names, faction_filter_editorids
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                actor_filter_formids, actor_filter_names, faction_filter_editorids,
+                target_formkey, actor_filter_formkeys
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         )";
 
         if (sqlite3_prepare_v2(db_, insertDialogueSQL, -1, &insertDialogueStmt_, nullptr) != SQLITE_OK) {

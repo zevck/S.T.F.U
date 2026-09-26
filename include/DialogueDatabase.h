@@ -121,8 +121,9 @@ namespace DialogueDB
     {
         int64_t id = 0;
         BlacklistTarget targetType;
-        uint32_t targetFormID = 0;  // 0 for subtypes, optional for scenes
+        uint32_t targetFormID = 0;  // Runtime FormID when saved; 0 for subtypes, optional for scenes
         std::string targetEditorID;
+        std::string targetFormKey;  // Load-order independent identity ("02707A:Skyrim.esm"); empty on rows saved before 1.2.0
         BlockType blockType;
         int64_t addedTimestamp = 0;
         std::string notes;
@@ -144,10 +145,20 @@ namespace DialogueDB
         // Actor filtering: empty vectors = affects all actors
         std::vector<uint32_t> actorFilterFormIDs;  // Actor FormIDs
         std::vector<std::string> actorFilterNames;  // Actor names (ESL-safe matching with FormID)
+        std::vector<std::string> actorFilterFormKeys;  // FormKey per actor, parallel to the above; "" = match by name + FormID
         std::vector<std::string> factionFilterEditorIDs;  // Faction EditorIDs for faction-based filtering
     };
 
     // SceneBlacklistEntry removed - scenes now use BlacklistEntry with targetType=Scene
+
+    // Matching rules shared by the SQL lookups and the in-memory checks (hard-block pre-check,
+    // history status). FormIDs passed in are current-session FormIDs.
+    //   Target: FormKey, else EditorID, else (legacy rows with neither) the stored FormID.
+    //   Actor rows: FormKey, else (legacy) the stored FormID.
+    //   Actor filters: FormKey, else (legacy) name + last 3 hex digits of the FormID.
+    bool EntryMatchesTarget(const BlacklistEntry& entry, uint32_t formID, const std::string& editorID);
+    bool EntryMatchesActor(const BlacklistEntry& entry, uint32_t actorFormID);
+    bool EntryActorFilterMatches(const BlacklistEntry& entry, uint32_t actorFormID, const std::string& actorName);
 
     // JSON serialization helpers for response arrays
     std::string ResponsesToJson(const std::vector<std::string>& responses);
@@ -189,8 +200,7 @@ namespace DialogueDB
         bool AddToWhitelist(const BlacklistEntry& entry, bool skipEnrichment = false);
         bool RemoveFromWhitelist(int64_t id);
         std::vector<BlacklistEntry> GetWhitelist();
-        bool IsWhitelisted(BlacklistTarget targetType, uint32_t formID, const std::string& editorID, uint32_t actorFormID = 0, const std::string& actorName = "");
-        // Overload with actorRef for faction-aware whitelist checking
+        // Checks the entry's actor filters against actorFormID/actorName and its faction filters against actorRef
         bool IsWhitelisted(BlacklistTarget targetType, uint32_t formID, const std::string& editorID, uint32_t actorFormID, const std::string& actorName, RE::TESObjectREFR* actorRef);
         int ClearWhitelist();  // Remove all whitelist entries, returns count removed
         

@@ -32,6 +32,7 @@
 #include <iomanip>
 #include <cstring>
 #include "DialogueDatabaseInternal.h"
+#include "FormKey.h"
 
 namespace DialogueDB
 {
@@ -68,26 +69,10 @@ namespace DialogueDB
             }
         }
 
-        // Check if entry already exists using ESL-safe matching (prioritize EditorID)
-        const char* checkSql = "SELECT id FROM whitelist WHERE target_type = ? AND (((target_formid = ? OR target_formid = 0) AND target_editorid = ?) OR (target_editorid = '' AND target_formid = ?)) LIMIT 1;";
-        sqlite3_stmt* checkStmt = nullptr;
-        
-        if (sqlite3_prepare_v2(db_, checkSql, -1, &checkStmt, nullptr) != SQLITE_OK) {
-            spdlog::error("[DialogueDB] Failed to prepare whitelist check statement: {}", sqlite3_errmsg(db_));
-            return false;
-        }
-        
-        sqlite3_bind_int(checkStmt, 1, static_cast<int>(enrichedEntry.targetType));
-        sqlite3_bind_int(checkStmt, 2, enrichedEntry.targetFormID);
-        sqlite3_bind_text(checkStmt, 3, enrichedEntry.targetEditorID.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(checkStmt, 4, enrichedEntry.targetFormID);
-        
-        int64_t existingId = -1;
-        if (sqlite3_step(checkStmt) == SQLITE_ROW) {
-            existingId = sqlite3_column_int64(checkStmt, 0);
-        }
-        sqlite3_finalize(checkStmt);
-        
+        ResolveFormKeys(enrichedEntry);
+
+        const int64_t existingId = FindExistingEntry(db_, "whitelist", enrichedEntry);
+
         if (existingId > 0) {
             // Update existing entry
             spdlog::info("[DialogueDB] Updating existing whitelist entry (id={}): {} (FormID: 0x{:08X})", 
@@ -97,7 +82,8 @@ namespace DialogueDB
                 UPDATE whitelist 
                 SET block_type = ?, added_timestamp = ?, notes = ?, response_text = ?, subtype = ?, subtype_name = ?,
                     filter_category = ?, block_skyrimnet = ?, source_plugin = ?, quest_editorid = ?,
-                    actor_filter_formids = ?, actor_filter_names = ?, faction_filter_editorids = ?
+                    actor_filter_formids = ?, actor_filter_names = ?, faction_filter_editorids = ?,
+                    target_formkey = ?, actor_filter_formkeys = ?
                 WHERE id = ?;
             )";
             sqlite3_stmt* updateStmt = nullptr;
@@ -125,7 +111,10 @@ namespace DialogueDB
             sqlite3_bind_text(updateStmt, 11, actorFormIDsJson.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_text(updateStmt, 12, actorNamesJson.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_text(updateStmt, 13, factionEditorIDsJson.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_int64(updateStmt, 14, existingId);
+            std::string actorFormKeysJson = ResponsesToJson(enrichedEntry.actorFilterFormKeys);
+            sqlite3_bind_text(updateStmt, 14, enrichedEntry.targetFormKey.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(updateStmt, 15, actorFormKeysJson.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_int64(updateStmt, 16, existingId);
             
             bool success = sqlite3_step(updateStmt) == SQLITE_DONE;
             if (!success) {
@@ -167,6 +156,9 @@ namespace DialogueDB
             sqlite3_bind_text(insertWhitelistStmt_, 14, actorFormIDsJson.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_text(insertWhitelistStmt_, 15, actorNamesJson.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_text(insertWhitelistStmt_, 16, factionEditorIDsJson.c_str(), -1, SQLITE_TRANSIENT);
+            std::string actorFormKeysJson = ResponsesToJson(enrichedEntry.actorFilterFormKeys);
+            sqlite3_bind_text(insertWhitelistStmt_, 17, enrichedEntry.targetFormKey.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(insertWhitelistStmt_, 18, actorFormKeysJson.c_str(), -1, SQLITE_TRANSIENT);
 
             if (sqlite3_step(insertWhitelistStmt_) != SQLITE_DONE) {
                 spdlog::error("[DialogueDB] Failed to add whitelist entry: {}", sqlite3_errmsg(db_));
@@ -251,138 +243,11 @@ namespace DialogueDB
         }
 
         while (sqlite3_step(stmt) == SQLITE_ROW) {
-            BlacklistEntry entry;
-            entry.id = sqlite3_column_int64(stmt, 0);
-            entry.targetType = static_cast<BlacklistTarget>(sqlite3_column_int(stmt, 1));
-            entry.targetFormID = sqlite3_column_int(stmt, 2);
-            entry.targetEditorID = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
-            entry.blockType = static_cast<BlockType>(sqlite3_column_int(stmt, 4));
-            entry.addedTimestamp = sqlite3_column_int64(stmt, 5);
-            
-            const char* notes = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
-            entry.notes = notes ? notes : "";
-            
-            const char* responseText = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7));
-            entry.responseText = responseText ? responseText : "";
-            
-            entry.subtype = sqlite3_column_int(stmt, 8);
-            const char* subtypeName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9));
-            entry.subtypeName = subtypeName ? subtypeName : "";
-            
-            const char* filterCategory = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 10));
-            entry.filterCategory = filterCategory ? filterCategory : "Whitelist";
-            
-            // Column 11: block_skyrimnet
-            entry.blockSkyrimNet = sqlite3_column_int(stmt, 11) != 0;
-            
-            // Column 12: source_plugin
-            const char* sourcePlugin = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 12));
-            entry.sourcePlugin = sourcePlugin ? sourcePlugin : "";
-            
-            // Column 13: quest_editorid
-            const char* questEditorID = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 13));
-            entry.questEditorID = questEditorID ? questEditorID : "";
-            
-            // Column 14: actor_filter_formids (JSON array)
-            if (sqlite3_column_type(stmt, 14) != SQLITE_NULL) {
-                const char* actorFormIDsJson = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 14));
-                if (actorFormIDsJson) {
-                    entry.actorFilterFormIDs = ParseActorFormIDsFromJson(actorFormIDsJson);
-                }
-            }
-            
-            // Column 15: actor_filter_names (JSON array)
-            if (sqlite3_column_type(stmt, 15) != SQLITE_NULL) {
-                const char* actorNamesJson = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 15));
-                if (actorNamesJson) {
-                    entry.actorFilterNames = ParseActorNamesFromJson(actorNamesJson);
-                }
-            }
-            
-            // Column 16: faction_filter_editorids (JSON array)
-            if (sqlite3_column_count(stmt) > 16 && sqlite3_column_type(stmt, 16) != SQLITE_NULL) {
-                const char* factionEditorIDsJson = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 16));
-                if (factionEditorIDsJson) {
-                    entry.factionFilterEditorIDs = ParseFactionEditorIDsFromJson(factionEditorIDsJson);
-                }
-            }
-            
-            // Derive blockAudio and blockSubtitles from blockType (not stored in DB)
-            // SkyrimNet-only blocks never block audio/subtitles
-            // Hard and Soft blocks always block both audio and subtitles
-            if (entry.blockType == BlockType::SkyrimNet) {
-                entry.blockAudio = false;
-                entry.blockSubtitles = false;
-            } else {
-                entry.blockAudio = true;
-                entry.blockSubtitles = true;
-            }
-
-            results.push_back(entry);
+            results.push_back(ReadListEntry(stmt, "Whitelist"));
         }
 
         sqlite3_finalize(stmt);
         return results;
-    }
-
-    bool Database::IsWhitelisted(BlacklistTarget targetType, uint32_t formID, const std::string& editorID, uint32_t actorFormID, const std::string& actorName)
-    {
-        std::lock_guard<std::recursive_mutex> lock(dbMutex_);
-
-        if (!db_) return false;
-
-        // Prioritize EditorID matching (stable for ESL plugins), fall back to FormID if EditorID is empty
-        const char* sql = "SELECT actor_filter_formids, actor_filter_names FROM whitelist WHERE target_type = ? AND (((target_formid = ? OR target_formid = 0) AND target_editorid = ?) OR (target_editorid = '' AND target_formid = ?)) LIMIT 1;";
-        sqlite3_stmt* stmt = nullptr;
-
-        if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-            return false;
-        }
-
-        sqlite3_bind_int(stmt, 1, static_cast<int>(targetType));
-        sqlite3_bind_int(stmt, 2, formID);
-        sqlite3_bind_text(stmt, 3, editorID.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(stmt, 4, formID);
-
-        bool isWhitelisted = false;
-        if (sqlite3_step(stmt) == SQLITE_ROW) {
-            // Entry found - check actor filters
-            const char* actorFormIDsJson = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-            const char* actorNamesJson = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
-            
-            std::string actorFormIDsStr = actorFormIDsJson ? actorFormIDsJson : "[]";
-            std::string actorNamesStr = actorNamesJson ? actorNamesJson : "[]";
-            
-            // Parse actor filters from database
-            std::vector<uint32_t> filterFormIDs = ParseActorFormIDsFromJson(actorFormIDsStr);
-            std::vector<std::string> filterNames = ParseActorNamesFromJson(actorNamesStr);
-            
-            // If no actor filter specified, whitelist applies to all actors
-            if (filterFormIDs.empty() && filterNames.empty()) {
-                isWhitelisted = true;
-                spdlog::trace("[DialogueDB] IsWhitelisted: No actor filter -> WHITELISTED for all");
-            }
-            // If actor filter exists, check if current actor matches
-            else if ((actorFormID > 0 || !actorName.empty())) {
-                if (ActorMatchesFilter(actorFormID, actorName, filterFormIDs, filterNames)) {
-                    isWhitelisted = true;
-                    spdlog::trace("[DialogueDB] IsWhitelisted: Actor '{}' (0x{:08X}) matches filter -> WHITELISTED", 
-                        actorName, actorFormID);
-                } else {
-                    isWhitelisted = false;
-                    spdlog::trace("[DialogueDB] IsWhitelisted: Actor '{}' (0x{:08X}) not in filter -> NOT WHITELISTED", 
-                        actorName, actorFormID);
-                }
-            }
-            // Actor filter exists but no actor info provided - can't determine if whitelisted
-            else {
-                isWhitelisted = false;
-                spdlog::trace("[DialogueDB] IsWhitelisted: Actor filter exists but no actor info provided -> NOT WHITELISTED");
-            }
-        }
-        
-        sqlite3_finalize(stmt);
-        return isWhitelisted;
     }
 
     bool Database::IsWhitelisted(BlacklistTarget targetType, uint32_t formID, const std::string& editorID, uint32_t actorFormID, const std::string& actorName, RE::TESObjectREFR* actorRef)
@@ -390,13 +255,14 @@ namespace DialogueDB
         std::lock_guard<std::recursive_mutex> lock(dbMutex_);
         if (!db_) return false;
 
-        // Select actor, name, and faction filters
-        const char* sql = "SELECT actor_filter_formids, actor_filter_names, faction_filter_editorids FROM whitelist WHERE target_type = ? AND (((target_formid = ? OR target_formid = 0) AND target_editorid = ?) OR (target_editorid = '' AND target_formid = ?)) LIMIT 1;";
+        const std::string sql = std::string("SELECT actor_filter_formids, actor_filter_names, faction_filter_editorids, actor_filter_formkeys"
+            " FROM whitelist WHERE target_type = ? AND ") + kTargetMatchSql + " LIMIT 1;";
         sqlite3_stmt* stmt = nullptr;
-        if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+        if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return false;
 
+        const std::string formKey = FormKey::OfFormID(formID);
         sqlite3_bind_int(stmt, 1, static_cast<int>(targetType));
-        sqlite3_bind_int(stmt, 2, formID);
+        sqlite3_bind_text(stmt, 2, formKey.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, 3, editorID.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_int(stmt, 4, formID);
 
@@ -405,10 +271,12 @@ namespace DialogueDB
             const char* actorFormIDsJson = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
             const char* actorNamesJson   = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
             const char* factionJson      = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+            const char* actorFormKeysJson = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
 
             std::vector<uint32_t>    filterFormIDs = ParseActorFormIDsFromJson(actorFormIDsJson ? actorFormIDsJson : "[]");
             std::vector<std::string> filterNames   = ParseActorNamesFromJson(actorNamesJson ? actorNamesJson : "[]");
             std::vector<std::string> factionFilter = ParseFactionEditorIDsFromJson(factionJson ? factionJson : "[]");
+            std::vector<std::string> filterFormKeys = JsonToResponses(actorFormKeysJson ? actorFormKeysJson : "[]");
 
             bool hasActorFilter   = !filterFormIDs.empty() || !filterNames.empty();
             bool hasFactionFilter = !factionFilter.empty();
@@ -418,7 +286,7 @@ namespace DialogueDB
                 isWhitelisted = true;
                 spdlog::debug("[DialogueDB] IsWhitelisted(+ref): No filter -> WHITELISTED for all");
             } else if ((actorFormID > 0 || !actorName.empty()) || actorRef) {
-                bool actorMatches   = hasActorFilter   && ActorMatchesFilter(actorFormID, actorName, filterFormIDs, filterNames);
+                bool actorMatches   = hasActorFilter   && ActorMatchesFilter(actorFormID, actorName, filterFormIDs, filterNames, filterFormKeys);
                 bool factionMatches = hasFactionFilter && FactionMatchesFilter(actorRef, factionFilter);
                 if (actorMatches || factionMatches) {
                     isWhitelisted = true;
