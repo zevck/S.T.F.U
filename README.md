@@ -145,6 +145,9 @@ npm run build
 ```
 Copy the contents of `web-ui/dist/` (`index.html` and `assets/`) to `PrismaUI/views/STFU/`.
 
+### MCM script
+Compile `Source/Scripts/STFU_MCM.psc` with the Papyrus compiler (it needs the SkyUI SDK and JContainers script sources) and place the result at `Scripts/STFU_MCM.pex`.
+
 ## License
 
 STFU is Copyright © 2026 Zevick, released under the GNU General Public License v3.0 or later (GPL-3.0-or-later). See [LICENSE.md](LICENSE.md) for the full text.

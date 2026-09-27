@@ -16,11 +16,11 @@ This document gives the map. For more detail on any area, follow the links in [R
 | `lib/detours/` | Submodule: Microsoft Detours. `CMakeLists.txt` compiles it as a static lib. |
 | `CMakeLists.txt`, `CMakePresets.json`, `vcpkg.json` | Build files. See [DEVELOPMENT.md](DEVELOPMENT.md). |
 | `web-ui/` | React + TypeScript + Vite + zustand + Tailwind source for the in-game menu (`src/components`, `src/stores`, `src/lib/skse-api.ts`) |
-| `PrismaUI/views/STFU/` | The deployed web bundle (`index.html` + `assets/`). The plugin loads it as `STFU/index.html`. `assets/` is gitignored. |
+| `PrismaUI/views/STFU/` | Mirrors the mod's layout for the web bundle (`index.html` + `assets/`). The plugin loads it as `STFU/index.html`. `assets/` is gitignored; the deployed copy lives in the MO2 mod folder (see [DEVELOPMENT.md](DEVELOPMENT.md#deploy)). |
 | `Source/Scripts/STFU_MCM.psc` → `Scripts/STFU_MCM.pex` | SkyUI MCM script (`extends SKI_ConfigBase`) that calls the plugin's native functions |
 | `STFU.esp` | Holds the toggle globals (`STFU_Blacklist`, `STFU_Scenes`, `STFU_BardSongs`, `STFU_FollowerCommentary`, `STFU_PreserveGrunts`, one `STFU_<Subtype>` per subtype toggle) and the MCM quest |
 | `Sound/STFU/silent.fuz` | Silent voice file. Soft-blocked **scene** lines are redirected to it so the scene's audio-complete callback still fires. (`stfu_silent.wav` is its source.) |
-| `SKSE/Plugins/STFU.dll` | The deployed DLL. Local only: `*.dll` is gitignored. |
+| `SKSE/Plugins/STFU.dll` | Output of `cmake --install`, not the deployed DLL. Local only: `*.dll` is gitignored. |
 | `README.md`, `DIALOGUE_SUBTYPES.md` | User-facing readme and the subtype reference |
 | `docs/` | These developer docs |
 

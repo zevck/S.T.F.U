@@ -174,7 +174,7 @@ no component library.
   window.SKSE_API.call('updateSettings', JSON.stringify({ blacklistEnabled: true, subtypes: { 94: true } }))
   ```
   Chrome is not Ultralight — check key handling, selects and layout in game before trusting them.
-- **In game**: build, copy `dist/*` to `PrismaUI/views/STFU/`, restart the game (under MO2 the mod folder is the source; the build doesn't deploy itself). Debug with `STFU.log` — every `log()` call and every `sendToSKSE` lands there as `[PrismaUIMenu::JS]`. PrismaUI's API has `CreateInspectorView`, but STFU doesn't call it.
+- **In game**: build, copy `dist/*` to `PrismaUI/views/STFU/` in the MO2 mod folder (see [DEVELOPMENT.md](DEVELOPMENT.md#deploy); the build doesn't deploy itself), restart the game. Debug with `STFU.log` — every `log()` call and every `sendToSKSE` lands there as `[PrismaUIMenu::JS]`. PrismaUI's API has `CreateInspectorView`, but STFU doesn't call it.
 - `React.StrictMode` double-runs effects in dev builds only; the subscribe/unsubscribe pairs in `app.tsx` are written to tolerate that.
 
 ## Gotchas

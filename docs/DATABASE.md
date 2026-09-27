@@ -73,8 +73,7 @@ is lost.
 ## Schema
 
 These are the verbatim `CREATE TABLE IF NOT EXISTS` statements from
-`CreateTables()`. The live DB matches them, checked against
-`sqlite_master` in the author's copy on 2026-09-26.
+`CreateTables()`, plus the columns added since (see Schema evolution).
 
 ### `dialogue_log` (history)
 
@@ -222,8 +221,8 @@ configurable):
 `SerializeHistoryToJSON` asks for `GetRecentDialogue(1000)`, but it can never
 get more than 100 rows back. Users can also delete rows from the UI with
 `DeleteDialogueEntriesBatch`. Nothing runs `VACUUM` and `auto_vacuum` is off,
-so freed pages stay in the file. The author's DB is ~70 MB, of which ~69 MB is
-freelist (16,900 of 17,092 pages), with ~100 live history rows.
+so freed pages stay in the file. A long-used DB can reach ~70 MB that is almost
+entirely free pages while holding only ~100 live history rows.
 
 ## Public API
 
@@ -310,12 +309,12 @@ needs the `-wal` file, which can hold data not yet checkpointed into
 `dialogue.db`.
 
 ```bash
-SRC="/c/Nolvus/Instances/Nolvus Awakening/MODS/overwrite/SKSE/Plugins/STFU/data"
-mkdir -p /c/tmp/stfu-db && cp "$SRC"/dialogue.db* /c/tmp/stfu-db/
-sqlite3 /c/tmp/stfu-db/dialogue.db     # or: python -c "import sqlite3; ..."
+SRC="<MO2>/overwrite/SKSE/Plugins/STFU/data"
+mkdir -p /tmp/stfu-db && cp "$SRC"/dialogue.db* /tmp/stfu-db/
+sqlite3 /tmp/stfu-db/dialogue.db     # or: python -c "import sqlite3; ..."
 ```
 
-`sqlite3.exe` is not on PATH on the author's machine. Python's built-in
+`sqlite3.exe` doesn't ship with Windows. Python's built-in
 `sqlite3` module works.
 
 ```sql

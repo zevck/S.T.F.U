@@ -57,7 +57,7 @@ Quest Hard rows with an empty EditorID matching every EditorID-less quest, posit
 14. **Per-line cost.** Every non-duplicate line copies the whole blacklist (`GetBlacklist()`) for the hard pre-check, and
     again for scene lines; `ShouldSoftBlock` runs up to three times per line. `SceneMonitor::Initialize` calls
     `GetBlacklist()` per scene (O(n²)).
-15. **Database bloat.** The author's `dialogue.db` was ~70 MB with ~69 MB of free pages, plus a 37 MB WAL. Nothing runs
+15. **Database bloat.** A long-used `dialogue.db` was seen at ~70 MB with ~69 MB of free pages, plus a 37 MB WAL. Nothing runs
     `VACUUM` or checkpoints.
 16. **NULL text columns** are assigned to `std::string` without checks in the history reader (`GetRecentDialogue`).
 17. **`UpdateSchema` gaps.** `actor_filter_formids`, `actor_filter_names` (both tables) and `whitelist.source_plugin` are

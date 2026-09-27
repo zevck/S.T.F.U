@@ -1,6 +1,6 @@
 # Developing STFU
 
-This doc covers how to build, deploy, debug and verify STFU, and lists what not to trip over. The repo root **is** the MO2 mod folder (`MODS/mods/STFU`). "Deploy" therefore means copying build output into the repo's own `SKSE/Plugins/` and `PrismaUI/views/STFU/` folders.
+This doc covers how to build, deploy, debug and verify STFU, and lists what not to trip over. Keep the repo outside the game install. "Deploy" means copying build output into STFU's mod folder in the MO2 instance you play from (`<MO2>/mods/STFU` below).
 
 There is **no automated test suite**. `git ls-files` contains no test or spec files, CMake builds no test target (`BUILD_TESTS OFF` for CommonLib), and `web-ui/package.json` has no `test` script. Every change is verified **in game, through the logs** (see [Verifying a change in game](#verifying-a-change-in-game)).
 
@@ -52,20 +52,23 @@ npm run dev       # browser dev server on :5173 (no SKSE bridge; window.* listen
 **Close the game first.** The DLL is locked while Skyrim runs, and the build does **not** auto-deploy.
 
 ```powershell
+$mod = "<MO2>\mods\STFU"   # set to your MO2 instance's STFU mod folder
+
 # plugin
-Copy-Item build\Release\STFU.dll SKSE\Plugins\STFU.dll
-# (alternative: `cmake --install build --config Release` - install() rules copy the DLL + PDB
-#  to <repo>/SKSE/Plugins because CMAKE_INSTALL_PREFIX is forced to the repo root; not the
-#  author's usual path, not verified)
+Copy-Item build\Release\STFU.dll "$mod\SKSE\Plugins\STFU.dll"
 
 # web UI - clear old hashed bundles first, then copy dist contents
-Remove-Item PrismaUI\views\STFU\assets -Recurse -Force
-Copy-Item web-ui\dist\* PrismaUI\views\STFU\ -Recurse
+Remove-Item "$mod\PrismaUI\views\STFU\assets" -Recurse -Force
+Copy-Item web-ui\dist\* "$mod\PrismaUI\views\STFU\" -Recurse
+
+# only when they change: Scripts\STFU_MCM.pex, Source\Scripts\STFU_MCM.psc, STFU.esp, Sound\STFU\silent.fuz
 ```
 
+Verify with `Get-FileHash -Algorithm MD5` on both sides. (`cmake --install` copies the DLL + PDB into the repo's own `SKSE/Plugins/`, because `CMAKE_INSTALL_PREFIX` is forced to the repo root; that is not a deploy.)
+
 - `PrismaUI/views/STFU/index.html` is tracked in git, but `assets/` is gitignored. A rebuild changes the hashed filenames, so `index.html` shows up as modified after every UI deploy. That is expected.
-- Stale bundles pile up if `assets/` is not cleared. At the time of writing it holds 5 files, and `index.html` references only 2 of them.
-- Papyrus: the repo has no build step for `Source/Scripts/STFU_MCM.psc` → `Scripts/STFU_MCM.pex`. Compile it by hand with the Papyrus compiler. It imports SkyUI's `SKI_ConfigBase` and JContainers' `JValue`.
+- Stale bundles pile up in the mod folder if `assets/` is not cleared first. Only the two files `index.html` references belong there, and only those go in a release zip.
+- Papyrus: the repo has no build step for `Source/Scripts/STFU_MCM.psc` → `Scripts/STFU_MCM.pex`, and compiled `.pex` files are gitignored. Compile it by hand with the Papyrus compiler. It imports SkyUI's `SKI_ConfigBase` and JContainers' `JValue`.
 - `STFU.esp` is edited with xEdit or the CK. It holds the toggle globals that `Config::Load()` looks up by EditorID.
 
 ---
@@ -177,7 +180,7 @@ The third value in each `VariantID` is the VR offset, which has not been tested.
 
 ## Gotchas
 
-- **git `core.autocrlf=true`** on the author's machine. A file restored with `git checkout`/`git restore` comes back **CRLF** in the working tree (`include/PrismaUI_API.h` is currently `w/crlf`). Normalize it to LF before editing or committing if it matters.
+- **git `core.autocrlf=true`** (Git for Windows default). A file restored with `git checkout`/`git restore` comes back **CRLF** in the working tree (`include/PrismaUI_API.h` is currently `w/crlf`). Normalize it to LF before editing or committing if it matters.
 - **Shell heredocs mangle backslashes** on this machine (Git Bash / PowerShell). Write files with a file-writing tool, not `cat <<EOF`, especially for Windows paths and C++ string escapes such as `"Sound\\STFU\\silent.fuz"`.
 - **Dead-code checks need real call sites.** A handler is live if JS calls `sendToSKSE('name'` (or `window.name(...)`) **and** C++ registers it with `RegisterJSListener(view_, "name", ...)`. One C++ handler can be registered under several names (`OnUpdateBlacklistEntry` also serves `"updateBlacklistEntryAdvanced"`). A loose grep for the function name finds comments and near-namesakes, so it gives the wrong answer.
 - **Hand-copied parsers drift.** Before 68a97b9 the handlers each had their own JSON readers. That commit deduplicated them and, in the same change, fixed whitelist edits that saved a bogus actor filter. Use `PrismaUIMenuJson.h`.
