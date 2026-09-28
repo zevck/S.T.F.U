@@ -117,7 +117,7 @@ STFU has two parts: the SKSE plugin (C++, at the repository root) and the in-gam
 - Node.js and npm, for the menu
 
 ### Clone
-The repository uses git submodules for its dependencies ([Detours](https://github.com/microsoft/Detours) and CommonLibSSE-NG, which has a nested submodule of its own). Clone recursively:
+The repository uses git submodules for its dependencies ([Detours](https://github.com/microsoft/Detours) and [CommonLibSSE-NG](https://github.com/alandtse/CommonLibSSE-NG), which has a nested submodule of its own). Clone recursively:
 ```
 git clone --recursive https://github.com/zevck/S.T.F.U.git
 ```
