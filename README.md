@@ -1,19 +1,17 @@
 # S.T.F.U - Skyrim Talk Filter Utility
 Skyrim Talk Filter Utility gives you full control over what dialogue you hear in game. You can use the UI to view all recent dialogue and add it to the blacklist. S.T.F.U also ships with options for pre-configured blocking categories.
 
-## Requirements
+## 📋 Requirements
 - Skyrim Special Edition or Skyrim VR
 - [SKSE64](https://skse.silverlock.org/)
 - [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444)
 - [powerofthree's Tweaks](https://www.nexusmods.com/skyrimspecialedition/mods/51073) *(restores EditorIDs on AE)*
 - [PrismaUI](https://www.nexusmods.com/skyrimspecialedition/mods/148718) *(for the in-game interface)*
 
-(Install it like any other mod)
+Install it like any other mod.
 
-## How It Works
-S.T.F.U runs silently in the background and checks every line of dialogue before it plays. If a line matches your configured rules, it either silences it or blocks it entirely.
-
-There are two ways to block dialogue:
+## ❓How It Works
+S.T.F.U runs silently in the background and checks every line of dialogue before it plays. If a line matches your configured rules, it either silences it or blocks it entirely. There are two ways to block dialogue:
 
 ### Soft Block *(recommended)*
 The audio is silenced and subtitles are hidden, but everything else continues normally. Quest scripts run, follower commands work, conversation flags get set — the game doesn't know anything was blocked. The NPC simply says nothing.
@@ -21,7 +19,7 @@ The audio is silenced and subtitles are hidden, but everything else continues no
 ### Hard Block
 The dialogue or scene is stopped from running at all. Scripts do **not** execute. Only use this for purely ambient scenes (like bard songs) that have no quest or script involvement — applying a hard block to the wrong thing can break quests.
 
-## What You Can Block
+## 🙊 What You Can Block
 **Individual topics**: silence a specific line or set of lines, identified by name or ID.
 
 **Scenes**: stop an entire scene sequence. Bard performances, inn conversations, ambient banter. Blocked by injecting conditions at runtime with no ESP edits required.
@@ -32,7 +30,7 @@ The dialogue or scene is stopped from running at all. Scripts do **not** execute
 
 **Whitelist**: mark topics, scenes, quests, or plugins as protected so they are *never* blocked, even if they match a blacklist rule. Use this to punch exceptions through broad filters.
 
-## In-Game Interface
+## 📊 In-Game Interface
 Open the S.T.F.U menu with the **Insert** key (configurable in the MCM). Requires [PrismaUI](https://www.nexusmods.com/skyrimspecialedition/mods/148718).
 
 <p align="center">
@@ -60,7 +58,7 @@ The full list of everything that is protected from being blocked. Same editing c
 ### Actor and Faction Filtering
 Any blacklist or whitelist entry can be scoped to specific actors or factions. For example: silence a specific topic only when spoken by a particular NPC, or protect a topic only when the speaker belongs to a certain faction.
 
-## Configuring Without the UI
+## 📝 Configuring Without the UI
 Topics, scenes, and quests can be added to your blacklist and whitelist through plain text YAML files. Useful for sharing configs, batch-adding entries, or setting things up before launching the game. Actor and faction filtering requires the in-game UI.
 
 ### Where Are the Files?
@@ -106,9 +104,10 @@ If a topic is miscategorized (assigned the wrong subtype by the game), you can m
 overrides:
   DLC2PillarBlockingTopic: Idle
 ```
-*After editing YAMLs you need to click "Import from YAML" in the settings tab or MCM. No need to restart the game.
+> [!NOTE]
+> After editing YAMLs you need to click "Import from YAML" in the settings tab or MCM. No need to restart the game.
 
-## Building from Source
+## 🛠️ Building from Source
 STFU has two parts: the SKSE plugin (C++, at the repository root) and the in-game menu (React, in `web-ui/`).
 
 ### Prerequisites
@@ -146,6 +145,6 @@ Copy the contents of `web-ui/dist/` (`index.html` and `assets/`) to `PrismaUI/vi
 ### MCM script
 Compile `Source/Scripts/STFU_MCM.psc` with the Papyrus compiler (it needs the SkyUI SDK and JContainers script sources) and place the result at `Scripts/STFU_MCM.pex`.
 
-## License
+## 🔑 License
 
 STFU is released under the GNU General Public License v3.0 or later (GPL-3.0-or-later). See [LICENSE.md](LICENSE.md) for the full text.
