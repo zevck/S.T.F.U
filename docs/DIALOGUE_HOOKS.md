@@ -270,8 +270,13 @@ match at all for most AE forms.
   Used in phase 1 for every PopulateTopicInfo call.
 - `ExtractAllResponsesForTopic(editorID | formID)`, `ExtractAllResponsesForScene(sceneEditorID)`:
   gather the text of every TopicInfo of a topic, or of every dialogue action's topic in a scene.
-  If `numTopicInfos == 0 && topicInfos == nullptr` they call `topic->Load(file)` to force-load it.
-  Used in phases 4 and 7 to fill `allResponses`, and for runtime blacklist enrichment.
+  Topics with no loaded TopicInfos yield no responses. Used in phases 4 and 7 to fill
+  `allResponses`, and for runtime blacklist enrichment.
+- **Never call a form's `Load(file)`.** `TESTopic::Load` (AE id 25517) parses whatever record the
+  shared plugin file is positioned at, not the form's own, and nothing resolves its FormID
+  references afterwards. Through 1.2.0 the extractor did this for topics with no loaded infos; logging
+  a scene line could overwrite the scene's next topic with an unrelated one whose owner quest was a
+  raw FormID, crashing in id 25544 (`test [ownerQuest+0xDC]`). Reported in MQ104IntroScene.
 - The `try/catch (std::exception)` blocks won't catch access violations (SEH).
 
 ## Log lines to grep for

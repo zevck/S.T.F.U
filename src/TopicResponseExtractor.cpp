@@ -82,18 +82,8 @@ namespace TopicResponseExtractor
             return allResponses;
         }
         
-        // Force-load the topic data from file if TopicInfos not yet loaded
-        if (topic->numTopicInfos == 0 && topic->topicInfos == nullptr) {
-            auto* file = topic->GetFile(0);
-            if (file) {
-                spdlog::debug("[ResponseExtractor] Topic {} has 0 TopicInfos, calling Load() to force load from {}", 
-                    identifier, file->GetFilename());
-                topic->Load(file);
-            } else {
-                spdlog::warn("[ResponseExtractor] Topic {} has no file pointer, cannot force load", identifier);
-            }
-        }
-        
+        // Never call topic->Load(): it parses whatever record the plugin file is positioned at,
+        // overwriting this topic with another one (crashed MQ104IntroScene). Unloaded topics get no preview.
         spdlog::info("[ResponseExtractor] Extracting responses for topic: {} ({} TopicInfos)", 
             identifier, topic->numTopicInfos);
         
@@ -217,18 +207,7 @@ namespace TopicResponseExtractor
             // Get the topic associated with this scene action
             auto* topic = dialogueAction->topic;
             
-            // Force-load the topic data from file if TopicInfos not yet loaded
-            if (topic->numTopicInfos == 0 && topic->topicInfos == nullptr) {
-                auto* file = topic->GetFile(0);
-                if (file) {
-                    spdlog::debug("[ResponseExtractor] Topic has 0 TopicInfos, calling Load() to force load from {}", 
-                        file->GetFilename());
-                    topic->Load(file);
-                } else {
-                    spdlog::warn("[ResponseExtractor] Topic has no file pointer, cannot force load");
-                }
-            }
-            
+            // No topic->Load() here either (see ExtractAllResponsesFromTopicPtr)
             spdlog::debug("[ResponseExtractor] Scene {} - Dialogue action has topic with {} TopicInfos", 
                 sceneEditorID, topic->numTopicInfos);
             
@@ -255,7 +234,7 @@ namespace TopicResponseExtractor
                     }
                 }
             } else {
-                spdlog::debug("[ResponseExtractor] Topic has no TopicInfos or null array after InitItemImpl");
+                spdlog::debug("[ResponseExtractor] Topic has no loaded TopicInfos, no responses to extract");
             }
         }
         
