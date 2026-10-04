@@ -296,19 +296,20 @@ overrides:
         return {0, value};
     }
 
-    static void ImportSubtypeOverrides()
+    // Returns false if the file exists but failed to parse
+    static bool ImportSubtypeOverrides()
     {
         std::string overridesPath = GetSubtypeOverridesPath();
-        
+
         if (!std::filesystem::exists(overridesPath)) {
             spdlog::debug("[Config] Subtype overrides YAML not found: {}", overridesPath);
-            return;
+            return true;
         }
 
         auto* db = DialogueDB::GetDatabase();
         if (!db) {
             spdlog::error("[Config] Database not available for subtype overrides import");
-            return;
+            return true;
         }
 
         try {
@@ -317,7 +318,7 @@ overrides:
             
             if (!config["overrides"] || !config["overrides"].IsMap()) {
                 spdlog::warn("[Config] No 'overrides' section found in STFU_SubtypeOverrides.yaml");
-                return;
+                return true;
             }
 
             int importedCount = 0;
@@ -363,7 +364,9 @@ overrides:
 
         } catch (const YAML::Exception& e) {
             spdlog::error("[Config] Subtype overrides YAML parse error: {}", e.what());
+            return false;
         }
+        return true;
     }
 
     // Imports the topics/scenes/quests sections shared by STFU_Blacklist.yaml and
@@ -473,9 +476,10 @@ overrides:
         }
     }
 
-    int ImportYAMLToDatabase()
+    int ImportYAMLToDatabase(int* failedFiles)
     {
         spdlog::info("[Config] Starting YAML import to database...");
+        int parseFailures = 0;
         
         auto* db = DialogueDB::GetDatabase();
         if (!db) {
@@ -502,6 +506,7 @@ overrides:
                     
             } catch (const YAML::Exception& e) {
                 spdlog::error("[Config] Blacklist YAML import error: {}", e.what());
+                parseFailures++;
             }
         } else {
             spdlog::warn("[Config] Blacklist YAML not found: {}", blacklistPath);
@@ -545,18 +550,24 @@ overrides:
                     
             } catch (const YAML::Exception& e) {
                 spdlog::error("[Config] Whitelist YAML import error: {}", e.what());
+                parseFailures++;
             }
         } else {
             spdlog::warn("[Config] Whitelist YAML not found: {}", whitelistPath);
         }
         
         // Import subtype overrides
-        ImportSubtypeOverrides();
-        
+        if (!ImportSubtypeOverrides()) {
+            parseFailures++;
+        }
+
         int totalBlacklist = blacklistTopics + blacklistScenes + blacklistQuests;
         int totalWhitelist = whitelistTopics + whitelistScenes + whitelistQuests + whitelistPlugins;
-        spdlog::info("[Config] YAML import complete - Blacklist: {} entries | Whitelist: {} entries",
-            totalBlacklist, totalWhitelist);
+        spdlog::info("[Config] YAML import complete - Blacklist: {} entries | Whitelist: {} entries | {} file(s) failed to parse",
+            totalBlacklist, totalWhitelist, parseFailures);
+        if (failedFiles) {
+            *failedFiles = parseFailures;
+        }
         return totalBlacklist + totalWhitelist;
     }
     // Public wrapper for ParseFormIdentifier

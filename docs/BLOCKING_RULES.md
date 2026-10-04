@@ -52,6 +52,7 @@ means the scene is prevented from starting via phase conditions (SCENE_BLOCKING.
 
 | Value | Name | Created by | Evaluated at runtime? |
 |---|---|---|---|
+| 0 | None | In-memory default of `BlacklistEntry::targetType` (an unresolved entry). Never saved by current code; old rows may hold it | No |
 | 1 | Topic | UI (FormID/EditorID of a `TESTopic`), YAML `topics:`, YAML `quests:` (expanded into one Topic row per topic), subtype overrides | Yes. Soft via `Database::ShouldSoftBlock`, Hard via the PopulateTopicInfo pre-check |
 | 2 | Quest | **Nothing creates these today.** The YAML `quests:` section expands to Topic rows. | Blacklist: Hard only (PopulateTopicInfo pre-check). Whitelist: `IsWhitelisted(Quest, …)` in `Config::ShouldSoftBlock` |
 | 3 | Subtype | Nothing | No. Display only (`PrismaUIMenu_Blacklist.cpp`) |
@@ -327,7 +328,7 @@ except deleting that row, because the pre-check ignores toggles.
 | `[ConstructResponse] No cached decision - evaluating` | debug | Fallback path (no actor filters applied). |
 | `[STALE CACHE]` | warn | Cached decision belonged to another TopicInfo. |
 | `Global '…' not found in loaded ESPs` | warn | A toggle global is missing, so its category never blocks. |
-| `Loaded N subtype globals from STFU.esp` | info | Startup count of subtype toggles. |
+| `Loaded N of M subtype globals from STFU.esp` | info | Startup count of subtype toggles. |
 | `Unknown subtype name '…' for topic` | warn | Bad override YAML. |
 
 ## Gotchas / invariants
@@ -355,8 +356,7 @@ except deleting that row, because the pre-check ignores toggles.
 
 ### Add a new filter category (new master toggle)
 1. Add a `GlobalVariable` `STFU_<Name>` to `STFU.esp`, plus an MCM property and toggle in `Source/Scripts/STFU_MCM.psc`.
-2. `src/Config.h` `MCMSettings`: add a `RE::TESGlobal*`. Resolve it in `Config::Load()` with `lookupGlobal("STFU_<Name>")`,
-   and update the "5 master toggles" count in the log.
+2. `src/Config.h` `MCMSettings`: add a `RE::TESGlobal*`. Resolve it in `Config::Load()` with `lookupGlobal("STFU_<Name>")`.
 3. `Config::IsFilterCategoryEnabled()`: add an `if (filterCategory == "<Name>")` branch **before** the subtype loop.
 4. If scenes can carry it: add a branch to `Config::GetSceneGateGlobalForCategory()` (`Config_Scenes.cpp`) and an importer
    like `ImportHardcodedScenes(list, "<Name>")`.

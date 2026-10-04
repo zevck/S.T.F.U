@@ -28,14 +28,13 @@ namespace PapyrusInterface
     {
         spdlog::info("[PapyrusInterface] ImportHardcodedScenes called from MCM");
         
-        // Run import on background thread to avoid blocking MCM
-        std::thread([](){
+        // Read the bard scenes from the game forms here, then run the import on a background thread to avoid blocking MCM
+        auto bardScenes = Config::GetBardSongScenesList();
+        std::thread([bardScenes = std::move(bardScenes)](){
             auto* db = DialogueDB::GetDatabase();
             if (!db) return;
             auto scenesList = Config::GetHardcodedScenesList();
             db->ImportHardcodedScenes(scenesList, "Scene");
-            auto bardSongs = Config::GetBardSongQuestsList();
-            std::vector<std::string> bardScenes(bardSongs.begin(), bardSongs.end());
             db->ImportHardcodedScenes(bardScenes, "BardSongs");
             auto followerScenes = Config::GetFollowerCommentaryScenesList();
             db->ImportHardcodedScenes(followerScenes, "FollowerCommentary");

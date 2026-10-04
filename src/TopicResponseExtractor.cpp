@@ -84,7 +84,7 @@ namespace TopicResponseExtractor
         
         // Never call topic->Load(): it parses whatever record the plugin file is positioned at,
         // overwriting this topic with another one (crashed MQ104IntroScene). Unloaded topics get no preview.
-        spdlog::info("[ResponseExtractor] Extracting responses for topic: {} ({} TopicInfos)", 
+        spdlog::debug("[ResponseExtractor] Extracting responses for topic: {} ({} TopicInfos)", 
             identifier, topic->numTopicInfos);
         
         // Loop through all TopicInfo entries in this topic
@@ -105,7 +105,7 @@ namespace TopicResponseExtractor
             }
         }
         
-        spdlog::info("[ResponseExtractor] Extracted {} total responses for topic {}", 
+        spdlog::debug("[ResponseExtractor] Extracted {} total responses for topic {}", 
             allResponses.size(), identifier);
         
         return allResponses;
@@ -171,7 +171,7 @@ namespace TopicResponseExtractor
             return allResponses;
         }
         
-        spdlog::info("[ResponseExtractor] Scene found: {} - has {} actions", 
+        spdlog::debug("[ResponseExtractor] Scene found: {} - has {} actions", 
             sceneEditorID, scene->actions.size());
         
         // Loop through all scene actions
@@ -238,7 +238,7 @@ namespace TopicResponseExtractor
             }
         }
         
-        spdlog::info("[ResponseExtractor] Scene {} - Found {} dialogue actions, extracted {} total responses", 
+        spdlog::debug("[ResponseExtractor] Scene {} - Found {} dialogue actions, extracted {} total responses", 
             sceneEditorID, dialogueActionCount, allResponses.size());
         
         return allResponses;

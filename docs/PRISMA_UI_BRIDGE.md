@@ -105,7 +105,7 @@ arrives as `""`). All callers go through `SKSE_API.sendToSKSE(name, data)` in
 | `setBardSongsEnabled` | `OnSetBardSongsEnabled` | `{"enabled":bool}` | → `mcm.blockBardSongsGlobal` | `updateSettings` | settings.tsx |
 | `setFollowerCommentaryEnabled` | `OnSetFollowerCommentaryEnabled` | `{"enabled":bool}` | → `mcm.blockFollowerCommentaryGlobal` | `updateSettings` | settings.tsx (Follower tab + Enable/Disable All) |
 | `setCombatGruntsBlocked` | `OnSetCombatGruntsBlocked` | `{"blocked":bool}` | → `mcm.preserveGruntsGlobal` (1 = grunts blocked, despite the name) | `updateSettings` | settings.tsx (Combat tab + Enable/Disable All) |
-| `importScenes` | `OnImportScenes` | ignored | `ImportHardcodedScenes` for `GetHardcodedScenesList()` ("Scene"), `GetBardSongQuestsList()` ("BardSongs"), `GetFollowerCommentaryScenesList()` ("FollowerCommentary") | `showToast(success\|error)`, `updateBlacklist`, `updateHistory` | settings.tsx Import Scenes |
+| `importScenes` | `OnImportScenes` | ignored | `ImportHardcodedScenes` for `GetHardcodedScenesList()` ("Scene"), `GetBardSongScenesList()` ("BardSongs", the scenes of the bard song quests), `GetFollowerCommentaryScenesList()` ("FollowerCommentary") | `showToast(success\|error)`, `updateBlacklist`, `updateHistory` | settings.tsx Import Scenes |
 | `importYAML` | `OnImportYAML` | ignored | Checks `<exe dir>/Data/SKSE/Plugins/STFU/import/STFU_{Blacklist,Whitelist}.yaml` exist, then `Config::ImportYAMLToDatabase()` | `showToast`, `updateBlacklist`, `updateWhitelist`, `updateHistory` | settings.tsx Import from YAML |
 
 `SetToggleFromUI` (all five `set*` toggles) writes `global->value = 1.0/0.0`, calls
@@ -126,7 +126,7 @@ are functionally duplicates.
 | `SKSE_API.call('updateSettings', s)` | `SendSettingsData` | `{blacklistEnabled, scenesEnabled, bardSongsEnabled, followerCommentaryEnabled, combatGruntsBlocked, subtypes:{"<id>":bool,...}}` — each is `global->value >= 0.5`; `subtypes` iterates `mcm.subtypeGlobals`. |
 | `window.handleIdentifierDetection(obj)` | `OnDetectIdentifierType` | `{type:"topic"\|"scene"\|"plugin"\|"actor"\|"faction"\|"unknown", displayName, categories[]}` (empty identifier → `{type:"topic",categories:["Blacklist"]}`) |
 | `window.handleNearbyActors(obj)` | `OnGetNearbyActors` | `{actors:[{name, formID, distance}]}` |
-| `window.showToast(msg, type)` | `OnImportScenes`, `OnImportYAML` | literal messages, `type` ∈ `success`/`error` |
+| `window.showToast(msg, type)` | `OnImportScenes`, `OnImportYAML`, `OnCreateAdvancedEntry` | messages with dynamic text go through `BuildToastScript(message, type)`; fixed messages are hand-written literals. `type` ∈ `success`/`error` |
 
 ### Identifier resolution (`detectIdentifierType` vs `createAdvancedEntry`)
 
@@ -134,17 +134,18 @@ These two handlers classify the same user input with **separate code**:
 
 | Step | `OnDetectIdentifierType` | `OnCreateAdvancedEntry` |
 |---|---|---|
-| Plugin | lower-cased input ends with `.esp/.esm/.esl` | `parsedEditorID.ends_with(".esp"...)` (case-sensitive) |
+| Plugin | `IsPluginFileName(identifier)` (file-local, case-insensitive `.esp/.esm/.esl`) | `IsPluginFileName(parsedEditorID)` (same helper) |
 | FormID test | starts with `0x`, or all hex digits | `Config::ParseFormIdentifier(identifier)` returns non-zero FormID |
 | FormID → type | `LookupByID`: Actor → Scene → Topic, else `unknown` | same order; Actor stores the actor **name** in `targetEditorID`; Scene/Topic also extract responses (`TopicResponseExtractor`) into `responseText` |
 | EditorID → type | Faction (`LookupByEditorID<TESFaction>`) → Scene → Topic (`Config::SafeLookupForm`) | Faction → linear scan of `GetFormArray<BGSScene>` → `GetFormArray<TESTopic>` |
 | Categories | Scene: Blacklist/Scene/BardSongs/FollowerCommentary; Actor/Faction: Blacklist; else Blacklist + a hard-coded list of subtype names (duplicated verbatim in `advanced-edit-modal.tsx` `TOPIC_CATEGORIES`) | — |
 
 Block type in `OnCreateAdvancedEntry`: Actor/Faction targets are forced to Soft; `"SkyrimNet"`
-is still accepted (legacy). An unresolved identifier is still saved (with whatever
-`targetType` the default-constructed entry has). Actor filters must be index-paired: if
+is still accepted (legacy). An identifier that resolves to nothing (`targetType` still `None`)
+is refused: the handler logs a warn, shows the error toast "No topic, scene, actor, faction or
+plugin found for ...", and **saves nothing**. Actor filters must be index-paired: if
 `actorFilterFormIDs.size() != actorFilterNames.size()` or any FormID fails to parse, the
-handler logs `PAIRING ERROR` / `FORMID PARSING FAILED` and **saves nothing** (no toast).
+handler logs `PAIRING ERROR` / `FORMID PARSING FAILED`, shows an error toast, and **saves nothing**.
 
 ## JSON helpers and escaping
 
@@ -152,12 +153,13 @@ Reading (JS → C++), from `src/PrismaUIMenuJson.h`:
 - `FindJsonValue(json, key)` does a plain `find("\"key\":")` — first textual match anywhere, including inside string values or nested objects. Fine for the flat `JSON.stringify` objects the UI sends; don't send nested objects.
 - `ExtractJsonValue` returns an unescaped string, or the raw token for numbers/bools, or `""` if absent. `ExtractJsonStringArray` reads `["a","b"]` only (string elements). `ParseHexFormIDs` accepts `0x`-prefixed or bare hex, skips empty/unparseable ones with a warn.
 - `ReadJsonString` decodes `\uXXXX` to UTF-8 but not surrogate pairs (fine: `JSON.stringify` only emits `\u` for control chars and lone surrogates).
-- Older handlers still hand-parse: `OnDeleteHistoryEntries` and `OnRemoveWhitelistBatch` (manual `[`/`]` scan), `OnRemoveFromWhitelist` (manual `"id":`), `OnToggleSubtypeFilter`, `SetToggleFromUI`, `OnDetectIdentifierType` (raw substring up to the next `"`, **no unescaping**). Prefer the helpers in new code.
+- Older handlers still hand-parse: `OnDeleteHistoryEntries` and `OnRemoveWhitelistBatch` (manual `[`/`]` scan), `OnRemoveFromWhitelist` (manual `"id":`), `OnToggleSubtypeFilter`, `SetToggleFromUI`. Prefer the helpers in new code.
 
 Writing (C++ → JS):
 - String fields in serializers go through `escapeJSON` (quotes, backslash, control chars → `\uXXXX`).
-- `BuildSKSEUpdateScript` then wraps the whole JSON in a single-quoted JS string with `EscapeSingleQuotedJSString` (`'`, `\`, `\n`, `\r`, `\t`). Both layers are required: JSON escaping for `JSON.parse`, JS escaping for the literal. `SendSettingsData` repeats the JS-escape loop inline instead of calling the helper.
-- The direct-call pushes (`handleIdentifierDetection`, `handleNearbyActors`) splice JSON in as a JS literal. `OnGetNearbyActors` escapes only `"` and `\` in names; `OnDetectIdentifierType` does **not** escape `displayName` at all.
+- `BuildSKSEUpdateScript` then wraps the whole JSON in a single-quoted JS string with `EscapeSingleQuotedJSString` (`'`, `\`, `\n`, `\r`, `\t`, and any other control char < 0x20 as `\xNN`). Both layers are required: JSON escaping for `JSON.parse`, JS escaping for the literal. `SendSettingsData` repeats the JS-escape loop inline instead of calling the helper.
+- Toasts with dynamic text use `BuildToastScript(message, type)`, which runs the message through `EscapeSingleQuotedJSString`.
+- The direct-call pushes (`handleIdentifierDetection`, `handleNearbyActors`) splice JSON in as a JS literal. `OnDetectIdentifierType` escapes `displayName` and `OnGetNearbyActors` escapes names with `escapeJSON`.
 - Encoding: game strings are Windows-1252. PrismaUI's `Invoke` checks `isValidUTF8(script)` and, if the whole script isn't valid UTF-8, converts the whole script from ANSI. STFU does no conversion of its own.
 
 ## Log lines to grep
@@ -174,6 +176,7 @@ Writing (C++ → JS):
 | `Not initialized or invalid view` | A `Send*Data` before `Initialize` finished or after the view died. |
 | `[PrismaUIMenu::On<Handler>]` | Per-handler receive/parse/result lines; most log the raw payload at info. |
 | `PAIRING ERROR` / `FORMID PARSING FAILED` | `createAdvancedEntry` rejected the actor filter arrays. |
+| `did not resolve to a topic, scene, actor, faction or plugin - not saved` | `createAdvancedEntry` refused an unresolved identifier (warn). |
 
 ## Gotchas and invariants
 
@@ -185,7 +188,8 @@ Writing (C++ → JS):
 - `settings.tsx` "Enable/Disable All" sends one `toggleSubtypeFilter` per subtype, and each one re-serializes up to 1000 history rows and pushes settings + history. Slow on big histories; batch it if it becomes a problem.
 - `SendHistoryData` flushes the DB write queue; `OnToggleSubtypeFilter`'s inline push doesn't.
 - `OnDetectIdentifierType` treats any all-hex string (`"BAD"`, `"Dead"`) as a FormID.
-- `OnImportYAML` builds the path from the game exe directory (`<exe>/Data/SKSE/...`); under MO2 this resolves through the VFS. The toast message is built by string concatenation into a single-quoted literal — keep messages free of `'`.
+- `OnImportYAML` builds the path from the game exe directory (`<exe>/Data/SKSE/...`); under MO2 this resolves through the VFS.
+- Build any toast that carries dynamic text with `BuildToastScript`; hand-written `window.showToast('...')` literals are only safe for fixed text.
 - `Focus(view_, true, false)` pauses the game while the menu is open.
 
 ## How to: add a new UI action end to end

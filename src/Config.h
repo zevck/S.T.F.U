@@ -39,7 +39,7 @@ namespace Config
         RE::TESGlobal* blockScenesGlobal = nullptr;  // Runtime global for scene blocking
         RE::TESGlobal* blockBardSongsGlobal = nullptr;  // Runtime global for bard song blocking
         RE::TESGlobal* blockFollowerCommentaryGlobal = nullptr;  // Runtime global for follower commentary blocking
-        RE::TESGlobal* preserveGruntsGlobal = nullptr;  // Runtime global for grunt preservation (0=filter, 1=preserve)
+        RE::TESGlobal* preserveGruntsGlobal = nullptr;  // STFU_PreserveGrunts, named backwards: 1 = grunts are blocked with their subtype, 0 = grunts always play
     };
     
     // Hardcoded ambient scenes from patcher (vanilla + DLC scenes that should be blockable)
@@ -126,10 +126,14 @@ namespace Config
     // Get list of hardcoded scenes for database import
     std::vector<std::string> GetHardcodedScenesList();
     std::vector<std::string> GetBardSongQuestsList();
+    // The scenes owned by the bard song quests (these, not the quests, go in the blacklist)
+    std::vector<RE::BGSScene*> GetBardSongScenes();
+    std::vector<std::string> GetBardSongScenesList();  // their EditorIDs
     std::vector<std::string> GetFollowerCommentaryScenesList();
     
     // Import YAML blacklist into database
-    int ImportYAMLToDatabase();
+    // Returns the number of entries imported; failedFiles (if given) receives the number of YAML files that failed to parse
+    int ImportYAMLToDatabase(int* failedFiles = nullptr);
 
     // Parse form identifier (supports 0x format, FormKey format, or EditorID)
     // Returns pair of (formID, editorID) - formID is 0 if EditorID, editorID is empty if FormID

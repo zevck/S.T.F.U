@@ -32,7 +32,6 @@ Modals: ManualEntryModal, AdvancedEditModal, ResponsesModal — all built on com
 | State | zustand 5 |
 | Styling | Tailwind 3.4 via PostCSS (`postcss.config.cjs`, `tailwind.config.cjs`), plus `src/index.css` |
 | Icons | `lucide-react` |
-| Declared but unused | `motion` (no imports in `src/`) |
 
 Scripts (`package.json`): `dev` = `vite`; `build` = `tsc && vite build` (type errors fail the
 build); `preview`; `lint` = `eslint .` and `format` = prettier. There is **no ESLint config
@@ -74,15 +73,17 @@ The web README says nothing about Ultralight; these are the constraints the code
 | Blacklist / Whitelist | `components/entry-list.tsx` `Blacklist` / `Whitelist` | Shared `EntryList` (see below). |
 | Settings | `components/settings.tsx` `Settings` | Sub-tabs Master Controls / Combat / Generic / Follower / Other. Master: blacklist/scenes/bard-song globals + Import Scenes / Import from YAML. Others: per-subtype toggles (hard-coded `{id, name, tooltip}` tables `COMBAT_SUBTYPES`, `GENERIC_SUBTYPES`, `FOLLOWER_SUBTYPES`, `OTHER_SUBTYPES`), combat grunts, follower commentary, Enable/Disable All per panel. |
 
-History status mapping (`getStatusDisplay`): `Toggled Off`/`Skyrim`/`Whitelist` → "Allowed",
+History status labels (`getStatusDisplay`): `Toggled Off`/`Whitelist` → "Allowed",
 `Filter`/`Soft Block` → "Soft Blocked", `Hard Block` → "Hard Blocked", `SkyrimNet Block` →
-"SkyrimNet Blocked". The status checkboxes filter on those display strings.
+"SkyrimNet Blocked". The status checkboxes use a separate mapping, `getStatusFilterGroup`:
+`Whitelist` → Whitelisted, `Soft Block`/`Filter` → Soft Blocked, `Hard Block` → Hard Blocked,
+everything else (including `SkyrimNet Block`, `Toggled Off`, `Unknown`) → Allowed.
 
 ## Stores (`src/stores/`)
 
 | Store | File | State |
 |---|---|---|
-| `useHistoryStore` | `history.ts` | `entries: DialogueEntry[]`, `searchQuery`, `selectedEntries`; setters. `clearEntries` and `updateEntryStatus` exist but have no callers. |
+| `useHistoryStore` | `history.ts` | `entries: DialogueEntry[]`, `searchQuery`, `selectedEntries`; setters. |
 | `useBlacklistStore` / `useWhitelistStore` | `blacklist.ts` / `whitelist.ts` | Each is `createEntryListStore()` — two independent instances of the same shape. |
 | `createEntryListStore` / `EntryListState` | `entry-list.ts` | `entries: BlacklistEntry[]`, `searchQuery`, `blockSoft`, `blockHard`, `showTopics/Scenes/Actors/Factions`, `selectedEntries`; setters; `resetFilters()` restores `DEFAULT_FILTERS`. Filter state lives in the store, so it survives tab switches. |
 | `useSettingsStore` | `settings.ts` | `blacklistEnabled, scenesEnabled, bardSongsEnabled, followerCommentaryEnabled, combatGruntsBlocked, subtypes: Record<number, boolean>`; `setSettings(partial)` merges. Defaults are placeholders until C++ pushes. |
@@ -153,7 +154,7 @@ accessed through `(window as any)`.
 
 ## Types (`src/types.ts`)
 
-- `DialogueEntry` — one history row, mirroring `SerializeHistoryToJSON`. `status` union includes `'Skyrim'`, which C++ never sends (C++ can send `'Unknown'`, which the union lacks). FormIDs are `"0x%08X"` strings.
+- `DialogueEntry` — one history row, mirroring `SerializeHistoryToJSON`. `status` union is `'Allowed' | 'Soft Block' | 'Hard Block' | 'SkyrimNet Block' | 'Filter' | 'Toggled Off' | 'Whitelist' | 'Unknown'`, matching what C++ sends. FormIDs are `"0x%08X"` strings.
 - `BlacklistEntry` — used for **both** lists, mirroring `SerializeBlacklistToJSON`/`SerializeWhitelistToJSON`. Naming is historical: `topicEditorID`/`topicFormID` hold the target's EditorID/FormID for every target type (scene, actor, faction…), `note` (singular) is the notes field, `questName` is actually the quest EditorID. `allResponses` is declared but C++ never sends it for list entries (responses come in `responseText`, a JSON array string).
 - `ActorFilters` (actor-filter-picker.tsx) — the three filter arrays.
 
@@ -180,7 +181,7 @@ no component library.
 ## Gotchas
 
 - **The edit modal saves back every filter field it was given.** If a list payload is missing a field, `AdvancedEditModal` loads `[]` and Save writes `[]` over the stored value. That is how blacklist faction filters were being erased before 1.2.0 (see [PRISMA_UI_BRIDGE.md](PRISMA_UI_BRIDGE.md)).
-- **History "Whitelisted" checkbox is dead.** `getStatusDisplay('Whitelist')` returns `"Allowed"`, so whitelisted rows are controlled by the Allowed checkbox and the Whitelisted checkbox matches nothing. Rows with status `SkyrimNet Block` map to `"SkyrimNet Blocked"`, which has no checkbox, so legacy SkyrimNet-blocked rows are never shown.
+- **History checkboxes don't filter on the display label.** A whitelisted row displays as "Allowed" but belongs to the Whitelisted checkbox (`getStatusFilterGroup`). When you add a status, update both `getStatusDisplay` and `getStatusFilterGroup`.
 - The subtype ID → name tables in `settings.tsx`, `TOPIC_CATEGORIES` in `advanced-edit-modal.tsx`, and the category list in C++ `OnDetectIdentifierType` are three hand-maintained copies. Keep them in sync with [DIALOGUE_SUBTYPES.md](../DIALOGUE_SUBTYPES.md) / `Config`.
 - Settings toggles are **not** optimistic: the checkbox only flips when C++ pushes `updateSettings`. A toggle whose global is missing never flips (C++ logs `Toggle global not found`).
 - "Enable/Disable All" fires one `toggleSubtypeFilter` per subtype that differs; each triggers a full history re-serialization on the C++ side.

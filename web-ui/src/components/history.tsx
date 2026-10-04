@@ -24,8 +24,6 @@ const getStatusColor = (status: DialogueEntry['status']): string => {
       return 'text-orange-400';
     case 'Hard Block':
       return 'text-red-400';
-    case 'Skyrim':
-      return 'text-gray-400';
     case 'SkyrimNet Block':
       return 'text-indigo-400';
     case 'Filter':
@@ -43,7 +41,6 @@ const getStatusDisplay = (status: DialogueEntry['status']): string => {
   // Short names for history list
   switch (status) {
     case 'Toggled Off':
-    case 'Skyrim':
     case 'Whitelist':
       return 'Allowed';
     case 'Filter':
@@ -59,12 +56,27 @@ const getStatusDisplay = (status: DialogueEntry['status']): string => {
   }
 };
 
+// Which status checkbox a row belongs to. Separate from getStatusDisplay: whitelisted rows display
+// as "Allowed" but have their own checkbox, and the legacy SkyrimNet status no longer blocks anything.
+const getStatusFilterGroup = (status: DialogueEntry['status']): string => {
+  switch (status) {
+    case 'Whitelist':
+      return 'Whitelisted';
+    case 'Soft Block':
+    case 'Filter':
+      return 'Soft Blocked';
+    case 'Hard Block':
+      return 'Hard Blocked';
+    default:
+      return 'Allowed';
+  }
+};
+
 const getStatusDescription = (status: DialogueEntry['status']): string => {
   // Descriptive text for detail panel
   switch (status) {
     case 'Allowed':
     case 'Toggled Off':
-    case 'Skyrim':
       return 'Allowed';
     case 'Soft Block':
       return 'Soft blocked by blacklist';
@@ -267,8 +279,7 @@ export const History = () => {
     // Apply status filters - show entries whose status is checked
     filtered = filtered.filter(entry => {
       // Normalize status for filtering
-      const normalizedStatus = getStatusDisplay(entry.status);
-      return statusFilters.has(normalizedStatus);
+      return statusFilters.has(getStatusFilterGroup(entry.status));
     });
     
     // Reverse so oldest entries are at top, newest at bottom (like a chat log)

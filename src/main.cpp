@@ -162,37 +162,6 @@ namespace
         InputEventSink& operator=(InputEventSink&&) = delete;
     };
     
-    // Event sink for cell loading - reapplies scene conditions on loading screen transitions
-    class CellLoadEventHandler : public RE::BSTEventSink<RE::TESCellFullyLoadedEvent>
-    {
-    public:
-        static CellLoadEventHandler* GetSingleton()
-        {
-            static CellLoadEventHandler singleton;
-            return &singleton;
-        }
-        
-        RE::BSEventNotifyControl ProcessEvent(const RE::TESCellFullyLoadedEvent* a_event, 
-                                              RE::BSTEventSource<RE::TESCellFullyLoadedEvent>*)
-        {
-            if (!a_event || !a_event->cell) {
-                return RE::BSEventNotifyControl::kContinue;
-            }
-            
-            // Conditions persist through cell changes - no patching needed
-            return RE::BSEventNotifyControl::kContinue;
-            
-            return RE::BSEventNotifyControl::kContinue;
-        }
-        
-    private:
-        CellLoadEventHandler() = default;
-        CellLoadEventHandler(const CellLoadEventHandler&) = delete;
-        CellLoadEventHandler(CellLoadEventHandler&&) = delete;
-        CellLoadEventHandler& operator=(const CellLoadEventHandler&) = delete;
-        CellLoadEventHandler& operator=(CellLoadEventHandler&&) = delete;
-    };
-    
     void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
     {
         switch (a_msg->type) {
@@ -283,9 +252,8 @@ namespace
                     spdlog::error("Failed to get BSInputDeviceManager - menu hotkey will not work!");
                 }
                 
-                // Register a menu-event sink that watches for the Loading Menu closing.
-                // This fires after every loading screen (door transitions, fast travel, save loads)
-                // and is more reliable than TESLoadGameEvent which only fires on save loads.
+                // Watch for the Loading Menu opening: fires on every loading screen (doors, fast
+                // travel, save loads), unlike TESLoadGameEvent, which only fires on save loads.
                 if (auto* ui = RE::UI::GetSingleton()) {
                     ui->AddEventSink(LoadingMenuSink::GetSingleton());
                     spdlog::info("[MAIN] Registered LoadingMenuSink for deferred scene patching");
@@ -306,8 +274,7 @@ namespace
                 SettingsPersistence::LoadSettings();
                 // Flush database queue periodically
                 DialogueDB::GetDatabase()->FlushQueue();
-                // Note: deferred scene patching is handled by LoadingMenuSink (fires when
-                // the loading screen closes), so no explicit PatchDeferredScenes() call needed here.
+                // Deferred scene patching is handled by LoadingMenuSink (Loading Menu opening).
             }
             break;
             

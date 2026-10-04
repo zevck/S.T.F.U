@@ -147,8 +147,7 @@ namespace Config
             }
         }
         
-        spdlog::info("Loaded {} subtype globals from STFU.esp (5 master toggles + {} subtypes)", 
-            5 + foundGlobals, foundGlobals);
+        spdlog::info("Loaded {} of {} subtype globals from STFU.esp", foundGlobals, SubtypeGlobalMap.size());
         
         spdlog::info("Config loaded successfully");
     }

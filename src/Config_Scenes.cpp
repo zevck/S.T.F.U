@@ -224,14 +224,8 @@ namespace Config
             return false;
         }
         
-        // Check hardcoded list (only 3 quests)
-        static const std::unordered_set<std::string> bardSongQuests = {
-            "BardSongs",
-            "BardSongsInstrumental",
-            "MS05BardSongs"
-        };
-        
-        return bardSongQuests.count(questEditorID) > 0;
+        const auto quests = GetBardSongQuestsList();
+        return std::find(quests.begin(), quests.end(), questEditorID) != quests.end();
     }
     
     bool IsHardcodedAmbientScene(RE::TESTopic* topic)
@@ -274,7 +268,7 @@ namespace Config
         bool found = g_settings.hardcodedScenes.topicEditorIDs.count(topicEditorID) > 0;
         
         if (found || g_settings.hardcodedScenes.topicEditorIDs.empty()) {
-            spdlog::info("[HARDCODED CHECK] Topic '{}' - Found: {}, List size: {}", 
+            spdlog::debug("[HARDCODED CHECK] Topic '{}' - Found: {}, List size: {}",
                 topicEditorID, found, g_settings.hardcodedScenes.topicEditorIDs.size());
         }
         
@@ -326,7 +320,38 @@ namespace Config
     
     std::vector<std::string> GetBardSongQuestsList()
     {
-        return {"BardSongs", "BardSongsInstrumental", "MS05BardSongs"};
+        // The vanilla quests that own the bard song scenes (MS05BardSongs was listed here but doesn't exist)
+        return {"BardSongs", "BardSongsInstrumental"};
+    }
+
+    std::vector<RE::BGSScene*> GetBardSongScenes()
+    {
+        std::vector<RE::BGSScene*> scenes;
+        for (const auto& questEditorID : GetBardSongQuestsList()) {
+            auto* quest = SafeLookupForm<RE::TESQuest>(questEditorID.c_str());
+            if (!quest) {
+                spdlog::warn("[Config] Bard song quest not found: {}", questEditorID);
+                continue;
+            }
+            for (auto* scene : quest->scenes) {
+                if (scene) {
+                    scenes.push_back(scene);
+                }
+            }
+        }
+        return scenes;
+    }
+
+    std::vector<std::string> GetBardSongScenesList()
+    {
+        std::vector<std::string> editorIDs;
+        for (auto* scene : GetBardSongScenes()) {
+            const char* sceneEditorID = STFU::GetEditorID(scene);
+            if (sceneEditorID && *sceneEditorID) {
+                editorIDs.emplace_back(sceneEditorID);
+            }
+        }
+        return editorIDs;
     }
     
     std::vector<std::string> GetFollowerCommentaryScenesList()

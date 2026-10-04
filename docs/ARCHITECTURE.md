@@ -95,7 +95,7 @@ This is the order of the code in `src/main.cpp`.
 3. **This step runs only if the DB initialized:**
    - First-run import, gated by the meta flag `hardcoded_scenes_initialized`: `ImportHardcodedScenes(GetHardcodedScenesList())` and `ImportHardcodedScenes(GetFollowerCommentaryScenesList(), "FollowerCommentary")`, then it sets the flag.
    - `SettingsPersistence::LoadSettings()` copies INI values into the globals and the hotkey.
-   - `SceneMonitor::Initialize()` finds the three bard quests. On the first run it also adds their scenes to the blacklist as `BardSongs`, gated by the meta flag `bard_scenes_initialized`.
+   - `SceneMonitor::Initialize()`: on the first run (meta flag `bard_scenes_initialized` unset) it imports the scenes of the two bard quests (`Config::GetBardSongScenesList()`) as `BardSongs` rows, insert-only so existing rows are left untouched.
 4. It sets up the trampoline: 256 bytes from SKSE's branch pool, or `trampoline.create()` if that pool is unavailable. CommonLib v9's `AllocTrampoline` no longer falls back.
 5. It installs the hooks in this order: `PopulateTopicInfoHook::Install()` (Detours), `SceneHook::Install()` (only logs "Scene blocker ready"), `ConstructResponseHook::Install()` (two `write_call<5>` at +0x61 and +0xDE, each guarded by an E8 check), then `DialogueItemCtorHook::Install()` (Detours).
 6. `PrismaUIMenu::Initialize()` requests the PrismaUI API, runs `CreateView("STFU/index.html", OnDomReady)`, registers the JS listeners and hides the view.
@@ -114,7 +114,7 @@ This is the order of the code in `src/main.cpp`.
 
 **`kPreLoadGame`**: does nothing.
 
-> Scene conditions are patched into the in-memory `BGSScene` forms once, at `kDataLoaded`. They are not saved to the save file and are not redone on load. The comment in `CellLoadEventHandler` agrees: "Conditions persist through cell changes". Because the gate compares against a global, flipping a toggle takes effect without re-patching.
+> Scene conditions are patched into the in-memory `BGSScene` forms once, at `kDataLoaded`. They are not saved to the save file and are not redone on load. Because the gate compares against a global, flipping a toggle takes effect without re-patching.
 
 ---
 

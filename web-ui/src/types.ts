@@ -11,7 +11,7 @@ export interface DialogueEntry {
   sourcePlugin: string;
   subtypeName: string;
   topicSubtype: number;
-  status: 'Allowed' | 'Soft Block' | 'Hard Block' | 'Skyrim' | 'SkyrimNet Block' | 'Filter' | 'Toggled Off' | 'Whitelist';
+  status: 'Allowed' | 'Soft Block' | 'Hard Block' | 'SkyrimNet Block' | 'Filter' | 'Toggled Off' | 'Whitelist' | 'Unknown';
   responseCount: number;
   skyrimNetBlockable: boolean;
   isScene: boolean;

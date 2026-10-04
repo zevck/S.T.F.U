@@ -32,9 +32,8 @@ namespace SceneHook
     // PatchDeferredScenes() drains this after the next load screen.
     static std::mutex g_deferredMutex;
     static std::unordered_set<std::string> g_deferredScenes;
-    // Create a condition that checks if a global == 0 (disabled)
-    // When the MCM toggle is OFF (0), this condition will be TRUE, blocking the scene
-    // When the MCM toggle is ON (1), this condition will be FALSE, allowing the scene
+    // Create the phase start condition GetGlobalValue(global) == 0. The toggle globals mean
+    // 1 = blocked, so the condition fails (phase can't start) while the toggle is on.
     static RE::TESConditionItem* CreateGlobalDisabledCondition(RE::TESGlobal* global)
     {
         if (!global) {
@@ -83,7 +82,24 @@ namespace SceneHook
 
     // Forward declaration
     static void RemoveConditionsFromScene(RE::BGSScene* scene);
-    
+
+    // Gate every phase of a scene on one toggle global, replacing any gate STFU added before
+    static int GateScene(RE::BGSScene* scene, RE::TESGlobal* global)
+    {
+        RemoveConditionsFromScene(scene);
+        int phasesPatched = 0;
+        for (auto* phase : scene->phases) {
+            if (!phase) continue;
+            if (auto* cond = CreateGlobalDisabledCondition(global)) {
+                cond->next = phase->startConditions.head;
+                cond->data.flags.isOR = false;
+                phase->startConditions.head = cond;
+                phasesPatched++;
+            }
+        }
+        return phasesPatched;
+    }
+
     void Install()
     {
         spdlog::info("========================================");
@@ -134,16 +150,7 @@ namespace SceneHook
 
         // Helper: apply blocking condition to all phases of a scene
         auto patchScene = [&](RE::BGSScene* scene, RE::TESGlobal* global) {
-            RemoveConditionsFromScene(scene);
-            for (auto* phase : scene->phases) {
-                if (!phase) continue;
-                if (auto* cond = CreateGlobalDisabledCondition(global)) {
-                    cond->next = phase->startConditions.head;
-                    cond->data.flags.isOR = false;
-                    phase->startConditions.head = cond;
-                    blockedPhaseCount++;
-                }
-            }
+            blockedPhaseCount += GateScene(scene, global);
             blockedSceneCount++;
         };
 
@@ -164,26 +171,14 @@ namespace SceneHook
             }
         }
 
-        // Pass 2: Bard songs (3 known quests) — direct quest lookup, iterate only their scenes
+        // Pass 2: Bard songs — every scene of the bard song quests, gated on STFU_BardSongs
         if (bardSongsGlobal) {
-            for (const auto& questEditorID : Config::GetBardSongQuestsList()) {
-                auto* quest = RE::TESForm::LookupByEditorID<RE::TESQuest>(questEditorID);
-                if (!quest) {
-                    spdlog::warn("[SCENE BLOCKER] Bard song quest not found: {}", questEditorID);
-                    continue;
-                }
-                // Walk all registered scenes and patch any whose parentQuest matches
-                // (BGSScene::parentQuest is the link; no direct quest->scenes collection in CommonLibSSE)
-                auto* dataHandler = RE::TESDataHandler::GetSingleton();
-                if (!dataHandler) continue;
-                for (auto* scene : dataHandler->GetFormArray<RE::BGSScene>()) {
-                    if (!scene || scene->parentQuest != quest) continue;
-                    const char* sceneEditorID = STFU::GetEditorID(scene);
-                    std::string sceneIDStr = sceneEditorID ? sceneEditorID : "";
-                    if (!sceneIDStr.empty() && whitelistedSceneIDs.count(sceneIDStr)) continue;
-                    patchScene(scene, bardSongsGlobal);
-                    spdlog::debug("[SCENE BLOCKER] Patched bard song scene: {}", sceneIDStr);
-                }
+            for (auto* scene : Config::GetBardSongScenes()) {
+                const char* sceneEditorID = STFU::GetEditorID(scene);
+                std::string sceneIDStr = sceneEditorID ? sceneEditorID : "";
+                if (!sceneIDStr.empty() && whitelistedSceneIDs.count(sceneIDStr)) continue;
+                patchScene(scene, bardSongsGlobal);
+                spdlog::debug("[SCENE BLOCKER] Patched bard song scene: {}", sceneIDStr);
             }
         }
 
@@ -192,13 +187,16 @@ namespace SceneHook
         if (!hardBlockedTopicIDs.empty() && scenesGlobal) {
             auto* dataHandler = RE::TESDataHandler::GetSingleton();
             if (dataHandler) {
+                const auto bardScenes = Config::GetBardSongScenes();
                 for (auto* scene : dataHandler->GetFormArray<RE::BGSScene>()) {
                     if (!scene) continue;
                     const char* sceneEditorID = STFU::GetEditorID(scene);
                     std::string sceneIDStr = sceneEditorID ? sceneEditorID : "";
 
-                    // Skip already patched (Pass 1) or whitelisted scenes
+                    // Skip scenes with their own gate (Pass 1 rows, Pass 2 bard scenes) and whitelisted ones
                     if (!sceneIDStr.empty() && (hardBlockedSceneIDs.count(sceneIDStr) || whitelistedSceneIDs.count(sceneIDStr)))
+                        continue;
+                    if (std::find(bardScenes.begin(), bardScenes.end(), scene) != bardScenes.end())
                         continue;
 
                     bool shouldPatch = false;
@@ -292,7 +290,7 @@ namespace SceneHook
 
         if (pending.empty()) return;
 
-        spdlog::info("[SCENE UPDATE] PatchDeferredScenes: patching {} scene(s) queued from previous session", pending.size());
+        spdlog::info("[SCENE UPDATE] PatchDeferredScenes: patching {} scene(s) that were playing when their block changed", pending.size());
 
         for (const auto& sceneEditorID : pending) {
             auto* scene = RE::TESForm::LookupByEditorID<RE::BGSScene>(sceneEditorID);
@@ -306,18 +304,7 @@ namespace SceneHook
                 spdlog::error("[SCENE UPDATE] Gate global not found for deferred scene {} - skipped", sceneEditorID);
                 continue;
             }
-            RemoveConditionsFromScene(scene);
-            int phasesPatched = 0;
-            for (auto* phase : scene->phases) {
-                if (!phase) continue;
-                auto* cond = CreateGlobalDisabledCondition(controllingGlobal);
-                if (cond) {
-                    cond->next = phase->startConditions.head;
-                    cond->data.flags.isOR = false;
-                    phase->startConditions.head = cond;
-                    phasesPatched++;
-                }
-            }
+            const int phasesPatched = GateScene(scene, controllingGlobal);
             spdlog::info("[SCENE UPDATE] Patched deferred scene {} ({} phases)", sceneEditorID, phasesPatched);
         }
     }
@@ -364,19 +351,7 @@ namespace SceneHook
                     return;
                 }
 
-                int phasesPatched = 0;
-                for (auto* phase : targetScene->phases) {
-                    if (!phase) continue;
-                    
-                    auto* newCondition = CreateGlobalDisabledCondition(controllingGlobal);
-                    if (newCondition) {
-                        newCondition->next = phase->startConditions.head;
-                        newCondition->data.flags.isOR = false;
-                        phase->startConditions.head = newCondition;
-                        phasesPatched++;
-                    }
-                }
-                
+                const int phasesPatched = GateScene(targetScene, controllingGlobal);
                 spdlog::debug("[SCENE UPDATE] Added blocking conditions to scene {} ({} phases) - Hard block", 
                     sceneEditorID, phasesPatched);
             } else {
@@ -425,6 +400,24 @@ namespace SceneHook
                 spdlog::debug("[SCENE UPDATE] No scenes found containing topic: {}", topicEditorID);
                 return;
             }
+
+            // As in PatchScenes pass 3: a scene with its own gate (its own Hard Scene row, or a bard
+            // scene) keeps it, so a topic rule never replaces or strips another rule's gate
+            std::unordered_set<RE::BGSScene*> ownGate;
+            for (auto* scene : Config::GetBardSongScenes()) {
+                ownGate.insert(scene);
+            }
+            if (auto* db = DialogueDB::GetDatabase()) {
+                for (const auto& e : db->GetBlacklist()) {
+                    if (e.targetType == DialogueDB::BlacklistTarget::Scene && e.blockType == DialogueDB::BlockType::Hard &&
+                        !e.targetEditorID.empty()) {
+                        if (auto* scene = RE::TESForm::LookupByEditorID<RE::BGSScene>(e.targetEditorID)) {
+                            ownGate.insert(scene);
+                        }
+                    }
+                }
+            }
+            std::erase_if(affectedScenes, [&ownGate](RE::BGSScene* scene) { return ownGate.contains(scene); });
             
             // BlockType: 1=Soft, 2=Hard, 3=SkyrimNet
             const uint8_t HARD_BLOCK = 2;
@@ -454,20 +447,7 @@ namespace SceneHook
                         continue;
                     }
                     
-                    // Add blocking condition for Hard blocks
-                    int phasesPatched = 0;
-                    for (auto* phase : scene->phases) {
-                        if (!phase) continue;
-                        
-                        auto* newCondition = CreateGlobalDisabledCondition(controllingGlobal);
-                        if (newCondition) {
-                            newCondition->next = phase->startConditions.head;
-                            newCondition->data.flags.isOR = false;
-                            phase->startConditions.head = newCondition;
-                            phasesPatched++;
-                            totalPhasesPatched++;
-                        }
-                    }
+                    totalPhasesPatched += GateScene(scene, controllingGlobal);
                 } else {
                     // Remove blocking conditions for Soft/SkyrimNet blocks
                     // Safe to do even if scene is running - just removes preventive conditions

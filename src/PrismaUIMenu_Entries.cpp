@@ -28,6 +28,16 @@
 
 using namespace PrismaUIMenuDetail;
 
+namespace
+{
+    // Case-insensitive .esp/.esm/.esl suffix check, shared by identifier detection and entry creation
+    bool IsPluginFileName(std::string name)
+    {
+        std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return name.ends_with(".esp") || name.ends_with(".esm") || name.ends_with(".esl");
+    }
+}
+
 void PrismaUIMenu::OnDetectIdentifierType(const char* data)
 {
     if (!data) {
@@ -39,17 +49,12 @@ void PrismaUIMenu::OnDetectIdentifierType(const char* data)
         std::string jsonStr(data);
         spdlog::info("[PrismaUIMenu::OnDetectIdentifierType] Received: {}", jsonStr);
         
-        // Extract identifier from JSON
-        size_t identifierPos = jsonStr.find("\"identifier\":\"");
-        if (identifierPos == std::string::npos) {
+        if (FindJsonValue(jsonStr, "identifier") == std::string::npos) {
             spdlog::error("[PrismaUIMenu::OnDetectIdentifierType] No identifier found");
             return;
         }
-        
-        size_t identifierStart = identifierPos + 14;
-        size_t identifierEnd = jsonStr.find("\"", identifierStart);
-        std::string identifier = jsonStr.substr(identifierStart, identifierEnd - identifierStart);
-        
+        std::string identifier = ExtractJsonValue(jsonStr, "identifier");
+
         if (identifier.empty()) {
             // Empty identifier - send back default (topic)
             std::string response = R"({"type":"topic","categories":["Blacklist"]})";
@@ -61,10 +66,8 @@ void PrismaUIMenu::OnDetectIdentifierType(const char* data)
         // Detect type (matching STFUMenu logic from lines 5224-5243)
         int detectedType = 0; // 0 = Topic, 1 = Scene, 2 = Plugin, 3 = Actor, 4 = Faction
         std::string detectedName;  // actor name or faction EditorID for display
-        std::string lowerIdentifier = identifier;
-        std::transform(lowerIdentifier.begin(), lowerIdentifier.end(), lowerIdentifier.begin(), ::tolower);
-        
-        if (lowerIdentifier.ends_with(".esp") || lowerIdentifier.ends_with(".esm") || lowerIdentifier.ends_with(".esl")) {
+
+        if (IsPluginFileName(identifier)) {
             detectedType = 2; // Plugin
         } else {
             // Check if it's a FormID (0x prefix, or bare hex digits like A2C94)
@@ -175,7 +178,7 @@ void PrismaUIMenu::OnDetectIdentifierType(const char* data)
         else if (detectedType == 5) typeStr = "unknown";
         else typeStr = "topic";
 
-        std::string response = "{\"type\":\"" + typeStr + "\",\"displayName\":\"" + detectedName + "\",\"categories\":" + categoriesJson.str() + "}";
+        std::string response = "{\"type\":\"" + typeStr + "\",\"displayName\":\"" + escapeJSON(detectedName) + "\",\"categories\":" + categoriesJson.str() + "}";
         
         spdlog::info("[PrismaUIMenu::OnDetectIdentifierType] Response: {}", response);
         
@@ -234,12 +237,14 @@ void PrismaUIMenu::OnCreateAdvancedEntry(const char* data)
         if (formIDStrings.size() != entry.actorFilterNames.size()) {
             spdlog::error("[PrismaUIMenu::OnCreateAdvancedEntry] PAIRING ERROR: JSON has {} FormIDs but {} names. Arrays must be synchronized pairs!",
                          formIDStrings.size(), entry.actorFilterNames.size());
+            prismaUI_->Invoke(view_, BuildToastScript("Entry not saved: the actor filter list is inconsistent", "error").c_str());
             return;
         }
         if (entry.actorFilterFormIDs.size() != formIDStrings.size()) {
             spdlog::error("[PrismaUIMenu::OnCreateAdvancedEntry] FORMID PARSING FAILED: Expected {} FormIDs from JSON, but parsed only {}",
                          formIDStrings.size(), entry.actorFilterFormIDs.size());
             spdlog::error("[PrismaUIMenu::OnCreateAdvancedEntry] JSON was: {}", jsonStr);
+            prismaUI_->Invoke(view_, BuildToastScript("Entry not saved: an actor filter has an invalid FormID", "error").c_str());
             return;
         }
 
@@ -345,8 +350,7 @@ void PrismaUIMenu::OnCreateAdvancedEntry(const char* data)
             // EditorID was entered
             entry.targetEditorID = parsedEditorID;
             
-            // Check plugin blocking
-            if (parsedEditorID.ends_with(".esp") || parsedEditorID.ends_with(".esm") || parsedEditorID.ends_with(".esl")) {
+            if (IsPluginFileName(parsedEditorID)) {
                 entry.targetType = DialogueDB::BlacklistTarget::Plugin;
                 entry.sourcePlugin = parsedEditorID;
             } else {
@@ -407,6 +411,12 @@ void PrismaUIMenu::OnCreateAdvancedEntry(const char* data)
             }
         }
         
+        if (entry.targetType == DialogueDB::BlacklistTarget::None) {
+            spdlog::warn("[PrismaUIMenu::OnCreateAdvancedEntry] '{}' did not resolve to a topic, scene, actor, faction or plugin - not saved", identifier);
+            prismaUI_->Invoke(view_, BuildToastScript("No topic, scene, actor, faction or plugin found for \"" + identifier + "\"", "error").c_str());
+            return;
+        }
+
         // Set block type
         // Actor and Faction targets only support soft blocking (hard block would be game-breaking)
         bool isActorOrFaction = (entry.targetType == DialogueDB::BlacklistTarget::Actor ||
@@ -494,7 +504,7 @@ void PrismaUIMenu::OnGetNearbyActors(const char* data)
         json << "{\"actors\":[";
         
         bool first = true;
-        const float maxDistance = 4096.0f; // ~68 units (about 4-5 cell widths)
+        const float maxDistance = 4096.0f; // one exterior cell width
         
         // Iterate through high process actors (loaded and active)
         for (auto& actorHandle : processLists->highActorHandles) {
@@ -528,14 +538,7 @@ void PrismaUIMenu::OnGetNearbyActors(const char* data)
             first = false;
             
             json << "{";
-            json << "\"name\":\"";
-            // Escape quotes in name
-            for (const char* p = name; *p; ++p) {
-                if (*p == '\"') json << "\\\"";
-                else if (*p == '\\') json << "\\\\";
-                else json << *p;
-            }
-            json << "\",";
+            json << "\"name\":\"" << escapeJSON(name) << "\",";
             
             // Format FormID as "0x" + fixed 8 hex chars, consistent with every
             // other FormID emitted to the UI (speakerFormID, actorFilterFormIDs,

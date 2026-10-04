@@ -29,7 +29,8 @@ if it somehow starts (see "Safety net" below).
  │   │     set flag
  │   ├─ SettingsPersistence::LoadSettings()      INI -> global values
  │   └─ SceneMonitor::Initialize()     meta "bard_scenes_initialized" unset?
- │                                     add every scene of 3 bard quests as "BardSongs" rows
+ │                                     insert scenes of the 2 bard quests as "BardSongs" rows
+ │                                     (GetBardSongScenesList, insert-only)
  ├─ SceneHook::Install()               (log banner only; no hook)
  ├─ register LoadingMenuSink
  └─ SceneHook::PatchScenes()           Pass 1: Hard Scene rows   -> gate by filterCategory
@@ -55,14 +56,15 @@ if it somehow starts (see "Safety net" below).
 | `src/SceneHook.cpp` `RemoveConditionsFromScene()` | Unlinks and `RE::free`s every phase start condition that is `GetGlobalValue` on any of the 4 STFU toggle globals |
 | `src/SceneHook.cpp` `ResolveSceneGateGlobal()` | Single-scene lookup of a scene's blacklist row, then its gate global (linear scan of `GetBlacklist()`) |
 | `src/SceneHook.cpp` `UpdateSceneConditions()` | Runtime add/remove for one scene EditorID. Defers if `scene->isPlaying` |
-| `src/SceneHook.cpp` `UpdateSceneConditionsForTopic()` | Runtime add/remove for every scene with a dialogue action using that topic. Always gates on `STFU_Scenes` |
+| `src/SceneHook.cpp` `GateScene()` | File-local. Strips STFU's existing condition, then gates every phase on one global. Every gate goes through it |
+| `src/SceneHook.cpp` `UpdateSceneConditionsForTopic()` | Runtime add/remove for every scene with a dialogue action using that topic, except scenes with their own gate (own Hard Scene row, or a bard scene). Always gates on `STFU_Scenes` |
 | `src/SceneHook.cpp` `PatchDeferredScenes()` | Drains the in-memory `g_deferredScenes` set |
 | `src/Config_Scenes.cpp` `InitializeHardcodedScenes()` | The curated ambient list, stored in `g_settings.hardcodedScenes.topicEditorIDs` (the field name is historical: it holds **scene** EditorIDs) |
 | `src/Config_Scenes.cpp` `GetFollowerCommentaryScenesList()` | `WIFollowerChatter02Scene`, `WIFollowerChatter03Scene` |
-| `src/Config_Scenes.cpp` `GetBardSongQuestsList()` / `IsBardSongQuest()` | `BardSongs`, `BardSongsInstrumental`, `MS05BardSongs` (**quest** EditorIDs) |
+| `src/Config_Scenes.cpp` `GetBardSongQuestsList()` / `GetBardSongScenes()` / `GetBardSongScenesList()` / `IsBardSongQuest()` | `BardSongs`, `BardSongsInstrumental` (**quest** EditorIDs), their `BGSScene*` (from `quest->scenes`), and those scenes' EditorIDs |
 | `src/Config_Scenes.cpp` `GetSceneGateGlobalForCategory()` | filterCategory to global (table below) |
 | `src/SceneMonitor.cpp` `Initialize()` | One-shot auto-population of bard scenes into the blacklist. The name is legacy: there is no longer any monitoring (its `Update()` was dead code and was removed) |
-| `src/DialogueDatabase_Blacklist.cpp` `ImportHardcodedScenes()` | Upserts a list of scene EditorIDs as Hard `Scene` rows |
+| `src/DialogueDatabase_Blacklist.cpp` `ImportHardcodedScenes()` | Upserts a list of scene EditorIDs as Hard `Scene` rows (`insertOnly` leaves existing rows untouched). Returns the number of rows written |
 | `src/DialogueDatabase_Blacklist.cpp` `AddToBlacklist()` / `RemoveFromBlacklist()` / `RemoveFromBlacklistBatch()` | Call `SceneHook::Update*` after writing |
 | `src/DialogueDatabase.cpp` `GetMetaFlag()` / `SetMetaFlag()` | `meta` table key/value (`"1"`/`"0"`) |
 | `src/main.cpp` `LoadingMenuSink`, `MessageHandler` | Import gating, patch at kDataLoaded, deferred patch on Loading Menu |
@@ -113,8 +115,8 @@ stored in the save.
 → phase conditions). What differs is the category and the gate:
 - Pre-included rows come from `ImportHardcodedScenes()` (`notes = "Pre-included ambient scene"`,
   `responseText = "[]"`, enrichment skipped, `sourcePlugin` guessed from the `DLC1`/`DLC2`
-  prefix) or from `SceneMonitor` (`notes = "Auto-added by SceneMonitor"`). They follow their
-  category toggle.
+  prefix). `SceneMonitor` uses the same function, so bard rows get the same notes; older DBs may
+  still have bard rows with `notes = "Auto-added by SceneMonitor"`. They follow their category toggle.
 - User rows come from the menu (`PrismaUIMenu_Entries.cpp` defaults `filterCategory` to
   `"Blacklist"`) or from YAML `scenes:` (`Config_Yaml.cpp`, Hard, category = list name). They
   follow `STFU_Blacklist`. The user picks Soft or Hard. Only **Hard** adds phase conditions;
@@ -131,17 +133,17 @@ It bulk-loads `GetBlacklist()` / `GetWhitelist()` once, with no per-scene SQL. T
 
 1. **Pass 1: Hard Scene rows.** For each `(editorID → gate)`: skip it if the scene is
    whitelisted or if the gate global is null. Otherwise
-   `LookupByEditorID<BGSScene>`, then `patchScene()`. `patchScene()` always calls
-   `RemoveConditionsFromScene()` first, so a re-patch never stacks conditions. A miss logs
+   `LookupByEditorID<BGSScene>`, then `patchScene()` (→ `GateScene()`, which calls
+   `RemoveConditionsFromScene()` first, so a re-patch never stacks conditions). A miss logs
    `Hard-blocked scene not found in form table`.
-2. **Pass 2: bard quests.** For each quest in `GetBardSongQuestsList()`, walk
-   *all* `BGSScene` forms and patch those with `parentQuest == quest` on `STFU_BardSongs`.
-   Only whitelisted scenes are skipped. **This pass ignores the blacklist**: every scene
+2. **Pass 2: bard quests.** Every scene in `Config::GetBardSongScenes()` (the bard quests'
+   `quest->scenes`) is patched on `STFU_BardSongs`. Only whitelisted scenes are skipped. **This pass ignores the blacklist**: every scene
    of those quests is gated whether or not it has a row.
 3. **Pass 3: Hard Topic rows.** This pass runs only if some Hard Topic row exists. It
    full-scans all scenes, and any scene with a dialogue action whose topic is Hard-blocked
    gets patched on `STFU_Scenes`. A whitelisted topic in the same scene vetoes the patch.
-   Scenes already handled in Pass 1 are skipped.
+   Scenes with their own gate are skipped: those with a Hard Scene row (Pass 1) and the bard
+   scenes (Pass 2), so a topic rule never replaces another rule's gate.
 
 Summary line: `[SCENE BLOCKER] Patching complete — N scenes (M phases) patched`.
 
@@ -150,7 +152,9 @@ Summary line: `[SCENE BLOCKER] Patching complete — N scenes (M phases) patched
 `AddToBlacklist()` (both the insert and the update path) calls
 `UpdateSceneConditions(editorID, blockType)` for Scene rows, or `UpdateSceneConditionsForTopic`
 for Topic rows that have an EditorID. `RemoveFromBlacklist*()` calls the same functions with
-`blockType = 1` to strip the conditions. The work is queued with `SKSE::GetTaskInterface()->AddTask`,
+`blockType = 1` to strip the conditions. The topic path skips scenes that have their own gate
+(their own Hard Scene row, or a bard scene), so a topic rule never replaces or strips another
+rule's gate. The work is queued with `SKSE::GetTaskInterface()->AddTask`,
 so it runs on the main thread.
 
 - **Hard (2):** if `scene->isPlaying`, the scene is inserted into `g_deferredScenes` and
@@ -180,23 +184,24 @@ so the next launch's `PatchScenes()` picks the scene up.
 
 ### Bard songs and SceneMonitor
 
-Bard songs are handled in three separate places, and they don't agree on the quest list:
+One quest list, `Config::GetBardSongQuestsList()` (`BardSongs`, `BardSongsInstrumental`: 8 + 12 scenes in
+Skyrim.esm), drives everything. `Config::GetBardSongScenesList()` turns it into the quests' scene EditorIDs.
 
-| Where | Quests | Effect |
-|---|---|---|
-| `SceneMonitor::Initialize()` | `BardSongs`, `BardSongsInstrumental`, **`BardAudienceQuest`** | One-shot: adds every scene in `quest->scenes` as a Hard `Scene` row, category `BardSongs`. Gated by meta flag `bard_scenes_initialized` |
-| `SceneHook::PatchScenes()` Pass 2 | `BardSongs`, `BardSongsInstrumental`, **`MS05BardSongs`** | Gates every scene of these quests on `STFU_BardSongs` at launch |
-| `ConstructResponseHook` / `Config::IsBardSongQuest()` | same as Pass 2 | When `STFU_BardSongs` is on, it sets `scene->isPlaying = false` on the scene that owns the topic and skips the original `ConstructResponse`. This is the only place STFU force-stops a running scene. The comment explains that bards have no deferred-patch path |
+| Where | Effect |
+|---|---|
+| `SceneMonitor::Initialize()` | One-shot: `ImportHardcodedScenes(GetBardSongScenesList(), "BardSongs", insertOnly=true)`, gated by meta flag `bard_scenes_initialized`. Existing rows are left untouched |
+| Manual "Import Scenes" (MCM `PapyrusInterface.cpp`, menu `OnImportScenes`) | `GetBardSongScenesList()`, upserted |
+| `SceneHook::PatchScenes()` Pass 2 | Gates every scene in `GetBardSongScenes()` on `STFU_BardSongs` at launch |
+| `SceneHook::UpdateSceneConditionsForTopic()` | Skips bard scenes, so a topic rule never touches their gate |
+| `ConstructResponseHook` / `Config::IsBardSongQuest()` | When `STFU_BardSongs` is on, it sets `scene->isPlaying = false` on the scene that owns the topic and skips the original `ConstructResponse`. This is the only place STFU force-stops a running scene. The comment explains that bards have no deferred-patch path |
 
-**Known noisy warnings.** The manual "Import scenes" actions (MCM `ImportHardcodedScenes`
-→ `PapyrusInterface.cpp`; Prisma listener `importScenes` → `PrismaUIMenu_Settings.cpp`
-`OnImportScenes`) pass the three **quest** EditorIDs from `GetBardSongQuestsList()` to
-`ImportHardcodedScenes(…, "BardSongs")`. That creates Scene rows named `BardSongs`,
-`BardSongsInstrumental` and `MS05BardSongs`, which are not scenes. Every launch after that, Pass 1
-logs `[SCENE BLOCKER] Hard-blocked scene not found in form table: BardSongs` (and the same for the other two).
-The warnings do no harm: Pass 2 does the real bard gating. They show up in the UI blacklist as
-three bogus scene rows. The first-run import in `main.cpp` does **not** import these quest
-names. Only the manual re-import does.
+**Leftover rows.** Until 1.2.0 the manual import stored the quest EditorIDs (`BardSongs`, `BardSongsInstrumental`,
+and the nonexistent `MS05BardSongs`) as Scene rows, and older first-run imports also added `BardAudienceQuestScene`.
+Those rows stay in existing databases (no migrations); the quest-name rows log
+`[SCENE BLOCKER] Hard-blocked scene not found in form table: …` every launch until deleted.
+
+Every bard scene has a script attached (VMAD), which would fail the curation rule below; bard-song blocking predates
+the rule and has no known reports. See KNOWN_ISSUES.md open questions.
 
 ### First-run import gating
 
@@ -210,7 +215,8 @@ The manual MCM/Prisma import ignores the flag and always runs.
 `ImportHardcodedScenes()` goes through `AddToBlacklist(entry, skipEnrichment=true)`, which
 **upserts** by `(target_type, editorID)`. Re-importing therefore overwrites existing rows:
 `block_type` goes back to Hard, and `notes`, `filter_category`, `response_text` (`"[]"`) and the
-actor/faction filters (cleared) are reset. See Gotchas.
+actor/faction filters (cleared) are reset. See Gotchas. The exception is `insertOnly=true`
+(used by `SceneMonitor`), which skips scenes that already have a row.
 
 ### Safety net (Hard scene that starts anyway)
 
@@ -264,12 +270,12 @@ create an empty `stfu_debug.flag` next to it.
 | Pattern | Meaning |
 |---|---|
 | `Importing hardcoded scenes (first-run)` / `Hardcoded scenes already initialized` | First-run gate result |
-| `[DialogueDB] Importing N scenes with filter category` / `Imported N new scenes` | Import ran. "new" counts every successful upsert, not only inserts |
-| `SceneMonitor: Registered …` / `Failed to find …` / `bard scenes already initialized` / `Found N total scenes, added …` | Bard auto-population |
+| `[DialogueDB] Importing N scenes with filter category` / `Wrote N of M scenes to the blacklist (category '…')` | Import ran. N counts every row written (insert or upsert); `, existing rows kept` is appended for insert-only imports |
+| `[SceneMonitor] Added X of Y bard song scenes to the blacklist (first run)` / `[SceneMonitor] Bard scenes already initialized, skipping auto-population` | Bard auto-population |
 | `Global 'STFU_…' not found in loaded ESPs` | Gate global missing (STFU.esp not loaded?) |
 | `[SCENE BLOCKER] Patching complete —` | Launch summary |
 | `[SCENE BLOCKER] Hard-blocked scene not found in form table:` | Row with no matching `BGSScene` (typo, missing plugin, or bard **quest** names from manual import) |
-| `[SCENE BLOCKER] Bard song quest not found:` | Pass 2 lookup failed |
+| `[Config] Bard song quest not found:` (warn) | `GetBardSongScenes()` lookup failed (Pass 2, topic path, imports) |
 | `[SCENE BLOCKER] Patched Hard-blocked scene: X (gate: STFU_…)` (debug) | Confirms which global gates a scene |
 | `[SCENE UPDATE] Scene X is currently running - queuing for next load screen` | Deferred |
 | `[SCENE UPDATE] PatchDeferredScenes: patching N scene(s)` / `Patched deferred scene` | Deferred drain |
@@ -280,18 +286,12 @@ create an empty `stfu_debug.flag` next to it.
 
 ## Gotchas / known issues
 
-- **Inverted comment.** The comment above `CreateGlobalDisabledCondition` says "toggle OFF (0)
-  → condition TRUE, blocking the scene". In fact a TRUE start condition *allows* the phase.
-  Global 1 = blocked, as the code and the rest of STFU behave.
-- **Runtime Hard path doesn't strip first.** `UpdateSceneConditions` and
-  `UpdateSceneConditionsForTopic` prepend without calling `RemoveConditionsFromScene()`. Every
-  upsert of a Hard Scene row (editing notes or actor filters, changing the category, or a re-import)
-  adds another condition. If the category changed, the old global's condition stays until the next
-  launch, so the scene is gated on *both* toggles. The first-run import at kDataLoaded also queues
-  these tasks. They run after the synchronous `PatchScenes()`, so on first launch every
-  pre-included scene probably ends up with two identical conditions. The result is still correct
-  (same global, AND), just redundant. `PatchScenes()` / `PatchDeferredScenes()` are the only
-  paths that are idempotent.
+- **Every gate goes through `GateScene()`**, which strips STFU's existing condition before adding one, so
+  re-saving a Hard row or changing its category replaces the gate instead of stacking a second one.
+  Before this was fixed, the runtime Hard paths stacked conditions and a category change left a scene
+  gated on both toggles until relaunch. Like Pass 3, the runtime topic path (`UpdateSceneConditionsForTopic`,
+  both Hard and Soft/remove) skips scenes with their own gate (own Hard Scene row, or a bard scene), so a topic
+  rule never replaces or strips that gate.
 - **Whitelist changes aren't applied at runtime.** `DialogueDatabase_Whitelist.cpp` never calls
   `SceneHook`. Whitelisting a Hard-blocked scene only takes effect at the next launch.
 - **`ClearBlacklist()` leaves conditions in place** until the next launch (see the placeholder comment
@@ -299,31 +299,21 @@ create an empty `stfu_debug.flag` next to it.
 - **Pass 3 and `UpdateSceneConditionsForTopic` always gate on `STFU_Scenes`**, whatever
   the Topic row's category is. A user-Hard-blocked topic (category `Blacklist`) therefore gates its scenes
   on Block Ambient Scenes, not on the Blacklist toggle. This is inconsistent with the per-category scene gating.
-- **Bard quest lists disagree.** SceneMonitor uses `BardAudienceQuest`, while Pass 2 and
-  `IsBardSongQuest()` use `MS05BardSongs`. So `BardAudienceQuest` scenes get Hard rows under
-  the `BardSongs` gate even though Pass 2 never touches them. Whether those scenes pass
-  the curation rule has not been checked.
 - **Removing a bard scene row doesn't un-gate it for good.** At runtime the conditions are
-  stripped, but at the next launch Pass 2 gates every scene of the three quests regardless of the blacklist. To exempt one, whitelist it.
+  stripped, but at the next launch Pass 2 gates every scene of the bard quests regardless of the blacklist. To exempt one, whitelist it.
 - **Manual re-import clobbers curation.** It upserts, so it resets pre-included rows the user
   changed (Soft → Hard, actor filters cleared, a scene the user had re-categorised as
-  `Blacklist` goes back to `Scene`). Scenes the user *deleted* come back. It also adds the three
-  bogus bard-quest "scene" rows.
+  `Blacklist` goes back to `Scene`). Scenes the user *deleted* come back.
 - **`isPlaying` guard only applies to Hard adds.** Removal is applied immediately. That's
   intended.
-- **Deferred set is not persisted.** It's harmless (see Deferred scenes). Two things are stale here: the
-  log text "queued from previous session", and `SceneHook.h`, which still says kPostLoadGame. The call now comes
-  from `LoadingMenuSink` when the Loading Menu *opens*. The `main.cpp` comment at the registration site
-  says "closing", which is also out of date.
+- **Deferred set is not persisted.** It's harmless (see Deferred scenes). `PatchDeferredScenes` runs from
+  `LoadingMenuSink` when the Loading Menu *opens*.
 - **EditorIDs are required.** Everything is keyed on scene EditorIDs through
   `STFU::GetEditorID` / `LookupByEditorID`. On AE that needs powerofthree's Tweaks. Without it,
   lookups fail and the result is a wall of "not found in form table" warnings.
 - **Hardcoded fallback compares a topic to scene IDs.** `IsHardcodedAmbientScene(TESTopic*)`
   falls back to checking the *topic* EditorID against the scene-ID set, which almost never matches.
-  It logs `[HARDCODED CHECK]` at info level when it does, or when the set is empty. Its results
-  (`isHardcoded`) are computed but unused in `ConstructResponseHook.cpp` and at `PopulateTopicInfoHook.cpp`
-  around the safety net.
-- **`CellLoadEventHandler`** in `main.cpp` is dead: it does nothing, and nothing registers it.
+  It logs `[HARDCODED CHECK]` at debug level when it does, or when the set is empty.
 
 ## How to add or remove a pre-included scene
 

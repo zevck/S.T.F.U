@@ -53,6 +53,7 @@ namespace PopulateTopicInfoHook
     
     static std::vector<DialogueConstruct> g_recentConstructs;
     static std::mutex g_constructMutex;
+    constexpr int64_t CONSTRUCT_WINDOW_MS = 1000;  // How long a recorded construct stays in g_recentConstructs
     
     // Cooldown system: track recently logged dialogue to prevent duplicates
     struct DialogueKey {
@@ -139,6 +140,12 @@ namespace PopulateTopicInfoHook
             spdlog::debug("[POPULATE] Duplicate detected (FormID: {:#x}, Speaker: {}), skipping all processing", 
                 currentFormID, speakerName ? speakerName : "Unknown");
             
+            // A duplicate of a hard-blocked line is blocked the same way
+            if (ConstructResponseHook::GetCachedHardBlock()) {
+                spdlog::debug("[POPULATE] Duplicate is hard-blocked (cached decision) - not calling original");
+                return 0;
+            }
+
             // For duplicates, check cached decision and set early flag if needed
             bool cachedSoftBlock = ConstructResponseHook::GetCachedSoftBlock();
             if (cachedSoftBlock && a_responseData && !fullResponseText.empty()) {
@@ -238,6 +245,8 @@ namespace PopulateTopicInfoHook
             
             // HARD BLOCK: Log to history and return early to prevent dialogue completely
             if (isHardBlocked) {
+                ConstructResponseHook::SetHardBlockDecision(a_topicInfo ? a_topicInfo->GetFormID() : 0);
+
                 // Skip logging if no text (even for hard blocks)
                 std::string trimmedText = fullResponseText;
                 trimmedText.erase(0, trimmedText.find_first_not_of(" \t\n\r"));
@@ -411,9 +420,8 @@ namespace PopulateTopicInfoHook
                 return result;
             }
             
-            // CORRELATION: Only log if DialogueItem::Ctor also fired for this (speaker + topicInfo)
-            // DialogueItem::Ctor fires for actual dialogue playback, not menu evaluation
-            // This filters out menu spam while preserving all legitimate dialogue
+            // CORRELATION: Only log if DialogueItem::Ctor also fired for this (speaker + topicInfo).
+            // The Ctor also fires for dialogue-menu candidates, so this is a heuristic, not a "was spoken" signal.
             uint32_t topicInfoFormID = a_topicInfo ? a_topicInfo->GetFormID() : 0;
             bool wasConstructed = false;
             
@@ -428,7 +436,7 @@ namespace PopulateTopicInfoHook
                 
                 for (auto it = g_recentConstructs.begin(); it != g_recentConstructs.end();) {
                     int64_t timeSince = now - it->timestamp;
-                    if (timeSince > 1000) {
+                    if (timeSince > CONSTRUCT_WINDOW_MS) {
                         // Remove old entries (>1 second)
                         it = g_recentConstructs.erase(it);
                     } else {
@@ -509,7 +517,7 @@ namespace PopulateTopicInfoHook
             // Determine blocking status with granular control
             DialogueDB::BlockedStatus blockedStatus = DialogueDB::BlockedStatus::Normal;
             
-            // Check granular blocking flags (speakerFormID already defined at line 441)
+            // Check granular blocking flags (speakerFormID is defined in the correlation block above)
             bool shouldSoftBlock = Config::ShouldSoftBlock(quest, a_topic, speakerName, responseText, speakerFormID, a_speaker);
             
             // For scenes (subtype 14), check if scene blocking is actually enabled
@@ -770,8 +778,6 @@ namespace PopulateTopicInfoHook
         // Check if we should block this dialogue
         if (a_topic && a_topicInfo) {
             RE::TESQuest* quest = a_topic->ownerQuest;
-            const char* speakerName = a_speaker ? a_speaker->GetName() : nullptr;
-
             uint16_t subtype = static_cast<uint16_t>(a_topic->data.subtype.get());
 
             // Check for scenes (subtype 14)
@@ -782,15 +788,10 @@ namespace PopulateTopicInfoHook
                 // Check if this scene should be blocked
                 bool isBardSong = Config::IsBardSongQuest(quest);
                 bool bardSongsEnabled = Config::ShouldBlockBardSongs();
-                bool isHardcoded = Config::IsHardcodedAmbientScene(a_topic);
-                
-                // Check granular scene blocking from unified blacklist (target_type=4)
-                // Need to find the scene EditorID, not the topic EditorID
+
+                // Find the scene containing this topic (its EditorID, not the topic's)
                 auto db = DialogueDB::GetDatabase();
-                bool shouldBlockSceneAudio = false;
-                bool shouldBlockSceneSubtitles = false;
                 std::string sceneEditorID;  // Declare in wider scope for safety net
-                uint32_t sceneFormID = 0;
                 
                 if (db && quest && a_topic) {
                     // Find the scene that contains this topic
@@ -804,17 +805,10 @@ namespace PopulateTopicInfoHook
                             if (dialogueAction && dialogueAction->topic == a_topic) {
                                 const char* scnEditorID = STFU::GetEditorID(scene);
                                 sceneEditorID = scnEditorID ? scnEditorID : "";
-                                sceneFormID = scene->GetFormID();
                                 break;
                             }
                         }
                         if (!sceneEditorID.empty()) break;
-                    }
-                    
-                    if (!sceneEditorID.empty()) {
-                        bool shouldSoftBlockScene = db->ShouldSoftBlock(sceneFormID, sceneEditorID);
-                        shouldBlockSceneAudio = shouldSoftBlockScene;
-                        shouldBlockSceneSubtitles = shouldSoftBlockScene;
                     }
                 }
 
@@ -870,28 +864,6 @@ namespace PopulateTopicInfoHook
                     // Don't remove conditions (would persist in saves causing reload loops)
                 }
             }
-
-            // Check granular blocking for logging (ConstructResponse will actually apply the blocks)
-            uint32_t speakerFormID = a_speaker ? a_speaker->GetFormID() : 0;
-            bool shouldSoftBlock = Config::ShouldSoftBlock(quest, a_topic, speakerName, responseText, speakerFormID);
-            
-            // (Blocking flag now set per-response in ConstructResponse)
-            
-            if (shouldSoftBlock) {
-                uint16_t subtype = static_cast<uint16_t>(a_topic->data.subtype.get());
-                const char* topicEditorID = STFU::GetEditorID(a_topic);
-                uint32_t topicFormID = a_topic->GetFormID();
-
-                spdlog::debug("[POPULATE SILENCE] Speaker: {} - Topic: {} (subtype: {}, FormID: 0x{:08X}, softBlock: {})",
-                    speakerName ? speakerName : "Unknown",
-                    topicEditorID ? topicEditorID : "(none)",
-                    subtype,
-                    topicFormID,
-                    shouldSoftBlock);
-
-                // Don't block - let it through to ConstructResponse hook which will silence it
-                // This allows scripts to execute while removing audio/subtitles/animations
-            }
         }
 
         // Return result from original (already called at the top)
@@ -931,6 +903,8 @@ namespace PopulateTopicInfoHook
         int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
 
+        // Prune here too: the correlation gate only prunes on some paths, so the list could grow unbounded
+        std::erase_if(g_recentConstructs, [now](const DialogueConstruct& c) { return now - c.timestamp > CONSTRUCT_WINDOW_MS; });
         g_recentConstructs.push_back({speakerFormID, topicInfoFormID, topicFormID, now});
 
         // Log for diagnostics

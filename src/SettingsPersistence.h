@@ -20,15 +20,12 @@
 
 #include "../include/PCH.h"
 
-// Handles persistent storage of runtime settings via SQLite database
+// Persists the toggle globals in STFU_Config.ini (the save game's own global values are overwritten on load)
 namespace SettingsPersistence
 {
-    // Initialize persistence system
-    void Register();
-    
-    // Load settings from database (called once at startup)
+    // INI -> globals (data load, new game, after each save load)
     void LoadSettings();
-    
-    // Save current settings to database (called when settings change)
+
+    // Globals -> INI (called when a setting changes)
     void SaveSettings();
 }

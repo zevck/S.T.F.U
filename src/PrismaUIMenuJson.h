@@ -68,11 +68,25 @@ namespace PrismaUIMenuDetail
                 case '\n': result += "\\n"; break;
                 case '\r': result += "\\r"; break;
                 case '\t': result += "\\t"; break;
-                default: result += static_cast<char>(byte); break;
+                default:
+                    if (byte < 0x20) {
+                        char buf[8];
+                        snprintf(buf, sizeof(buf), "\\x%02x", static_cast<unsigned int>(byte));
+                        result += buf;
+                    } else {
+                        result += static_cast<char>(byte);
+                    }
+                    break;
             }
         }
 
         return result;
+    }
+
+    // type: "success", "error" or "info"
+    inline std::string BuildToastScript(const std::string& message, const char* type)
+    {
+        return "window.showToast('" + EscapeSingleQuotedJSString(message) + "', '" + type + "')";
     }
 
     inline std::string BuildSKSEUpdateScript(const std::string& eventName, const std::string& jsonData)

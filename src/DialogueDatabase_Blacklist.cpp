@@ -545,7 +545,7 @@ namespace DialogueDB
 
     // Hardcoded Scene Import (now uses unified blacklist)
 
-    void Database::ImportHardcodedScenes(const std::vector<std::string>& sceneEditorIDs, const std::string& filterCategory)
+    int Database::ImportHardcodedScenes(const std::vector<std::string>& sceneEditorIDs, const std::string& filterCategory, bool insertOnly)
     {
         // Import hardcoded scenes WITHOUT enrichment (enrichment deferred to kPostLoadGame)
         spdlog::info("[DialogueDB] Importing {} scenes with filter category '{}'...", 
@@ -581,14 +581,23 @@ namespace DialogueDB
             // Responses will be populated at runtime when the scene first plays (via EnrichBlacklistEntryAtRuntime).
             entry.responseText = "[]";
             
+            if (insertOnly) {
+                std::lock_guard<std::recursive_mutex> lock(dbMutex_);
+                if (!db_ || FindExistingEntry(db_, "blacklist", entry) >= 0) {
+                    continue;
+                }
+            }
+
             spdlog::debug("[DialogueDB] Importing scene '{}' with filterCategory: '{}'", editorID, filterCategory);
-            
+
             // Skip enrichment during import (will enrich after kPostLoadGame)
             if (AddToBlacklist(entry, true)) {
                 sceneCount++;
             }
         }
-        spdlog::info("[DialogueDB] Imported {} new scenes to unified blacklist (enrichment deferred)", sceneCount);
+        spdlog::info("[DialogueDB] Wrote {} of {} scenes to the blacklist (category '{}'{})",
+            sceneCount, sceneEditorIDs.size(), filterCategory, insertOnly ? ", existing rows kept" : "");
+        return sceneCount;
     }
 
     void Database::EnrichBlacklistEntryAtRuntime(BlacklistTarget targetType, const std::string& targetEditorID, const std::string& responseText)

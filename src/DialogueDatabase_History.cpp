@@ -87,7 +87,7 @@ namespace DialogueDB
 
             // Auto-flush if either:
             // 1. Queue has reached batch size (200 entries)
-            // 2. FLUSH_INTERVAL_MS (5 seconds) has passed since last flush
+            // 2. FLUSH_INTERVAL_MS (1 second) has passed since last flush
             bool sizeLimitReached = pendingEntries_.size() >= BATCH_SIZE;
             bool timeLimitReached = (now - lastFlushTime_ >= FLUSH_INTERVAL_MS);
             shouldFlush = sizeLimitReached || timeLimitReached;
@@ -281,55 +281,49 @@ namespace DialogueDB
 
         while (sqlite3_step(stmt) == SQLITE_ROW) {
             DialogueEntry entry;
-            
-            // Use column names instead of hardcoded indices - resilient to schema changes
+
+            // Use column names instead of hardcoded indices - resilient to schema changes.
+            // Text columns can be NULL; assigning a null char* to std::string is undefined.
+            auto text = [this, stmt](const char* column) -> std::string {
+                const int i = GetColumnIndex(stmt, column);
+                const auto* value = i >= 0 ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, i)) : nullptr;
+                return value ? value : "";
+            };
             int idx;
             entry.id = sqlite3_column_int64(stmt, GetColumnIndex(stmt, "id"));
             entry.timestamp = sqlite3_column_int64(stmt, GetColumnIndex(stmt, "timestamp"));
-            
-            if ((idx = GetColumnIndex(stmt, "speaker_name")) >= 0)
-                entry.speakerName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, idx));
+
+            entry.speakerName = text("speaker_name");
             if ((idx = GetColumnIndex(stmt, "speaker_formid")) >= 0)
                 entry.speakerFormID = sqlite3_column_int(stmt, idx);
             if ((idx = GetColumnIndex(stmt, "speaker_base_formid")) >= 0)
                 entry.speakerBaseFormID = sqlite3_column_int(stmt, idx);
-            
-            if ((idx = GetColumnIndex(stmt, "topic_editorid")) >= 0)
-                entry.topicEditorID = reinterpret_cast<const char*>(sqlite3_column_text(stmt, idx));
+
+            entry.topicEditorID = text("topic_editorid");
             if ((idx = GetColumnIndex(stmt, "topic_formid")) >= 0)
                 entry.topicFormID = sqlite3_column_int(stmt, idx);
             if ((idx = GetColumnIndex(stmt, "topic_subtype")) >= 0)
                 entry.topicSubtype = sqlite3_column_int(stmt, idx);
-            if ((idx = GetColumnIndex(stmt, "topic_subtype_name")) >= 0)
-                entry.topicSubtypeName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, idx));
-            
-            if ((idx = GetColumnIndex(stmt, "quest_editorid")) >= 0)
-                entry.questEditorID = reinterpret_cast<const char*>(sqlite3_column_text(stmt, idx));
+            entry.topicSubtypeName = text("topic_subtype_name");
+
+            entry.questEditorID = text("quest_editorid");
             if ((idx = GetColumnIndex(stmt, "quest_formid")) >= 0)
                 entry.questFormID = sqlite3_column_int(stmt, idx);
-            if ((idx = GetColumnIndex(stmt, "quest_name")) >= 0)
-                entry.questName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, idx));
-            
-            if ((idx = GetColumnIndex(stmt, "scene_editorid")) >= 0)
-                entry.sceneEditorID = reinterpret_cast<const char*>(sqlite3_column_text(stmt, idx));
-            
+            entry.questName = text("quest_name");
+
+            entry.sceneEditorID = text("scene_editorid");
+
             if ((idx = GetColumnIndex(stmt, "topicinfo_formid")) >= 0)
                 entry.topicInfoFormID = sqlite3_column_int(stmt, idx);
-            
-            if ((idx = GetColumnIndex(stmt, "response_text")) >= 0)
-                entry.responseText = reinterpret_cast<const char*>(sqlite3_column_text(stmt, idx));
-            if ((idx = GetColumnIndex(stmt, "voice_filepath")) >= 0)
-                entry.voiceFilepath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, idx));
-            
+
+            entry.responseText = text("response_text");
+            entry.voiceFilepath = text("voice_filepath");
+
             // Deserialize responses_json - now resilient to column reordering
-            if ((idx = GetColumnIndex(stmt, "responses_json")) >= 0) {
-                const char* responsesJson = reinterpret_cast<const char*>(sqlite3_column_text(stmt, idx));
-                if (responsesJson) {
-                    std::string jsonStr(responsesJson);
-                    entry.allResponses = JsonToResponses(jsonStr);
-                }
+            if (const std::string responsesJson = text("responses_json"); !responsesJson.empty()) {
+                entry.allResponses = JsonToResponses(responsesJson);
             }
-            
+
             if ((idx = GetColumnIndex(stmt, "blocked_status")) >= 0)
                 entry.blockedStatus = static_cast<BlockedStatus>(sqlite3_column_int(stmt, idx));
             if ((idx = GetColumnIndex(stmt, "is_scene")) >= 0)
@@ -338,17 +332,10 @@ namespace DialogueDB
                 entry.isBardSong = sqlite3_column_int(stmt, idx) != 0;
             if ((idx = GetColumnIndex(stmt, "is_hardcoded_scene")) >= 0)
                 entry.isHardcodedScene = sqlite3_column_int(stmt, idx) != 0;
-            
-            if ((idx = GetColumnIndex(stmt, "source_plugin")) >= 0) {
-                const char* sourcePlugin = reinterpret_cast<const char*>(sqlite3_column_text(stmt, idx));
-                entry.sourcePlugin = sourcePlugin ? sourcePlugin : "";
-            }
-            
-            if ((idx = GetColumnIndex(stmt, "topic_source_plugin")) >= 0) {
-                const char* topicSourcePlugin = reinterpret_cast<const char*>(sqlite3_column_text(stmt, idx));
-                entry.topicSourcePlugin = topicSourcePlugin ? topicSourcePlugin : "";
-            }
-            
+
+            entry.sourcePlugin = text("source_plugin");
+            entry.topicSourcePlugin = text("topic_source_plugin");
+
             if ((idx = GetColumnIndex(stmt, "skyrimnet_blockable")) >= 0)
                 entry.skyrimNetBlockable = sqlite3_column_int(stmt, idx) != 0;
 

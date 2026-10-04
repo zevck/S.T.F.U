@@ -112,7 +112,7 @@ both are read and written as `BlacklistEntry`.
 | # | Column | Type | Meaning |
 |---|---|---|---|
 | 0 | `id` | INTEGER PK AUTOINCREMENT | |
-| 1 | `target_type` | INTEGER NOT NULL | `BlacklistTarget`: 1 Topic, 2 Quest, 3 Subtype, 4 Scene, 5 Plugin, 6 Actor (ref FormID), 7 Faction |
+| 1 | `target_type` | INTEGER NOT NULL | `BlacklistTarget`: 0 None (in-memory default for an unresolved entry, never saved by current code; old rows may hold it), 1 Topic, 2 Quest, 3 Subtype, 4 Scene, 5 Plugin, 6 Actor (ref FormID), 7 Faction |
 | 2 | `target_formid` | INTEGER | Runtime FormID when saved, or 0 (subtypes, imported scenes). Only matched on rows with no FormKey and no EditorID. Stored **signed** (see Gotchas). |
 | 3 | `target_editorid` | TEXT | EditorID, matched after the FormKey. For Actor rows it holds the NPC name, for Faction rows the faction EditorID. |
 | 4 | `block_type` | INTEGER NOT NULL | `BlockType`: 1 Soft, 2 Hard, 3 SkyrimNet (**legacy**). It is stored in whitelist rows too but has no meaning there. |
@@ -144,7 +144,7 @@ Constraint: `UNIQUE(target_type, target_formid, target_editorid)`.
 | Key | Set by | Purpose |
 |---|---|---|
 | `hardcoded_scenes_initialized` | `main.cpp` `kDataLoaded` | First-run import of ambient scenes (category `Scene`) and follower-commentary scenes (`FollowerCommentary`). Gating on the flag, not a row count, means that clearing or removing scenes never re-imports them. |
-| `bard_scenes_initialized` | `SceneMonitor.cpp` `SceneMonitor::Initialize()` | First-run auto-add of every scene in the bard quests (category `BardSongs`, Hard) |
+| `bard_scenes_initialized` | `SceneMonitor.cpp` `SceneMonitor::Initialize()` | First-run insert-only import of every scene in the bard quests (`GetBardSongScenesList()`, category `BardSongs`, Hard); existing rows are left untouched |
 
 To force a re-import on a copy, `DELETE FROM meta WHERE key=...`. Explicit
 re-import (MCM `ImportHardcodedScenes` or the UI `OnImportScenes`) ignores the
@@ -250,7 +250,7 @@ entirely free pages while holding only ~100 live history rows.
 | `ClearBlacklist()` | `DELETE FROM blacklist`. Does **not** reset scene conditions (a stale-until-reload comment says so). |
 | `GetBlacklist()` | All rows, ordered by `added_timestamp`, via `ReadListEntry()` (reads columns by name). |
 | `GetBlacklistEntryId(formID, edid)` | First matching id of any target type, or -1 |
-| `ImportHardcodedScenes(edids, category)` | Upserts Scene/Hard rows with `skipEnrichment=true`, `responseText="[]"`, plugin guessed from the `DLC1`/`DLC2` prefix |
+| `ImportHardcodedScenes(edids, category, insertOnly=false)` | Upserts Scene/Hard rows (notes `Pre-included ambient scene`) with `skipEnrichment=true`, `responseText="[]"`, plugin guessed from the `DLC1`/`DLC2` prefix. With `insertOnly`, rows that already exist (`FindExistingEntry`) are left untouched. Returns the number of rows written and logs `Wrote N of M scenes to the blacklist (category '...')` |
 | `EnrichBlacklistEntryAtRuntime(type, edid, text \| vector)` | Appends unseen responses to a row's `response_text` JSON. Called from `PopulateTopicInfoHook` (~:749). |
 
 **Whitelist**
@@ -379,7 +379,7 @@ meaning of an existing value.
 | `[DialogueDB] Failed to open database` / `Failed to create ... table` / `Failed to update schema` | Init failure. The DB is disabled for the whole session. |
 | `[DialogueDB] Adding <col> column to <table>` | `UpdateSchema` patched an older DB |
 | `Importing hardcoded scenes (first-run)...` / `Hardcoded scenes already initialized, skipping auto-import` | Meta-flag gate |
-| `SceneMonitor: bard scenes already initialized, skipping auto-population` | Bard flag gate |
+| `[SceneMonitor] Bard scenes already initialized, skipping auto-population` / `[SceneMonitor] Added X of Y bard song scenes to the blacklist (first run)` | Bard flag gate |
 | `[DialogueDB] Flushing N queued dialogue entries` (debug) | Queue flush |
 | `[DialogueDB] History limit exceeded (n/100), deleting k oldest entries` | Pruning (info, fires on nearly every flush once full) |
 | `[DialogueDB] Failed to insert dialogue entry for TopicInfo 0x...` | Insert failure (schema mismatch?) |

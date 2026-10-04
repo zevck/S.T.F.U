@@ -32,5 +32,7 @@ namespace ConstructResponseHook
     void SetBlockingDecision(bool shouldSoftBlock, RE::FormID topicInfoFormID);  // Single evaluation point
     void ClearBlockingDecision();  // Clear when new dialogue detected
     bool GetCachedSoftBlock();  // Get cached soft block decision for duplicates
+    void SetHardBlockDecision(RE::FormID topicInfoFormID);  // PopulateTopicInfo returned without calling the original
+    bool GetCachedHardBlock();  // Get cached hard block decision for duplicates
     bool IsDuplicateDialogue(RE::FormID topicInfoFormID, RE::TESObjectREFR* speaker);  // Check if duplicate within 5 seconds
 }

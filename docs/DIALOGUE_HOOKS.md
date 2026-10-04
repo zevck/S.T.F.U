@@ -33,7 +33,7 @@ This doc only covers where the decision is asked for, and what the hooks do with
    │        │                  +0xDE call ConstructResponse ──► Hook_ConstructResponse│
    │        ◄────────────────────────────────────────────────────────┘              │
    │ 7. history logging (correlation, cooldown, burst filter, text dedup, distance)  │
-   │ 8. scene safety-net check + [POPULATE SILENCE] debug log                         │
+   │ 8. scene safety-net check                                                         │
    └───────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -100,13 +100,13 @@ It's one ~790-line function, left as-is on purpose until the rewrite. Its phases
 | # | Phase | What it does | Lines (approx.) |
 |---|-------|--------------|-----------------|
 | 1 | **Extraction** | `TopicResponseExtractor::ExtractResponsesFromTopicInfo(topicInfo)`, fragments joined with spaces → `fullResponseText`. Read from the static record, so it's available even after the text gets blanked. `[POPULATE EXTRACTED]`. | ~116–131 |
-| 2 | **Duplicate detection** | `ConstructResponseHook::IsDuplicateDialogue(topicInfoFormID, speaker)`: same TopicInfo + same speaker pointer within 5 s of the *last non-duplicate* call. On a duplicate, if `GetCachedSoftBlock()` is true it blanks `a_responseData->responseText` and sets the early flag, then **calls the original and returns**. All later phases are skipped. | ~133–151 |
-| 3 | **Reset** | `ClearBlockingDecision()`: clears `g_shouldSoftBlock`, `g_wasEvaluated`, `g_evaluatedTopicInfoFormID`, `g_shouldBlockCurrent`. | ~158 |
-| 4 | **Hard-block check** | Needs topic + speaker. It calls `db->GetBlacklist()` and does its own matching: Topic entries with `BlockType::Hard` (FormKey, then for pre-1.2.0 rows the ESL-safe quest EditorID + plugin + `formID & 0xFFF`, then topic EditorID, then full FormID for keyless rows), then Quest entries (`EntryMatchesTarget`). See BLOCKING_RULES.md "Target identity". On a hit it logs to history as `HardBlock` (skipped if the text is empty, if `ShouldFilterFromHistory` matches, or if the speaker is >5000 units away) and **returns 0 without calling the original**. | ~160–338 |
+| 2 | **Duplicate detection** | `ConstructResponseHook::IsDuplicateDialogue(topicInfoFormID, speaker)`: same TopicInfo + same speaker pointer within 5 s of the *last non-duplicate* call. On a duplicate, if `GetCachedHardBlock()` is true it **returns 0 without calling the original** (a duplicate of a hard-blocked line stays blocked). Otherwise, if `GetCachedSoftBlock()` is true it blanks `a_responseData->responseText` and sets the early flag, then **calls the original and returns**. All later phases are skipped. | ~135–159 |
+| 3 | **Reset** | `ClearBlockingDecision()`: clears `g_shouldSoftBlock`, `g_hardBlocked`, `g_wasEvaluated`, `g_evaluatedTopicInfoFormID`, `g_shouldBlockCurrent`. | ~166 |
+| 4 | **Hard-block check** | Needs topic + speaker. It calls `db->GetBlacklist()` and does its own matching: Topic entries with `BlockType::Hard` (FormKey, then for pre-1.2.0 rows the ESL-safe quest EditorID + plugin + `formID & 0xFFF`, then topic EditorID, then full FormID for keyless rows), then Quest entries (`EntryMatchesTarget`). See BLOCKING_RULES.md "Target identity". On a hit it first calls `ConstructResponseHook::SetHardBlockDecision(topicInfoFormID)` (so phase 2 blocks later duplicates), then logs to history as `HardBlock` (skipped if the text is empty, if `ShouldFilterFromHistory` matches, or if the speaker is >5000 units away) and **returns 0 without calling the original**. | ~160–338 |
 | 5 | **Soft decision** | Needs topic + `a_responseData` + non-empty text. `Config::ShouldSoftBlock(quest, topic, speakerName, text, speakerFormID, speaker)` → `SetBlockingDecision(soft, topicInfoFormID)`. If soft: `a_responseData->responseText = ""` and `SetEarlyBlockFlag(true)`. | ~340–360 |
 | 6 | **Original** | `_OriginalPopulateTopicInfo(...)`, which runs the SetSubtitle and ConstructResponse call sites. | ~363 |
 | 7 | **History logging** | See [History logging filters](#history-logging-filters). Ends in `DialogueDB::LogDialogue(entry)` and `EnrichBlacklistEntryAtRuntime` (Scene or Topic target). | ~366–762 |
-| 8 | **Scene safety net / silence log** | For subtype 14 it finds the parent scene. If that scene is a Hard DB entry whose category gate global is ≥0.5, or it's a bard song with the toggle on, it logs `[POPULATE SCENE SAFETY]` at error level (the scene "started despite conditions"). It takes no action. Then it re-evaluates `ShouldSoftBlock` (without `speakerRef`) just to emit `[POPULATE SILENCE]`. | ~764–889 |
+| 8 | **Scene safety net** | For subtype 14 it finds the parent scene. If that scene is a Hard DB entry whose category gate global is ≥0.5, or it's a bard song with the toggle on, it logs `[POPULATE SCENE SAFETY]` at error level (the scene "started despite conditions"). It takes no action. | ~776–865 |
 
 #### History logging filters
 
@@ -165,7 +165,7 @@ The original fills `filePath` with the voice file path.
    `strcpy`s `Sound\STFU\silent.fuz` into `filePath`. The engine then plays roughly 0.1 s of
    silence, the audio-complete callback fires, and the scene advances. An empty path or a
    `false` return hangs the scene's state machine.
-7. **Soft block, regular line**: it logs `[AUDIO CLEARED]` (warn) and sets `*filePath = '\0'`.
+7. **Soft block, regular line**: it logs `[AUDIO CLEARED]` (debug) and sets `*filePath = '\0'`.
    On every response in the chain it clears `responseText`, `speakerIdle`/`listenerIdle`,
    sets emotion to neutral/0, and `flags = kNone`. That removes audio, subtitle text, lip/idle
    animation, and head-turn jerk.
@@ -230,9 +230,9 @@ The hooks run on the engine's BSJobs worker threads, and more than one can run a
 
 | State | Where | Protection | Notes |
 |-------|-------|------------|-------|
-| `g_recentConstructs` (vector) | `PopulateTopicInfoHook.cpp` | `std::mutex g_constructMutex` | Written by the Ctor hook (via `RecordDialogueConstruct`), read and pruned in phase 7 (correlation + burst filter). Pruned only by phase 7 gate 4, so it grows if gate 4 is never reached (inferred) |
+| `g_recentConstructs` (vector) | `PopulateTopicInfoHook.cpp` | `std::mutex g_constructMutex` | Written by the Ctor hook (via `RecordDialogueConstruct`), read and pruned in phase 7 (correlation + burst filter). Entries older than `CONSTRUCT_WINDOW_MS` (1000 ms) are pruned both on insert in `RecordDialogueConstruct` and in phase 7 gate 4, so the list stays bounded |
 | `g_recentlyLogged`, `g_recentlyLoggedByText`, `g_lastCleanupTime` | same | `std::mutex g_loggedMutex` | Cooldown and text dedup |
-| `g_shouldBlockCurrent`, `g_shouldSoftBlock`, `g_wasEvaluated`, `g_evaluatedTopicInfoFormID` | `ConstructResponseHook.cpp` | `thread_local` | Safe only because PopulateTopicInfo → SetSubtitle/ConstructResponse is one nested call on one thread. A decision made on one thread is invisible on another |
+| `g_shouldBlockCurrent`, `g_shouldSoftBlock`, `g_hardBlocked`, `g_wasEvaluated`, `g_evaluatedTopicInfoFormID` | `ConstructResponseHook.cpp` | `thread_local` | Safe only because PopulateTopicInfo → SetSubtitle/ConstructResponse is one nested call on one thread. A decision made on one thread is invisible on another |
 | `g_lastTopicInfoFormID`, `g_lastSpeaker`, `g_lastDialogueTime` | `ConstructResponseHook.cpp` | `thread_local` | Duplicate detection is per thread. The same TopicInfo on two threads is never seen as a duplicate |
 | `po3GetEditorID` fn pointer | `EditorID.h` | function-local static (C++11 magic static) | Resolved once |
 | Blacklist | `DialogueDB` | `dbMutex_` (recursive) inside `GetBlacklist()` | Returns a **copy** built by `SELECT * FROM blacklist` |
@@ -294,6 +294,7 @@ case it's debug. **Trace is never enabled** (`Logger::Setup` only picks debug or
 | `[POPULATE EXTRACTED]` | debug | Phase 1 text for this call |
 | `[POPULATE] Duplicate detected` / `New dialogue detected` | debug | Phase 2 result |
 | `[POPULATE] Duplicate is soft-blocked (cached decision)` | debug | Duplicate got blanked using the cached decision |
+| `[POPULATE] Duplicate is hard-blocked (cached decision)` | debug | Duplicate of a hard-blocked line. Original not called |
 | `[ConstructResponse] Blocking decision cleared / set` | debug | Phase 3 / phase 5 cache writes (`soft=`, `topicInfo=`) |
 | `[ConstructResponse] Early flag set` | debug | Phase 5 soft → `g_shouldBlockCurrent=true` |
 | `[HARD BLOCK]` | info (debug for skip variants) | Phase 4 hard block. Original not called |
@@ -304,15 +305,14 @@ case it's debug. **Trace is never enabled** (`Logger::Setup` only picks debug or
 | `[ConstructResponse] No cached decision` / `Fallback evaluation` | debug | Actor-less fallback |
 | `[STALE CACHE]` | **warn** | Cached decision belongs to a different TopicInfo. Suspect a wrong-line silence |
 | `[SOFT BLOCK] Silencing audio + subtitles` | debug | ConstructResponse is applying the soft block |
-| `[AUDIO CLEARED]` | **warn** | Regular line's audio/animation wiped. Shows up at default level, including for menu candidates |
+| `[AUDIO CLEARED]` | debug | Regular line's audio/animation wiped, including for menu candidates |
 | `[SCENE BLOCK] Blocking bard song` | debug | Bard scene stopped (`isPlaying=false`) |
 | `[POPULATE] MATCH FOUND!` / `NO MATCH` | debug | Correlation gate |
 | `[COOLDOWN SKIP]`, `[POPULATE] TEXT DUPLICATE SKIP` | debug | Dedup gates |
 | `[POPULATE] Skipping unchosen candidate in burst` | debug | Candidate-burst filter |
 | `[DIALOGUE] <speaker>: "..."` | debug | About to write history (emitted twice per entry) |
-| `[POPULATE EXTRACT]`, `[ResponseExtractor] ...` | debug / **info** | All-responses extraction. The extractor logs at info on every history write |
+| `[POPULATE EXTRACT]`, `[ResponseExtractor] ...` | debug (warn for lookup failures) | All-responses extraction |
 | `[POPULATE SCENE SAFETY]` | error | A hard-blocked scene is playing anyway |
-| `[POPULATE SILENCE]` | debug | Phase 8 informational log |
 
 Useful sequence to grep: `CTOR ENTRY|POPULATE|SetSubtitle|CONSTRUCT ENTRY|AUDIO CLEARED|STALE CACHE`.
 
@@ -331,13 +331,9 @@ Useful sequence to grep: `CTOR ENTRY|POPULATE|SetSubtitle|CONSTRUCT ENTRY|AUDIO 
 - **Hard block ignores toggles and filters.** Phase 4 matches any Topic/Quest `BlockType::Hard`
   entry without checking `IsFilterCategoryEnabled`, actor/faction filters on the entry, or
   the whitelist. Not verified in game.
-- **Hard block and duplicates.** Phase 4 returns before `SetBlockingDecision`, so the cache stays
-  `false`. A second PopulateTopicInfo for the same TopicInfo + speaker within 5 s (for example
-  the next fragment of a multi-response chain) goes down the duplicate path and **calls the
-  original unblocked**. This is inferred from the code and not witnessed in a log.
 - **Cost per line.** Every non-duplicate call copies the whole blacklist
   (`GetBlacklist()` = `SELECT *` under `dbMutex_`). Scene lines do it a second time in phase 8.
-  `ShouldSoftBlock` is evaluated up to three times per line (phases 5, 7, 8).
+  `Config::ShouldSoftBlock` is evaluated up to twice per line (phases 5 and 7).
 - **Quest hard-block EditorID match with empty strings.** `e.targetEditorID == questEditorIDStr`
   matches when both are `""`. A FormID-only Quest Hard entry with no EditorID then matches any
   quest that has no EditorID.

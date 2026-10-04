@@ -31,7 +31,7 @@ namespace SceneHook
     void PatchScenes();
     
     // Patch only scenes that were deferred because they were playing when the block was added.
-    // Called at kPostLoadGame - load screens stop all scenes so it is safe to patch them now.
+    // Called when the Loading Menu opens (LoadingMenuSink) - the engine has stopped all scenes by then.
     void PatchDeferredScenes();
     
     // Update scene conditions at runtime when blacklist changes

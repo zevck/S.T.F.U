@@ -33,7 +33,7 @@ namespace SettingsPersistence
     constexpr int DEFAULT_BLOCK_SCENES = 0;            // Disabled
     constexpr int DEFAULT_BLOCK_BARD_SONGS = 0;        // Disabled
     constexpr int DEFAULT_BLOCK_FOLLOWER_COMMENTARY = 0; // Disabled
-    constexpr int DEFAULT_PRESERVE_GRUNTS = 0;         // Disabled (filter grunts)
+    constexpr int DEFAULT_PRESERVE_GRUNTS = 0;         // Grunts always play (the global is named backwards, see Config.h)
     constexpr int DEFAULT_SUBTYPE_ENABLED = 0;         // Disabled
     constexpr uint32_t DEFAULT_MENU_HOTKEY = 0xD2;     // Insert key
     
@@ -165,9 +165,4 @@ namespace SettingsPersistence
         spdlog::info("[PERSISTENCE] Loaded {} subtype toggles", loadedCount);
     }
     
-    void Register()
-    {
-        // No longer using SKSE serialization - settings are stored in INI file
-        spdlog::info("[PERSISTENCE] Settings persistence using INI file (no SKSE serialization needed)");
-    }
 }

@@ -47,6 +47,7 @@ namespace DialogueDB
 
     enum class BlacklistTarget : uint8_t
     {
+        None = 0,     // Not resolved yet; never saved
         Topic = 1,
         Quest = 2,
         Subtype = 3,
@@ -120,11 +121,11 @@ namespace DialogueDB
     struct BlacklistEntry
     {
         int64_t id = 0;
-        BlacklistTarget targetType;
+        BlacklistTarget targetType = BlacklistTarget::None;
         uint32_t targetFormID = 0;  // Runtime FormID when saved; 0 for subtypes, optional for scenes
         std::string targetEditorID;
         std::string targetFormKey;  // Load-order independent identity ("02707A:Skyrim.esm"); empty on rows saved before 1.2.0
-        BlockType blockType;
+        BlockType blockType = BlockType::Soft;
         int64_t addedTimestamp = 0;
         std::string notes;
         std::string responseText;  // The actual dialogue text for user-friendly searching
@@ -209,8 +210,9 @@ namespace DialogueDB
         // ShouldSoftBlock: Returns true if dialogue should be soft-blocked (silences BOTH audio AND subtitles)
         bool ShouldSoftBlock(uint32_t formID, const std::string& editorID, uint32_t actorFormID = 0, const std::string& actorName = "", RE::TESObjectREFR* actorRef = nullptr);
         
-        // Helper to import hardcoded scenes (sets filterCategory="Scene" by default, targetType=Scene)
-        void ImportHardcodedScenes(const std::vector<std::string>& sceneEditorIDs, const std::string& filterCategory = "Scene");
+        // Imports scenes as Hard Scene rows in filterCategory. Upserts, or with insertOnly leaves existing rows untouched.
+        // Returns the number of rows written.
+        int ImportHardcodedScenes(const std::vector<std::string>& sceneEditorIDs, const std::string& filterCategory = "Scene", bool insertOnly = false);
 
         // Key/value meta store for one-shot flags (see meta table). Used to gate
         // automatic scene imports so removing scenes never causes them to be

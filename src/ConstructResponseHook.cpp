@@ -38,7 +38,9 @@ namespace ConstructResponseHook
     // If Hook_ConstructResponse blocks a DIFFERENT TopicInfo using this cache,
     // it's a stale-decision leak (a line inheriting another line's block).
     thread_local static RE::FormID g_evaluatedTopicInfoFormID = 0;
-    
+    // Set when PopulateTopicInfo hard-blocked (returned without calling the original), so its duplicates block too
+    thread_local static bool g_hardBlocked = false;
+
     // Track current dialogue to detect duplicates (same TopicInfo + Speaker within 5 seconds)
     thread_local static RE::FormID g_lastTopicInfoFormID = 0;
     thread_local static RE::TESObjectREFR* g_lastSpeaker = nullptr;
@@ -85,10 +87,22 @@ namespace ConstructResponseHook
             shouldSoftBlock, topicInfoFormID);
     }
 
+    void SetHardBlockDecision(RE::FormID topicInfoFormID)
+    {
+        g_hardBlocked = true;
+        g_evaluatedTopicInfoFormID = topicInfoFormID;
+    }
+
+    bool GetCachedHardBlock()
+    {
+        return g_hardBlocked;
+    }
+
     // Clear blocking decision when new dialogue is detected
     void ClearBlockingDecision()
     {
         g_shouldSoftBlock = false;
+        g_hardBlocked = false;
         g_wasEvaluated = false;
         g_evaluatedTopicInfoFormID = 0;
         g_shouldBlockCurrent = false;  // reset immediately so SetSubtitle sees it before Hook_ConstructResponse fires (VR order)
@@ -213,9 +227,7 @@ namespace ConstructResponseHook
                 const char* topicEditorID = STFU::GetEditorID(a_topic);
                 const char* questEditorID = a_topic->ownerQuest ? STFU::GetEditorID(a_topic->ownerQuest) : nullptr;
                 RE::TESQuest* quest = a_topic->ownerQuest;
-                bool isHardcoded = Config::IsHardcodedAmbientScene(a_topic);
                 bool isBardSong = Config::IsBardSongQuest(quest);
-                bool scenesEnabled = Config::ShouldBlockScenes();
                 bool bardSongsEnabled = Config::ShouldBlockBardSongs();
                 
                 // DB-blacklisted scenes are soft-blocked via shouldSoftBlock (set by PopulateTopicInfo
@@ -311,7 +323,7 @@ namespace ConstructResponseHook
                 // DIAGNOSTIC: name every line whose audio/animation we wipe, with the
                 // TopicInfo it was evaluated for, so an unexpectedly-silenced greeting
                 // (subtype 79) is unmistakable in the log even if the decision was stale.
-                spdlog::warn("[AUDIO CLEARED] Wiping audio+animation for topic '{}' TopicInfo 0x{:08X} (subtype {}), decision evaluatedFor=0x{:08X}, g_shouldBlockCurrent={}",
+                spdlog::debug("[AUDIO CLEARED] Wiping audio+animation for topic '{}' TopicInfo 0x{:08X} (subtype {}), decision evaluatedFor=0x{:08X}, g_shouldBlockCurrent={}",
                     topicEditorID ? topicEditorID : "(none)",
                     a_topicInfo ? a_topicInfo->GetFormID() : 0,
                     subtype, g_evaluatedTopicInfoFormID, g_shouldBlockCurrent);

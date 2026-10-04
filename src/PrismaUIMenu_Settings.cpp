@@ -118,10 +118,9 @@ void PrismaUIMenu::OnImportScenes(const char* data)
         db->ImportHardcodedScenes(scenesList, "Scene");
         spdlog::info("[PrismaUIMenu::OnImportScenes] Imported {} ambient scenes", scenesList.size());
         
-        auto bardSongs = Config::GetBardSongQuestsList();
-        std::vector<std::string> bardScenes(bardSongs.begin(), bardSongs.end());
+        auto bardScenes = Config::GetBardSongScenesList();
         db->ImportHardcodedScenes(bardScenes, "BardSongs");
-        spdlog::info("[PrismaUIMenu::OnImportScenes] Imported {} bard song quests", bardScenes.size());
+        spdlog::info("[PrismaUIMenu::OnImportScenes] Imported {} bard song scenes", bardScenes.size());
         
         auto followerScenes = Config::GetFollowerCommentaryScenesList();
         db->ImportHardcodedScenes(followerScenes, "FollowerCommentary");
@@ -175,23 +174,17 @@ void PrismaUIMenu::OnImportYAML(const char* data)
             return;
         }
         
-        // Call the existing Config function that handles YAML import
-        Config::ImportYAMLToDatabase();
-        
-        spdlog::info("[PrismaUIMenu::OnImportYAML] YAML import completed successfully");
-        
-        // Show success toast with details
-        std::string message = "YAML config imported successfully";
-        if (blacklistExists && whitelistExists) {
-            message = "Blacklist and Whitelist imported successfully";
-        } else if (blacklistExists) {
-            message = "Blacklist imported successfully (no Whitelist found)";
+        int failedFiles = 0;
+        const int imported = Config::ImportYAMLToDatabase(&failedFiles);
+
+        if (failedFiles > 0) {
+            spdlog::warn("[PrismaUIMenu::OnImportYAML] {} YAML file(s) failed to parse", failedFiles);
+            prismaUI_->Invoke(view_, BuildToastScript(std::format(
+                "{} YAML file(s) could not be read (see STFU.log); imported {} entries from the rest", failedFiles, imported), "error").c_str());
         } else {
-            message = "Whitelist imported successfully (no Blacklist found)";
+            spdlog::info("[PrismaUIMenu::OnImportYAML] YAML import completed successfully");
+            prismaUI_->Invoke(view_, BuildToastScript(std::format("Imported {} entries from YAML", imported), "success").c_str());
         }
-        
-        std::string jsCode = "window.showToast('" + message + "', 'success')";
-        prismaUI_->Invoke(view_, jsCode.c_str());
         
         // Refresh all UI data to show newly imported entries
         SendBlacklistData();

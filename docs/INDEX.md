@@ -9,7 +9,8 @@ New here? Read [ARCHITECTURE.md](ARCHITECTURE.md) first, then [DEVELOPMENT.md](D
 | Task | Start Here | Also See |
 |------|------------|----------|
 | Understand how the pieces fit together | [ARCHITECTURE.md](ARCHITECTURE.md) | [DIALOGUE_HOOKS.md](DIALOGUE_HOOKS.md), [DATABASE.md](DATABASE.md) |
-| Build, deploy, and check a change in game | [DEVELOPMENT.md](DEVELOPMENT.md) | [WEB_UI.md](WEB_UI.md) |
+| Build, deploy, and check a change in game | [DEVELOPMENT.md](DEVELOPMENT.md#build-script) (`Build_Local.ps1`) | [WEB_UI.md](WEB_UI.md) |
+| Package a release zip | [DEVELOPMENT.md](DEVELOPMENT.md#releases) (`Build_Release.ps1`) | |
 | Support a new Skyrim runtime or bump CommonLib | [DEVELOPMENT.md](DEVELOPMENT.md#engine-touchpoints) | [DIALOGUE_HOOKS.md](DIALOGUE_HOOKS.md#hook-table) |
 | Debug why a line did or didn't play | [DIALOGUE_HOOKS.md](DIALOGUE_HOOKS.md#log-lines-to-grep-for) | [BLOCKING_RULES.md](BLOCKING_RULES.md), [DEVELOPMENT.md](DEVELOPMENT.md#logging) |
 | Change how the block decision is made (precedence, whitelist, filters) | [BLOCKING_RULES.md](BLOCKING_RULES.md) | [DATABASE.md](DATABASE.md), [DIALOGUE_HOOKS.md](DIALOGUE_HOOKS.md) |
@@ -62,4 +63,4 @@ New here? Read [ARCHITECTURE.md](ARCHITECTURE.md) first, then [DEVELOPMENT.md](D
 - **Hard block stops scripts.** Only purely ambient content gets hard-blocked. A scene that runs scripts, changes quest state or forces packages must be allowed to play. See [SCENE_BLOCKING.md](SCENE_BLOCKING.md#curation-rule-for-the-pre-included-list).
 - **No data migrations.** Schema changes add columns; existing rows are not rewritten. See [DATABASE.md](DATABASE.md#how-to-add-a-column-no-migrations-policy).
 - **There is no automated test suite.** Changes are verified in game through `STFU.log`.
-- **These docs describe the code as of 2026-09-26 (v1.2.0).** Line numbers drift; function names are the durable anchor. When code and a doc disagree, the code wins. Fix the doc in the same change.
+- **These docs describe the code as of 2026-10-04 (v1.2.1).** Line numbers drift; function names are the durable anchor. When code and a doc disagree, the code wins. Fix the doc in the same change.

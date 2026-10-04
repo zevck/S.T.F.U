@@ -60,3 +60,6 @@ cmake_install.cmake
 
 .copilotignore
 *.pex
+
+# The papyrus-lang project file Build_Local.ps1 can use (generated per machine)
+skyrimse.ppj

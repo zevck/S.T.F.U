@@ -73,7 +73,7 @@ The templates are written only when a file is missing, so template edits never r
 Consequences:
 - The **ESP's default values do not matter**. `LoadSettings()` overwrites every global it found, using the INI value or `DEFAULT_*` (all 0). Effective defaults are **everything off; hotkey `0xD2` (Insert)**. The ESP also ships every GLOB at 0.0.
 - `LoadSettings()` at kDataLoaded runs **only if the DB initialized**. If `Initialize()` fails, globals keep their ESP values until the next kNewGame/kPostLoadGame.
-- Toggles are global across all saves because the INI is not per-save. This is intentional (the comment is in `SettingsPersistence.cpp`). `Register()` only logs; there is no SKSE co-save serialization.
+- Toggles are global across all saves because the INI is not per-save. This is intentional (the comment is in `SettingsPersistence.cpp`). There is no SKSE co-save serialization.
 - The DB stores **no toggle values**. It stores list rows, whose `filter_category` decides which global gates each row (see below).
 - `SaveSettings()` writes a key only when its global was found, and never deletes keys. Stale keys from older versions (e.g. `SkyrimNetFilterEnabled=1`) remain in users' INIs and are ignored.
 
@@ -149,7 +149,7 @@ Natives are registered in `PapyrusInterface::RegisterFunctions()` under class `"
 
 | Native | C++ | Behaviour |
 |--------|-----|-----------|
-| `ImportHardcodedScenes()` | `PapyrusInterface::ImportHardcodedScenes` | **Detached `std::thread`**. Calls `db->ImportHardcodedScenes` for the ambient list ("Scene"), bard song quests ("BardSongs") and follower commentary ("FollowerCommentary"). Fire-and-forget: the MCM shows "Importing scenes..." with no completion notice |
+| `ImportHardcodedScenes()` | `PapyrusInterface::ImportHardcodedScenes` | **Detached `std::thread`**. Calls `db->ImportHardcodedScenes` for the ambient list ("Scene"), the bard song quests' scenes (`GetBardSongScenesList()`, "BardSongs") and follower commentary ("FollowerCommentary"). Fire-and-forget: the MCM shows "Importing scenes..." with no completion notice |
 | `int ImportFromYAML()` | `ImportFromYAML` → `Config::ImportYAMLToDatabase()` | **Synchronous on the Papyrus VM call**, and imports enrich response text, so a large quest import can stall. Returns total rows added or updated |
 | `int GetMenuHotkey()` / `SetMenuHotkey(int)` | same names | Read/write `Settings::menuHotkey`. Set validates and saves the INI |
 | `SaveSettings()` | `SaveSettings` → `SettingsPersistence::SaveSettings()` | Called from `OnConfigClose` |
@@ -178,7 +178,7 @@ Legacy and dead parts of the psc (removing them needs an edit, a Papyrus recompi
 | `setBlacklistEnabled` / `setScenesEnabled` / `setBardSongsEnabled` / `setFollowerCommentaryEnabled` | `{"enabled": bool}` | `SetToggleFromUI(handler, data, "enabled", global)` |
 | `setCombatGruntsBlocked` | `{"blocked": bool}` | `SetToggleFromUI(..., "blocked", preserveGruntsGlobal)` |
 | `importScenes` | `''` | `OnImportScenes` (synchronous, same three lists as the MCM), toast, `SendBlacklistData`, `SendHistoryData` |
-| `importYAML` | `''` | `OnImportYAML`: errors if **neither** the Blacklist nor the Whitelist YAML exists, otherwise calls `ImportYAMLToDatabase()`, shows a toast, and refreshes the lists and history |
+| `importYAML` | `''` | `OnImportYAML`: errors if **neither** the Blacklist nor the Whitelist YAML exists, otherwise calls `ImportYAMLToDatabase(&failedFiles)` and refreshes the lists and history. Toast: error "N YAML file(s) could not be read (see STFU.log); imported M entries from the rest" if any file failed to parse, else success "Imported N entries from YAML" |
 
 `SetToggleFromUI` performs **no inversion**: `true` → 1.0. The display side is `SendSettingsData`: `value >= 0.5` → `true`. The toggle `History` view also calls `toggleSubtypeFilter` (`history.tsx`). See PRISMA_UI_BRIDGE.md and WEB_UI.md for the transport details.
 
@@ -226,7 +226,7 @@ The import is **additive upsert**. Both `AddToBlacklist(e, false)` and `AddToWhi
 
 ### "Import Scenes" vs "Import from YAML"
 
-- **Import Scenes** (MCM and Prisma) re-imports the curated hard-coded lists from `Config_Scenes.cpp` (`GetHardcodedScenesList`, `GetBardSongQuestsList`, `GetFollowerCommentaryScenesList`) with categories Scene / BardSongs / FollowerCommentary. It ignores the meta flag, so it restores rows the user deleted. The first-run import at kDataLoaded does only Scenes and FollowerCommentary. See SCENE_BLOCKING.md.
+- **Import Scenes** (MCM and Prisma) re-imports the curated hard-coded lists from `Config_Scenes.cpp` (`GetHardcodedScenesList`, `GetBardSongScenesList`, `GetFollowerCommentaryScenesList`) with categories Scene / BardSongs / FollowerCommentary. It ignores the meta flag, so it restores rows the user deleted. The first-run import at kDataLoaded does only Scenes and FollowerCommentary. See SCENE_BLOCKING.md.
 - **Import from YAML** runs `ImportYAMLToDatabase()` over the three files above.
 
 ## Log lines to grep (`STFU.log`)
@@ -234,7 +234,7 @@ The import is **additive upsert**. Both `AddToBlacklist(e, false)` and `AddToWhi
 | Line | Meaning |
 |------|---------|
 | `Looking up TESGlobals from STFU.esp...` / `Global 'X' not found in loaded ESPs` | `Config::Load` lookups. A warning here means STFU.esp is missing or disabled, or an EditorID is misspelled. The toggle then silently does nothing and is never written to the INI |
-| `Loaded N subtype globals from STFU.esp (5 master toggles + M subtypes)` | Expected: `71 … + 66` (the "5" is hard-coded, not counted) |
+| `Loaded {found} of {total} subtype globals from STFU.esp` | Expected: `66 of 66`. Master toggles are not counted; a missing one logs `Global '…' not found in loaded ESPs` (warn) |
 | `[PERSISTENCE] Loading settings from INI:` / `INI file not found, will be created on first save` | `LoadSettings` start |
 | `[PERSISTENCE] Master toggles loaded: blacklist=…, hotkey=0x…` | Post-load values (`-1` = global missing) |
 | `[PERSISTENCE] Loaded N subtype toggles` | Should be 66 |
@@ -260,14 +260,13 @@ The import is **additive upsert**. Both `AddToBlacklist(e, false)` and `AddToWhi
 - **Subtype checks are inconsistent about the threshold.** `ShouldSoftBlock` uses `value > 0.0f` while everything else uses `>= 0.5f`. This is harmless while values stay 0/1, but a console `set STFU_Hello to 0.3` would split them.
 - **MCM changes are not saved until the MCM closes.** A crash with the MCM open loses them. After the next load the INI wins.
 - **Setting a global from the console or another mod is temporary.** It is overwritten on the next save load unless something calls `SaveSettings()`.
-- Prisma `OnImportYAML` reports success whenever a file exists. Parse errors are caught inside `ImportYAMLToDatabase` and only logged. It also refuses to run when only `STFU_SubtypeOverrides.yaml` exists.
-- The `CellLoadEventHandler` in `main.cpp` is a no-op and is not related to settings.
+- Prisma `OnImportYAML` refuses to run when only `STFU_SubtypeOverrides.yaml` exists.
 
 ## How to…
 
 ### Add a new master toggle end to end
 1. **ESP**: add a GLOB `STFU_NewThing` (short, value 0) in xEdit/CK. STFU.esp is ESL-flagged, so the new FormID must stay in the ESL range (current highest `0xD62`).
-2. **Config**: add `RE::TESGlobal* newThingGlobal` to `MCMSettings` (`src/Config.h`), look it up in `Config::Load()` (and fix the hard-coded "5 master toggles" count in the log), and add a getter if other modules need it.
+2. **Config**: add `RE::TESGlobal* newThingGlobal` to `MCMSettings` (`src/Config.h`), look it up in `Config::Load()`, and add a getter if other modules need it.
 3. **Meaning**: if it gates DB rows, add a `filterCategory` branch in `IsFilterCategoryEnabled` (`Config.cpp`). If it gates scenes, add it to `GetSceneGateGlobalForCategory` (`Config_Scenes.cpp`) and to the SceneHook global set (see SCENE_BLOCKING.md).
 4. **INI**: add `DEFAULT_NEW_THING`, plus one line each in `SaveSettings()` and `LoadSettings()` (`[Settings]`, new key), and extend the `Master toggles loaded` log.
 5. **Prisma C++**: declare `OnSetNewThing` in `PrismaUIMenu.h`, implement it as a one-liner via `SetToggleFromUI` in `PrismaUIMenu_Settings.cpp`, register the listener in `PrismaUIMenu.cpp`, and add the field to `SendSettingsData()`.

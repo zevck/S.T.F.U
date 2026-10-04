@@ -6,6 +6,60 @@ There is **no automated test suite**. `git ls-files` contains no test or spec fi
 
 ---
 
+## Build script
+
+`Build_Local.ps1` (PowerShell 7) does the whole loop: configure if needed, incremental plugin build, web UI build when
+`web-ui/src` or its config is newer than `web-ui/dist`, Papyrus via Pyro when a `skyrimse.ppj` exists, then deploy to
+every configured mod folder. It prints a SUCCESS/FAILURE block and writes the same to `%TEMP%\stfu-build-result.json`.
+
+```powershell
+pwsh .\Build_Local.ps1                 # build + deploy
+pwsh .\Build_Local.ps1 -noDeploy       # build only
+pwsh .\Build_Local.ps1 -skipWeb -skipScripts -fresh -threads 8 -config Debug
+```
+
+Settings live in `Build_Config_Local.ps1` next to the script. It is committed with empty values (an empty output path
+builds without deploying); fill it in for your machine and keep your values out of commits with
+`git update-index --skip-worktree Build_Config_Local.ps1`. Environment variables `STFU_OUTPUT_PATH` and `STFU_CK_PATH`
+override it:
+
+```powershell
+$defaultOutputPath     = "<MO2>\mods\STFU - Dev"   # primary deploy target
+$additionalOutputPaths = @()                       # other MO2 instances (e.g. one per runtime) that get the same build
+$ckPath                = ""                  # Creation Kit install, Pyro's --game-path (only with a skyrimse.ppj)
+$pyroPath              = ""                  # default: the VS Code papyrus-lang extension's pyro.exe
+$defaultThreads        = 16
+```
+
+Deploy copies the DLL and `STFU.esp`, and mirrors (`robocopy /MIR`) `Scripts`, `Source\Scripts`, `Sound\STFU` and
+`web-ui\dist` → `PrismaUI\views\STFU`, so old hashed bundles and removed scripts don't linger. `meta.ini` and anything
+outside those folders are left alone. If the game is running, the locked DLL is reported as a failure but everything
+else is still updated. A deployed `STFU.esp` newer than the repo's was edited there (CK, xEdit) and is not overwritten.
+There is no `skyrimse.ppj` in the repo (it's gitignored; generate it with the papyrus-lang "Generate Project" command),
+so by default the existing `Scripts\*.pex` are deployed as they are; the script still fails if a `.psc` has no `.pex`.
+
+## Releases
+
+`Build_Release.ps1` (PowerShell 7) makes the zip players install, `build\package\STFU v<version>.zip`, with the
+version taken from `CMakeLists.txt`. (Not `build\release`: Windows paths are case-insensitive, and that is MSBuild's
+`build\Release` output folder.)
+
+```powershell
+pwsh .\Build_Release.ps1               # build, check, zip
+pwsh .\Build_Release.ps1 -skipBuild    # pack the last build as it is
+pwsh .\Build_Release.ps1 -allowDirty   # a test release from uncommitted work
+```
+
+1. Refuses uncommitted changes (a release is a commit) unless `-allowDirty`.
+2. Builds with `Build_Local.ps1 -noDeploy` unless `-skipBuild`.
+3. Stages the mod layout: `SKSE\Plugins\STFU.dll`, `STFU.esp`, `Scripts`, `Source\Scripts`, `Sound\STFU`,
+   `PrismaUI\views\STFU` (from `web-ui\dist`).
+4. Checks it: every `.psc` has a `.pex` no older than it (compiled scripts aren't in git, so they are whatever was
+   last compiled locally), `index.html` loads exactly the bundles staged, and `vcpkg.json`'s version matches.
+5. Zips it and reports the result, also in `%TEMP%\stfu-release-result.json`.
+
+Bump the version in `CMakeLists.txt` and `vcpkg.json` before a release.
+
 ## Build (C++ plugin)
 
 Prerequisites:
@@ -25,7 +79,7 @@ cmake --build build --config Release --target STFU # -> build/Release/STFU.dll
 
 | Fact | Where |
 |---|---|
-| Plugin version `1.2.0` | `CMakeLists.txt` `project(VERSION)` and `vcpkg.json` `version-string`. Keep the two in sync. |
+| Plugin version `1.2.1` | `CMakeLists.txt` `project(VERSION)` and `vcpkg.json` `version-string`. Keep the two in sync. |
 | vcpkg triplet forced to `x64-windows-static`, MSVC runtime static (`/MT`) | `CMakeLists.txt` top |
 | vcpkg deps: `spdlog`, `yaml-cpp`, `sqlite3` (STFU); `rapidcsv`, `directxtk` (CommonLib) | `vcpkg.json` |
 | CommonLibSSE-NG added with `add_subdirectory(... EXCLUDE_FROM_ALL)`; plugin declared with `add_commonlibsse_plugin(... USE_ADDRESS_LIBRARY SOURCES ...)` | `CMakeLists.txt` |
@@ -49,7 +103,7 @@ npm run dev       # browser dev server on :5173 (no SKSE bridge; window.* listen
 
 ## Deploy
 
-**Close the game first.** The DLL is locked while Skyrim runs, and the build does **not** auto-deploy.
+`Build_Local.ps1` deploys for you (see [Build script](#build-script)). By hand: **close the game first**, since the DLL is locked while Skyrim runs.
 
 ```powershell
 $mod = "<MO2>\mods\STFU"   # set to your MO2 instance's STFU mod folder
@@ -68,7 +122,7 @@ Verify with `Get-FileHash -Algorithm MD5` on both sides. (`cmake --install` copi
 
 - `PrismaUI/views/STFU/index.html` is tracked in git, but `assets/` is gitignored. A rebuild changes the hashed filenames, so `index.html` shows up as modified after every UI deploy. That is expected.
 - Stale bundles pile up in the mod folder if `assets/` is not cleared first. Only the two files `index.html` references belong there, and only those go in a release zip.
-- Papyrus: the repo has no build step for `Source/Scripts/STFU_MCM.psc` → `Scripts/STFU_MCM.pex`, and compiled `.pex` files are gitignored. Compile it by hand with the Papyrus compiler. It imports SkyUI's `SKI_ConfigBase` and JContainers' `JValue`.
+- Papyrus: compiled `.pex` files are gitignored. `Build_Local.ps1` compiles `Source/Scripts/STFU_MCM.psc` with Pyro when a `skyrimse.ppj` exists; otherwise compile it by hand with the Papyrus compiler. It imports SkyUI's `SKI_ConfigBase` and JContainers' `JValue`.
 - `STFU.esp` is edited with xEdit or the CK. It holds the toggle globals that `Config::Load()` looks up by EditorID.
 
 ---
@@ -107,10 +161,10 @@ At `info` level, a healthy start writes these lines, in this order:
 |---|---|
 | `STFU loaded (debug logging: on/off)` | The DLL loaded and the logger is set up. It also confirms whether the debug flag was picked up. |
 | `Registered Papyrus interface for STFU_MCM`, later `[PapyrusInterface] Registered all Papyrus functions` | The MCM natives are bound |
-| `Loaded N subtype globals from STFU.esp` | `STFU.esp` is loaded. Missing globals appear as `Global '...' not found in loaded ESPs`. |
+| `Loaded N of M subtype globals from STFU.esp` (expected 66 of 66) | `STFU.esp` is loaded. Missing globals appear as `Global '...' not found in loaded ESPs`. |
 | `Initializing database at: ...`, `[DialogueLogger] Initialized`, `Database initialized: ...` | The DB and dialogue log are open. Check the path under MO2. |
 | `[PERSISTENCE] Master toggles loaded: blacklist=.., scenes=.., ...` | The INI was applied to the globals. It is logged again after `[MAIN] kPostLoadGame event fired`. |
-| `SceneMonitor: Initialized with 3 bard quests` | Bard quests were found. This depends on EditorIDs, so po3's Tweaks must be present. |
+| `[SceneMonitor] Added X of Y bard song scenes to the blacklist (first run)` or `[SceneMonitor] Bard scenes already initialized, skipping auto-population` | The bard-scene first-run import ran (or was already done). A `[Config] Bard song quest not found: X` warn means a bard quest's EditorID didn't resolve, so po3's Tweaks may be missing. |
 | `PopulateTopicInfo hook installed successfully` | Detours hook #1 is in. Failure: `Failed to install PopulateTopicInfo hook!` |
 | `Scene blocker ready` | `SceneHook::Install()` ran. It only logs. |
 | `ConstructResponseHook: SetSubtitle call site 0x.. calls 0x..` + `SetSubtitle hook installed` | The E8 guard passed and the call site was patched. The logged call target is what you compare across runtimes. |
@@ -123,8 +177,8 @@ At `info` level, a healthy start writes these lines, in this order:
 | `[PrismaUIMenu] DOM ready for view N` | The web bundle loaded, logged when the view's DOM is first ready |
 
 To see behaviour, turn on the debug flag and grep for:
-- `[POPULATE]` / `[HARD BLOCK]` / `[POPULATE SILENCE]` for decisions
-- `[SetSubtitle] BLOCKING` / `[SOFT BLOCK]` / `[AUDIO CLEARED]` (warn) for what was blanked
+- `[POPULATE]` / `[HARD BLOCK]` for decisions
+- `[SetSubtitle] BLOCKING` / `[SOFT BLOCK]` / `[AUDIO CLEARED]` (debug) for what was blanked
 - `MATCH FOUND` / `NO MATCH` / `COOLDOWN SKIP` / `Skipping unchosen candidate` / `TEXT DUPLICATE SKIP` to see why history did or did not record a line
 - `[STALE CACHE]` (warn) when a cached decision was applied to a different TopicInfo
 
@@ -145,7 +199,7 @@ These are every address, offset and engine-shape assumption the plugin makes. An
 | GetResponseList | `REL::VariantID(25083, 25626, 0x3A3000)` | `src/TopicResponseExtractor.cpp` `GetResponseList()` | Called directly, `(TESTopicInfo*, TESResponse**)`. The list comes back through the out param. |
 | Trampoline | 256 bytes, taken from the SKSE branch pool or `trampoline.create()` | `src/main.cpp` `kDataLoaded` | Holds the two `write_call`s |
 | Condition function `74` (GetGlobalValue) | `FUNCTION_DATA::FunctionID(74)` | `src/SceneHook.cpp` `CreateGlobalDisabledCondition()`, `RemoveConditionsFromScene()` | A hand-built `TESConditionItem` (`RE::malloc(sizeof)` + `memset`) pushed onto `BGSScene` phase `startConditions`. Depends on CommonLib's layout of `TESConditionItem` / `CONDITION_ITEM_DATA`. |
-| Struct fields (via CommonLib layouts) | `BGSScene::{phases, actions, isPlaying, parentQuest}`, `TESQuest::scenes`, `BGSSceneActionDialogue::topic`, `TESTopic::{data.subtype, ownerQuest}`, `TESResponse::{responseText, speakerIdle, listenerIdle, emotionType, emotionValue, flags, next}`, `MenuTopicManager::dialogueList` / `parentTopicInfo` | `ConstructResponseHook.cpp`, `PopulateTopicInfoHook.cpp`, `SceneHook.cpp`, `SceneMonitor.cpp` | Reads, and writes to `isPlaying` and the response fields. These are correct only if CommonLib's RE headers match the runtime. |
+| Struct fields (via CommonLib layouts) | `BGSScene::{phases, actions, isPlaying}`, `TESQuest::scenes`, `BGSSceneActionDialogue::topic`, `TESTopic::{data.subtype, ownerQuest}`, `TESResponse::{responseText, speakerIdle, listenerIdle, emotionType, emotionValue, flags, next}`, `MenuTopicManager::dialogueList` / `parentTopicInfo` | `ConstructResponseHook.cpp`, `PopulateTopicInfoHook.cpp`, `SceneHook.cpp`, `SceneMonitor.cpp` | Reads, and writes to `isPlaying` and the response fields. These are correct only if CommonLib's RE headers match the runtime. |
 | po3's Tweaks export | `GetProcAddress(GetModuleHandleW(L"po3_Tweaks"), "GetFormEditorID")` | `src/EditorID.h` `STFU::GetEditorID()` | Resolved once. Falls back to `TESForm::GetFormEditorID()` |
 | Menu name | `"Loading Menu"` | `src/main.cpp` `LoadingMenuSink` | `MenuOpenCloseEvent` |
 | Player FormID | `0x14` | `PopulateTopicInfoHook.cpp` | Excludes the player's lines from history |

@@ -5,7 +5,7 @@ set(VCPKG_TARGET_TRIPLET "x64-windows-static" CACHE STRING "" FORCE)
 
 project(
     STFU
-    VERSION 1.2.0
+    VERSION 1.2.1
     LANGUAGES CXX
 )
 
