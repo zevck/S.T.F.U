@@ -1,13 +1,13 @@
 # Machine-specific settings for Build_Local.ps1. Gitignored.
 
 # Primary output: the MO2 mod folder the build deploys into (MO2 = AE).
-$defaultOutputPath = "C:\Modding\MO2\mods\STFU - Dev"
+$defaultOutputPath = ""
 
 # Other MO2 instances that get the same dev build. meta.ini is never touched,
 # so each instance keeps its own MO2 metadata.
 $additionalOutputPaths = @(
-    "C:\Modding\FUS\mods\STFU - Dev",                              # FUS = VR
-    "C:\Nolvus\Instances\Nolvus Awakening\MODS\mods\STFU - Dev"    # Nolvus = SE
+    "",                              # FUS = VR
+    ""    # Nolvus = SE
 )
 
 # Creation Kit install: Pyro's --game-path. Only used when a skyrimse.ppj exists in the repo.
